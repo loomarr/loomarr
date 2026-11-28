@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -35,13 +36,13 @@ func TestSlateSampleDescriptionMatchesEveryItem(t *testing.T) {
 	type src struct {
 		name   string
 		gen    []string
-		format MediaFormat
+		format media.MediaFormat
 	}
 	sources := []src{
 		{"sdr-film", []string{"-f", "lavfi", "-i", "testsrc2=s=1920x800:r=24000/1001", "-f", "lavfi", "-i", "sine=r=48000",
 			"-i", chapters, "-map", "0", "-map", "1", "-map_chapters", "2", "-t", "3",
 			"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "6"},
-			MediaFormat{VideoCodec: "h264", Width: 1920, Height: 800, FrameRate: 23.976, PixelFormat: "yuv420p",
+			media.MediaFormat{VideoCodec: "h264", Width: 1920, Height: 800, FrameRate: 23.976, PixelFormat: "yuv420p",
 				AudioCodec: "aac", AudioChannels: 6, AudioSampleRate: 48000, Container: "matroska,webm"}},
 		{"hdr-film", []string{"-f", "lavfi", "-i", "testsrc2=s=3840x1600:r=24000/1001", "-f", "lavfi", "-i", "sine=r=48000",
 			"-i", chapters, "-map", "0", "-map", "1", "-map_chapters", "2", "-t", "3",
@@ -49,7 +50,7 @@ func TestSlateSampleDescriptionMatchesEveryItem(t *testing.T) {
 			"log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:hdr10=1:" +
 				"master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400",
 			"-c:a", "aac"},
-			MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 1600, FrameRate: 23.976, PixelFormat: "yuv420p10le",
+			media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 1600, FrameRate: 23.976, PixelFormat: "yuv420p10le",
 				ColorTransfer: "smpte2084", AudioCodec: "aac", AudioChannels: 1, AudioSampleRate: 48000,
 				Container: "matroska,webm"}},
 		{"hdr-1080", []string{"-f", "lavfi", "-i", "testsrc2=s=1920x800:r=24000/1001", "-f", "lavfi", "-i", "sine=r=48000",
@@ -58,12 +59,12 @@ func TestSlateSampleDescriptionMatchesEveryItem(t *testing.T) {
 			"log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:hdr10=1:" +
 				"master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400",
 			"-c:a", "aac"},
-			MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 800, FrameRate: 23.976, PixelFormat: "yuv420p10le",
+			media.MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 800, FrameRate: 23.976, PixelFormat: "yuv420p10le",
 				ColorTransfer: "smpte2084", AudioCodec: "aac", AudioChannels: 1, AudioSampleRate: 48000,
 				Container: "matroska,webm"}},
 		{"sd-ad", []string{"-f", "lavfi", "-i", "smptebars=s=720x480:r=30000/1001", "-f", "lavfi", "-i", "sine=r=44100",
 			"-t", "3", "-vf", "setsar=10/11", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac"},
-			MediaFormat{VideoCodec: "h264", Width: 720, Height: 480, FrameRate: 29.97, PixelFormat: "yuv420p",
+			media.MediaFormat{VideoCodec: "h264", Width: 720, Height: 480, FrameRate: 29.97, PixelFormat: "yuv420p",
 				AudioCodec: "aac", AudioChannels: 1, AudioSampleRate: 44100, Container: "matroska,webm"}},
 	}
 	for _, s := range sources {

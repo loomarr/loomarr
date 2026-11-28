@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // LibraryFileReader is the store's read of the files a Library item plays.
@@ -113,16 +114,16 @@ type LibraryVideoReader interface {
 // libraryFormat is a library item's video format as the scanner read its playing file's header
 // (#2151 step 15): what a channel's format and a still's tone mapping need. ok is false for any
 // other id, which the inventory answers.
-func (r *Resolver) libraryFormat(ctx context.Context, itemID string) (playout.MediaFormat, bool) {
+func (r *Resolver) libraryFormat(ctx context.Context, itemID string) (media.MediaFormat, bool) {
 	if r.libraryVideo == nil {
-		return playout.MediaFormat{}, false
+		return media.MediaFormat{}, false
 	}
 	v, ok, err := r.libraryVideo.LibraryPlayingVideo(ctx, itemID)
 	if err != nil || !ok {
 		if err != nil && r.log != nil {
 			r.log.Debug("playout: library video unavailable", "item", itemID, "err", err)
 		}
-		return playout.MediaFormat{}, false
+		return media.MediaFormat{}, false
 	}
 	return playoutFormatOf(inventory.SourceFacts{Streams: []inventory.Stream{{
 		Index: v.Index, Kind: inventory.StreamVideo, Codec: v.Codec, Width: v.Width, Height: v.Height,
@@ -295,8 +296,8 @@ func InventoryFactsOf(observed playout.SourceObservation) inventory.SourceFacts 
 	return facts
 }
 
-func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
-	format := playout.MediaFormat{
+func playoutFormatOf(facts inventory.SourceFacts) media.MediaFormat {
+	format := media.MediaFormat{
 		Container:    strings.ToLower(strings.TrimSpace(facts.Container)),
 		Duration:     float64(facts.DurationMillis) / float64(time.Second/time.Millisecond),
 		Bitrate:      facts.Bitrate,
@@ -371,7 +372,7 @@ func (r *Resolver) Tracks(ctx context.Context, channelID string) (playout.MediaT
 }
 
 // FormatOf probes an input once and returns everything the probe measured: geometry, framerate,
-// pixel format, colour transfer, audio shape, duration, bitrate (playout.MediaFormat).
+// pixel format, colour transfer, audio shape, duration, bitrate (media.MediaFormat).
 //
 // BEST-EFFORT, and it fails SAFE: no prober wired, no input, or a probe error all return the zero
 // MediaFormat, which reads as SDR/unknown rather than as anything asserted, so the item transcodes.
@@ -382,7 +383,7 @@ func (r *Resolver) Tracks(ctx context.Context, channelID string) (playout.MediaT
 // that names one (#2173): an HDR10 Matroska file can signal PQ only in the HEVC parameter set, which
 // the header reader parses and ffprobe's stream summary reports as unknown, so the airing would skip
 // tone mapping. Any other id keeps the probe's.
-func (r *Resolver) FormatOf(ctx context.Context, libraryItemID, input string) playout.MediaFormat {
+func (r *Resolver) FormatOf(ctx context.Context, libraryItemID, input string) media.MediaFormat {
 	format := r.probedFormat(ctx, input)
 	if libraryItemID == "" {
 		return format
@@ -393,9 +394,9 @@ func (r *Resolver) FormatOf(ctx context.Context, libraryItemID, input string) pl
 	return format
 }
 
-func (r *Resolver) probedFormat(ctx context.Context, input string) playout.MediaFormat {
+func (r *Resolver) probedFormat(ctx context.Context, input string) media.MediaFormat {
 	if input == "" {
-		return playout.MediaFormat{}
+		return media.MediaFormat{}
 	}
 	if r.inventory != nil {
 		if origin, ok := r.ensureLocalInventorySource(ctx, input); ok {
@@ -415,14 +416,14 @@ func (r *Resolver) probedFormat(ctx context.Context, input string) playout.Media
 		}
 	}
 	if r.probeFormat == nil {
-		return playout.MediaFormat{}
+		return media.MediaFormat{}
 	}
 	f, err := r.probeFormat(ctx, input)
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("playout: format not probed, transcoding", "input", input, "err", err)
 		}
-		return playout.MediaFormat{}
+		return media.MediaFormat{}
 	}
 	return f
 }

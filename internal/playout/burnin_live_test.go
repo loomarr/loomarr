@@ -16,12 +16,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
 // burnBox is the test cue: a solid white 400x80 box at (760,900) on a 1920x1080 canvas, shown from
 // 0.2 s to 0.8 s of the source.
-var burnBox = Rect{X: 760, Y: 900, W: 400, H: 80}
+var burnBox = media.Rect{X: 760, Y: 900, W: 400, H: 80}
 
 // boxDecoder decodes every track into the box cue, as the image worker hands back a Blu-ray
 // track's stills: one full-canvas PNG in the track's directory and its display window. It records
@@ -186,7 +187,7 @@ func TestLive_PackagerBurnsSubtitles(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		box, around := regionDiff(onY, offY, burnBox), regionDiff(onY, offY, Rect{X: 0, Y: 0, W: 1920, H: 800})
+		box, around := regionDiff(onY, offY, burnBox), regionDiff(onY, offY, media.Rect{X: 0, Y: 0, W: 1920, H: 800})
 		boxY := regionMean(onY, burnBox)
 		t.Logf("%s: box Y %.1f (|ΔY| %.1f), picture |ΔY| %.2f", c.name, boxY, box, around)
 		if around > pictureTolerance {
@@ -201,7 +202,7 @@ func TestLive_PackagerBurnsSubtitles(t *testing.T) {
 	}
 }
 
-func regionMean(y []byte, r Rect) float64 {
+func regionMean(y []byte, r media.Rect) float64 {
 	var sum float64
 	for row := r.Y; row < r.Y+r.H; row++ {
 		for x := r.X; x < r.X+r.W; x++ {
@@ -211,7 +212,7 @@ func regionMean(y []byte, r Rect) float64 {
 	return sum / float64(r.W*r.H)
 }
 
-func regionDiff(a, b []byte, r Rect) float64 {
+func regionDiff(a, b []byte, r media.Rect) float64 {
 	var sum float64
 	for row := r.Y; row < r.Y+r.H; row++ {
 		off := row * checkWidth

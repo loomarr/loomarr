@@ -34,7 +34,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -508,7 +508,7 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 // playbackHeadroomFor is filler's PlaybackHeadroom: the ResourceBudget, the one admission ledger
 // (#1512 G5), so filler waits exactly while a live transcode holds a lease. nil when there is no
 // internal playout, so the pipeline never waits.
-func playbackHeadroomFor(budget *playout.ResourceBudget) filler.PlaybackHeadroom {
+func playbackHeadroomFor(budget *admission.ResourceBudget) filler.PlaybackHeadroom {
 	if budget == nil {
 		return nil
 	}

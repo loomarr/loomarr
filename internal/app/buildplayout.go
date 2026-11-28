@@ -24,6 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
@@ -43,7 +44,7 @@ type playoutBuild struct {
 	backendController *backendtransition.Controller
 	setResidentVRAM   func(func(context.Context) (float64, string))
 	// budget is the one admission ledger; filler's media work waits on it (playbackHeadroomFor).
-	budget *playout.ResourceBudget
+	budget *admission.ResourceBudget
 	// watched reports whether a viewer is fetching a channel (PackagerHLS.Watched); nil without the
 	// channel packager.
 	watched func() bool
@@ -123,7 +124,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		if residentVRAM != nil {
 			residentGiB, _ = residentVRAM(rootCtx)
 		}
-		return playout.EffectiveCapacity(measured, settings.PlayoutMaxChannels.Get(set), residentGiB)
+		return admission.EffectiveCapacity(measured, settings.PlayoutMaxChannels.Get(set), residentGiB)
 	}
 	playoutBudget := func() int {
 		measured := 0
@@ -135,7 +136,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// The ResourceBudget (#1512 G5) is the one admission ledger for the channel packagers and the
 	// prepared pool. Its facts are re-read per admission: the cgroup quota or CPU count, the CPU
 	// allowance settings, and the measured capacity above (operator cap and VRAM shading included).
-	resourceBudget := playout.NewResourceBudget(func() playout.BudgetFacts {
+	resourceBudget := admission.NewResourceBudget(func() admission.BudgetFacts {
 		hardware := playoutRes != nil && playoutRes.DetectReady() &&
 			!encode.IsSoftware(playoutRes.PublishedEncoder())
 		var costs *playout.MeasuredCosts
@@ -147,7 +148,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			costs = playoutRes.CostsFor(enc)
 		}
 		facts := playoutBudgetFacts(
-			playout.ReadHostCPU(os.DirFS("/"), runtime.NumCPU()), hardware, playoutBudget(), costs,
+			admission.ReadHostCPU(os.DirFS("/"), runtime.NumCPU()), hardware, playoutBudget(), costs,
 			effectivePlayoutCapacity, playout.TierFor(settings.PlayoutQualityTier.Get(set)),
 			settings.PlayoutGPUCPUMillicores.Get(set), settings.PlayoutAppReserveMillicores.Get(set),
 		)
@@ -314,7 +315,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}
 
 	resourceBudget.WithMemoryGate(encodeMemoryGate(
-		playout.HostMemAvailable,
+		admission.HostMemAvailable,
 		func() int { return settings.PlayoutMemoryReserveMb.Get(set) },
 		func() int { return settings.PlayoutEncodeMemoryMb.Get(set) },
 		playoutRes.EncodeHostBytes,
@@ -471,8 +472,8 @@ const defaultEncodeHostBytes = int64(1) << 30
 // and defaultEncodeHostBytes.
 func encodeMemoryGate(
 	available func() (int64, bool), reserveMiB, perEncodeMiB func() int, measured func() int64,
-) playout.MemoryGate {
-	return playout.MemoryGate{
+) admission.MemoryGate {
+	return admission.MemoryGate{
 		Available: func() (int64, bool) {
 			if reserveMiB() <= 0 {
 				return 0, false // disabled: report unknown so the gate stays open
@@ -495,13 +496,13 @@ func encodeMemoryGate(
 // of the measured whole-stream capacity (operator cap and VRAM shading included), and a host that
 // measured at most one stream starts sessions on the bottom rung.
 func playoutBudgetFacts(
-	host playout.HostCPU, hardware bool, measured int, costs *playout.MeasuredCosts, effective func(int) int,
+	host admission.HostCPU, hardware bool, measured int, costs *playout.MeasuredCosts, effective func(int) int,
 	tier playout.Tier, gpuMillicores, appReserveMillicores int,
-) playout.BudgetFacts {
+) admission.BudgetFacts {
 	rungs := playout.LadderHeights(tier)
-	facts := playout.BudgetFacts{
+	facts := admission.BudgetFacts{
 		Hardware:         hardware,
-		CPUAllowance:     playout.PlayoutCPUAllowance(host, hardware, gpuMillicores, appReserveMillicores),
+		CPUAllowance:     admission.PlayoutCPUAllowance(host, hardware, gpuMillicores, appReserveMillicores),
 		CPUSource:        host.Source,
 		Rungs:            rungs,
 		MeasuredCapacity: measured,
@@ -509,7 +510,7 @@ func playoutBudgetFacts(
 	if costs != nil {
 		facts.Costs, facts.SessionLimit = costs.Costs, costs.SessionLimit
 		if facts.Costs == nil {
-			facts.Costs = map[playout.CostKey]playout.ClassCost{} // completed probe, no successful class
+			facts.Costs = map[admission.CostKey]admission.ClassCost{} // completed probe, no successful class
 		}
 		if ceiling := facts.Ceiling(); ceiling > 0 && effective != nil {
 			facts.OperatorCap = effective(ceiling)

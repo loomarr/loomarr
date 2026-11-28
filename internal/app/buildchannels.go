@@ -28,6 +28,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
@@ -49,8 +50,8 @@ type channelBuild struct {
 	playoutCapability      func() playout.Capacity
 	playout                playoutapi.Playout
 	playoutResolverService playoutapi.PlayoutResolver
-	resourceBudget         *playout.ResourceBudget // nil without internal playout
-	watched                func() bool             // a viewer is fetching a channel; nil without the packager
+	resourceBudget         *admission.ResourceBudget // nil without internal playout
+	watched                func() bool               // a viewer is fetching a channel; nil without the packager
 	playoutGuide           playoutapi.PlayoutGuide
 	playoutResolver        *resolve.Resolver
 	setResidentVRAM        func(func(context.Context) (float64, string))
@@ -161,7 +162,7 @@ func buildChannels(in channelsInput) (channelBuild, error) {
 	var playoutResolverSvc playoutapi.PlayoutResolver
 	// The one admission ledger for hardware and software transcodes (#1505, #1562), built beside
 	// the resolver that owns capability detection.
-	var resourceBudget *playout.ResourceBudget
+	var resourceBudget *admission.ResourceBudget
 	// Whether a viewer is watching a channel; the library's header reads wait while one is.
 	var watched func() bool
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *resolve.Resolver as above — one

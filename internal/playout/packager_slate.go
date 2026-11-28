@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -94,7 +95,7 @@ func (m *PackagerHLS) encodeSlate(ctx context.Context, host encode.HostProfile, 
 			return nil, err
 		}
 	}
-	format := MediaFormat{VideoCodec: "h264", Width: out.Width, Height: out.Height, FrameRate: float64(out.FPS),
+	format := media.MediaFormat{VideoCodec: "h264", Width: out.Width, Height: out.Height, FrameRate: float64(out.FPS),
 		PixelFormat: "yuv420p", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
 	pl, err := Build(host, format, out)
 	if err != nil {

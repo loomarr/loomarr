@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bluenviron/mediacommon/v2/pkg/formats/fmp4"
+
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )

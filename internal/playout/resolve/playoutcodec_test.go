@@ -11,7 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -114,9 +114,9 @@ func TestMeasureChannelCodecProbesTheLibrarysFiles(t *testing.T) {
 		}},
 		libraryFile: files,
 		now:         time.Now,
-		probeFormat: func(_ context.Context, input string) (playout.MediaFormat, error) {
+		probeFormat: func(_ context.Context, input string) (media.MediaFormat, error) {
 			inputs = append(inputs, input)
-			return playout.MediaFormat{VideoCodec: "hevc"}, nil
+			return media.MediaFormat{VideoCodec: "hevc"}, nil
 		},
 	}
 

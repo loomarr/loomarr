@@ -8,7 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/measure"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // sourceMeasurer is the part of measure.Measurer the resolver uses.
@@ -47,16 +47,16 @@ func (r *Resolver) newMeasurer(tools measure.Tools, analysis inventory.AnalysisS
 // measureFirstPlay is the synchronous fast path for a source Loomarr has never measured: probe
 // stream facts once, record them against the source revision, and queue the slower analysis. A
 // probe failure returns false and playout keeps its existing behaviour.
-func (r *Resolver) measureFirstPlay(ctx context.Context, origin inventory.OriginKey, input string) (formatOut playout.MediaFormat, ok bool) {
+func (r *Resolver) measureFirstPlay(ctx context.Context, origin inventory.OriginKey, input string) (formatOut media.MediaFormat, ok bool) {
 	if r.measurer == nil || r.probeSource == nil {
-		return playout.MediaFormat{}, false
+		return media.MediaFormat{}, false
 	}
 	source, found, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
 		Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(),
 		Kinds: []inventory.SourceKind{inventory.SourceLocalFile},
 	})
 	if err != nil || !found {
-		return playout.MediaFormat{}, false
+		return media.MediaFormat{}, false
 	}
 	ref := measure.SourceRef{ID: source.ID, Revision: source.Revision, Path: input}
 	facts, err := r.measurer.MeasureFacts(ctx, ref)
@@ -64,7 +64,7 @@ func (r *Resolver) measureFirstPlay(ctx context.Context, origin inventory.Origin
 		if r.log != nil {
 			r.log.Debug("playout: first-play measurement failed, falling back to probe", "err", err)
 		}
-		return playout.MediaFormat{}, false
+		return media.MediaFormat{}, false
 	}
 	ref.Facts = facts
 	r.measurer.Submit(ref)
@@ -73,16 +73,16 @@ func (r *Resolver) measureFirstPlay(ctx context.Context, origin inventory.Origin
 
 // activePicture is the source's measured picture area for the channel watermark's anchor, from
 // the stored analysis of its current revision; the zero Rect (unknown) before it is measured.
-func (r *Resolver) activePicture(ctx context.Context, id inventory.SourceID) playout.Rect {
+func (r *Resolver) activePicture(ctx context.Context, id inventory.SourceID) media.Rect {
 	if r.analyses == nil {
-		return playout.Rect{}
+		return media.Rect{}
 	}
 	a, ok, err := r.analyses.InventoryAnalysis(ctx, id)
 	if err != nil || !ok || a.ActivePicture == nil {
-		return playout.Rect{}
+		return media.Rect{}
 	}
 	p := a.ActivePicture
-	return playout.Rect{X: p.X, Y: p.Y, W: p.W, H: p.H}
+	return media.Rect{X: p.X, Y: p.Y, W: p.W, H: p.H}
 }
 
 // submitAnalysis queues background analysis for a source whose stream facts are already stored.

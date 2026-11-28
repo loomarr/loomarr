@@ -9,6 +9,8 @@ import (
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // ProbeCapacity measures this host's per-class stream costs and encoder session limit once at boot
@@ -35,14 +37,14 @@ func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foregro
 	}
 	if reused {
 		r.measuredCosts.Store(&stored)
-		cfg.Classes, cfg.Outputs = []playout.StreamClass{playout.ClassHDR4K}, cfg.Outputs[:1]
+		cfg.Classes, cfg.Outputs = []media.StreamClass{media.ClassHDR4K}, cfg.Outputs[:1]
 		// A table stored before the probe measured premium (#1512 G10) measures it now, not in a week.
 		premium := false
 		for k := range stored.Costs {
-			premium = premium || k.Class == playout.ClassPremium4K
+			premium = premium || k.Class == media.ClassPremium4K
 		}
 		if !premium {
-			cfg.Classes = append(cfg.Classes, playout.ClassPremium4K)
+			cfg.Classes = append(cfg.Classes, media.ClassPremium4K)
 		}
 	}
 	res := playout.ProbeClassCosts(ctx, cfg)
@@ -53,7 +55,7 @@ func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foregro
 		r.onTonemap(res.Tonemap)
 	}
 
-	m := playout.MeasuredCosts{Encoder: enc, Costs: map[playout.CostKey]playout.ClassCost{}, ObservedAt: started}
+	m := playout.MeasuredCosts{Encoder: enc, Costs: map[admission.CostKey]admission.ClassCost{}, ObservedAt: started}
 	if reused {
 		m.SessionLimit, m.ObservedAt = stored.SessionLimit, stored.ObservedAt // the full table re-measures weekly
 		for k, c := range stored.Costs {
@@ -66,14 +68,14 @@ func (r *Resolver) ProbeCapacity(ctx context.Context, foreground playout.Foregro
 	if res.Tonemap.Ran && !res.Tonemap.OK {
 		// A tone-map that fails now must not be admitted on an older measurement: HDR shows the card.
 		for k := range m.Costs {
-			if k.Class == playout.ClassHDR4K {
+			if k.Class == media.ClassHDR4K {
 				delete(m.Costs, k)
 			}
 		}
 	}
 	if !reused {
 		bound := playout.SessionProbeBound
-		if sdr, ok := res.Costs[playout.CostKey{Class: playout.ClassSDR, Height: cfg.Outputs[0].Height}]; ok {
+		if sdr, ok := res.Costs[admission.CostKey{Class: media.ClassSDR, Height: cfg.Outputs[0].Height}]; ok {
 			bound = min(bound, max(1, int(sdr.Speed/1.2)+1)) // one past the throughput ceiling
 		}
 		limit, err := playout.ProbeSessionLimit(ctx, playout.SessionProbeConfig{
@@ -113,15 +115,15 @@ func (r *Resolver) CostsFor(enc encode.Encoder) *playout.MeasuredCosts {
 // ToneCurve is the curve the live chain maps HDR with (playout.ToneCurveSource): the probe keys its
 // HDR measurement by it and the budget picks the HDR cells by it. It is the live playout.tone_curve
 // setting, the same one the spawner maps with. Nil-safe.
-func (r *Resolver) ToneCurve() playout.ToneCurve {
+func (r *Resolver) ToneCurve() media.ToneCurve {
 	if r == nil || r.toneCurve == nil {
-		return playout.DefaultToneCurve
+		return media.DefaultToneCurve
 	}
-	return playout.ParseToneCurve(r.toneCurve())
+	return media.ParseToneCurve(r.toneCurve())
 }
 
-func costsForLog(costs map[playout.CostKey]playout.ClassCost) map[string]playout.ClassCost {
-	out := make(map[string]playout.ClassCost, len(costs))
+func costsForLog(costs map[admission.CostKey]admission.ClassCost) map[string]admission.ClassCost {
+	out := make(map[string]admission.ClassCost, len(costs))
 	for k, c := range costs {
 		out[string(k.Class)+"@"+strconv.Itoa(k.Height)] = c
 	}

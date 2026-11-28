@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 type libraryVideoFake map[string]librarystore.LibraryStream
@@ -26,8 +26,8 @@ func TestPlayoutResolver_FormatOfTakesALibraryItemsTransferFromItsHeader(t *test
 				ColorTransfer: "smpte2084"},
 			"lib-untagged": {Kind: "video", Codec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p10le"},
 		},
-		probeFormat: func(context.Context, string) (playout.MediaFormat, error) {
-			return playout.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p10le",
+		probeFormat: func(context.Context, string) (media.MediaFormat, error) {
+			return media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p10le",
 				ColorTransfer: "unknown", Container: "matroska,webm"}, nil
 		},
 	}
@@ -59,7 +59,7 @@ func TestPlayoutResolver_LibraryItemFormatFromTheTables(t *testing.T) {
 			t.Errorf("%s HDR = %v, want %v", id, got, want)
 		}
 	}
-	if got, ok := r.libraryFormat(t.Context(), "90000001"); ok || got != (playout.MediaFormat{}) {
+	if got, ok := r.libraryFormat(t.Context(), "90000001"); ok || got != (media.MediaFormat{}) {
 		t.Errorf("a media-server id = %+v, %v; want unknown", got, ok)
 	}
 }

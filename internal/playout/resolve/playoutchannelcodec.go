@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // ComputeChannelCodec derives the channel's uniform BROADCAST CODEC (§9.1 V50) from its library
@@ -95,13 +95,13 @@ func (r *Resolver) ChannelCodec(ctx context.Context, channelID string) string {
 // input to playout.DeriveChannelFormats (#1512 G10). The facts are the scanner's read of each
 // item's playing file, never probed. An item the Library has not read is the zero MediaFormat,
 // which the derivation ignores.
-func (r *Resolver) LineupFormats(ctx context.Context, channelID string) ([]playout.MediaFormat, error) {
+func (r *Resolver) LineupFormats(ctx context.Context, channelID string) ([]media.MediaFormat, error) {
 	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, r.now())
 	if err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
-	var formats []playout.MediaFormat
+	var formats []media.MediaFormat
 	for _, sl := range slots {
 		// Filler and pending acquisitions are SDR and file-less; only landed programmes can warrant 4K/HDR.
 		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" || seen[sl.LibraryItemID] {
@@ -177,7 +177,7 @@ func (r *Resolver) measureChannelCodec(ctx context.Context, channelID string) st
 func majorityBroadcastCodec(codecs []string) string {
 	var hevc, other int
 	for _, c := range codecs {
-		if playout.IsHEVCCodec(c) {
+		if media.IsHEVCCodec(c) {
 			hevc++
 		} else {
 			other++

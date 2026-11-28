@@ -16,13 +16,15 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // ladderSource airs one long 4K HDR title from a fixed wall-clock start.
 type ladderSource struct {
 	epoch time.Time
 	path  string
-	facts MediaFormat
+	facts media.MediaFormat
 	host  encode.HostProfile
 	out   OutputProfile
 }
@@ -95,10 +97,10 @@ func TestLive_PackagerLadderStepsDownWithoutAnAudioGap(t *testing.T) {
 	t.Cleanup(m.Stop)
 	// The ledger believes full quality fits (an optimistic measurement), so only the live ladder can
 	// bring the item down to what this CPU sustains.
-	m.WithBudget(NewResourceBudget(func() BudgetFacts {
-		return BudgetFacts{CPUAllowance: 8, Rungs: []int{1080}, Costs: map[CostKey]ClassCost{
-			{Class: ClassSDR, Height: 1080}:   {Speed: 3, CPUCores: 1.4},
-			{Class: ClassHDR4K, Height: 1080}: {Speed: 0.5, CPUCores: 3.6},
+	m.WithBudget(admission.NewResourceBudget(func() admission.BudgetFacts {
+		return admission.BudgetFacts{CPUAllowance: 8, Rungs: []int{1080}, Costs: map[admission.CostKey]admission.ClassCost{
+			{Class: media.ClassSDR, Height: 1080}:   {Speed: 3, CPUCores: 1.4},
+			{Class: media.ClassHDR4K, Height: 1080}: {Speed: 0.5, CPUCores: 3.6},
 		}}
 	}))
 	o := NewOrigin(OriginDependencies{Packager: m})

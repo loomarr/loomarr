@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -35,7 +37,7 @@ type PackagerItem struct {
 	KeyframeIndexed bool
 	Remaining       time.Duration
 	AudioTrack      int
-	Format          MediaFormat
+	Format          media.MediaFormat
 	// GainDB is a filler clip's static loudness gain (FillerGain); 0 for a library title.
 	GainDB float64
 	// Watermark is set only for a PROGRAMME airing (never filler, bumpers or IDs): the channel's bug
@@ -102,9 +104,9 @@ type PackagerHLS struct {
 	log          *slog.Logger
 	// budget is the one admission ledger (#1520): one lease per running (channel, format) packager.
 	// Nil admits everything (tests, builds without internal playout).
-	budget *ResourceBudget
+	budget *admission.ResourceBudget
 	// ladderCfg tunes each airing's RungMonitor; zero is the defaults (a test seam for its dwell times).
-	ladderCfg RungMonitorConfig
+	ladderCfg admission.RungMonitorConfig
 	// premiumLookup bounds how long a master waits for its premium lookup; zero is
 	// premiumLookupTimeout (a test seam).
 	premiumLookup time.Duration
@@ -143,7 +145,7 @@ type packagedChannel struct {
 	viewers int
 	idle    *time.Timer
 	// lease is the packager's admission (#1520); nil without a budget.
-	lease *Lease
+	lease *admission.Lease
 	// speculative marks a packager a neighbour warm started that no viewer has joined yet (#1780).
 	speculative bool
 	// idleSince is when the last viewer left; zero while one is fetching (#1780).
@@ -178,7 +180,7 @@ func NewPackagerHLS(source PackagerSource, ffmpeg, root string, grace time.Durat
 
 // WithBudget admits every channel packager through the ResourceBudget. Call before the packager
 // serves.
-func (m *PackagerHLS) WithBudget(budget *ResourceBudget) *PackagerHLS {
+func (m *PackagerHLS) WithBudget(budget *admission.ResourceBudget) *PackagerHLS {
 	m.budget = budget
 	return m
 }
@@ -293,7 +295,7 @@ func (m *PackagerHLS) takesPremium(viewer string) bool {
 func (m *PackagerHLS) warmPremium(channelID string, class FormatClass) {
 	_, release, err := m.acquire(channelID, class, true)
 	if err != nil {
-		if !errors.Is(err, ErrAtCapacity) { // a refusal is logged by admit
+		if !errors.Is(err, admission.ErrAtCapacity) { // a refusal is logged by admit
 			m.log.Warn("packager hls: premium warm failed", "channel", channelID, "format", string(class), "err", err)
 		}
 		return
@@ -327,7 +329,7 @@ func (m *PackagerHLS) premiumVariant(ctx context.Context, channelID string, clas
 // premiumAdmission is a premium packager's lease: the premium class at its measured cost for the
 // channel's life, whatever each item's source is, and never a lower output rung (a premium's
 // geometry is fixed).
-var premiumAdmission = AdmitRequest{Class: ClassPremium4K, NoRungDrop: true}
+var premiumAdmission = admission.AdmitRequest{Class: media.ClassPremium4K, NoRungDrop: true}
 
 // MediaPlaylist serves a format's live media playlist (`<format>.m3u8`, named by the master). A
 // player polls it, not the master, so each poll counts as a viewer and keeps the packager past its
@@ -438,7 +440,7 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass, speculative b
 		var err error
 		if c, err = m.start(key, speculative); err != nil {
 			result := "spawn_error"
-			if errors.Is(err, ErrAtCapacity) {
+			if errors.Is(err, admission.ErrAtCapacity) {
 				result = "capacity"
 			}
 			m.observe(func(o SessionObserver) { o.PlayoutSessionStarted(result) })
@@ -493,11 +495,11 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	lookupCtx, cancelLookup := context.WithTimeout(ctx, firstItemLookupTimeout)
 	first, ferr := m.source.ItemAt(lookupCtx, key.channel, resolvedAt)
 	cancelLookup()
-	req := AdmitRequest{Class: ClassSDR}
+	req := admission.AdmitRequest{Class: media.ClassSDR}
 	if key.format.isPremium() {
 		req = premiumAdmission
 	} else if ferr == nil && first.Input != "" {
-		req.Class = ClassOf(first.Format)
+		req.Class = media.ClassOf(first.Format)
 	}
 	var pre *prefetchedItem
 	if ferr == nil {
@@ -564,7 +566,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 // class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520). A lookup
 // only reads the schedule: an item airs when a viewer receives its segments (PackagerItem.RecordAiringServed).
 func (m *PackagerHLS) schedule(
-	key packagedKey, host encode.HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
+	key packagedKey, host encode.HostProfile, out OutputProfile, lease *admission.Lease, pre *prefetchedItem, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
 	ladder := &itemLadder{speed: m.speedFor(key)}
@@ -603,9 +605,9 @@ func (m *PackagerHLS) schedule(
 		// rung instead of a fresh pick.
 		itemOut := out
 		// A premium lease keeps its class: it was priced for the channel's whole lineup.
-		itemClass := ClassOf(it.Format)
+		itemClass := media.ClassOf(it.Format)
 		if key.format.isPremium() {
-			itemClass = ClassPremium4K
+			itemClass = media.ClassPremium4K
 		}
 		airing := it.Label + "\x00" + it.Input
 		rung, resumed, stepped := ladder.resume(airing)
@@ -618,7 +620,7 @@ func (m *PackagerHLS) schedule(
 		default:
 			itemOut.SoftwareRung = StartRung(it.Format, RungCost{})
 		}
-		var monitor *RungMonitor
+		var monitor *admission.RungMonitor
 		switch {
 		case host.Family != encode.FamilySoftware:
 			ladder.begin("", nil)
@@ -629,7 +631,7 @@ func (m *PackagerHLS) schedule(
 		default:
 			cfg := m.ladderCfg
 			cfg.Costs = RungCostsFor(it.Format)
-			monitor = NewRungMonitor(itemOut.SoftwareRung, cfg)
+			monitor = admission.NewRungMonitor(itemOut.SoftwareRung, cfg)
 		}
 		if monitor != nil && !resumed {
 			ladder.begin(airing, monitor)

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -72,7 +73,7 @@ func synth(t *testing.T, bin, name, lavfi string, seconds int, video ...string) 
 type premiumItem struct {
 	name  string
 	path  string
-	facts MediaFormat
+	facts media.MediaFormat
 }
 
 // premiumItems synthesizes the classes a 4K channel mixes: an SDR 1080p episode, a flat white SDR
@@ -88,9 +89,9 @@ func premiumItemsOf(t *testing.T, bin string, seconds int) map[string]premiumIte
 	t.Helper()
 	h264 := []string{"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
 		"-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"}
-	sdr := MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080, FrameRate: 25, PixelFormat: "yuv420p",
+	sdr := media.MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080, FrameRate: 25, PixelFormat: "yuv420p",
 		ColorTransfer: "bt709", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
-	hdr := MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 25, PixelFormat: "yuv420p10le",
+	hdr := media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 25, PixelFormat: "yuv420p10le",
 		ColorTransfer: "smpte2084", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
 	uhdSDR := hdr
 	uhdSDR.ColorTransfer = "bt709"

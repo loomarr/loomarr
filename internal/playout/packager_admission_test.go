@@ -10,6 +10,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // A channel packager holds the lease it was admitted with, so the ledger is the only count (#1505,
@@ -18,7 +21,7 @@ import (
 func TestPackagerAdmissionHoldsAndReturnsTheLedger(t *testing.T) {
 	facts := nvencFacts()
 	facts.OperatorCap = 2
-	budget := NewResourceBudget(func() BudgetFacts { return facts })
+	budget := admission.NewResourceBudget(func() admission.BudgetFacts { return facts })
 	m := newTestPackagerHLS(t, slowItemSource{}, time.Hour)
 	m.WithBudget(budget)
 
@@ -29,15 +32,15 @@ func TestPackagerAdmissionHoldsAndReturnsTheLedger(t *testing.T) {
 		}
 		defer release()
 	}
-	if _, _, err := m.acquire("c", FormatBaseline, false); !errors.Is(err, ErrAtCapacity) {
+	if _, _, err := m.acquire("c", FormatBaseline, false); !errors.Is(err, admission.ErrAtCapacity) {
 		t.Fatalf("third transcode: err = %v, want ErrAtCapacity", err)
 	}
-	if budget.Fits(AdmitRequest{Class: ClassSDR}) {
+	if budget.Fits(admission.AdmitRequest{Class: media.ClassSDR}) {
 		t.Fatal("the budget has room for a transcode it already gave to packagers")
 	}
 	m.StopChannel("a")
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		if budget.Fits(AdmitRequest{Class: ClassSDR}) {
+		if budget.Fits(admission.AdmitRequest{Class: media.ClassSDR}) {
 			return
 		}
 		if time.Now().After(deadline) {
@@ -64,7 +67,7 @@ func (m *PackagerHLS) runningChannels() []string {
 func TestPackagerHLS_AViewerTuneEvictsAnIdleWarmBeforeItIsRefused(t *testing.T) {
 	facts := nvencFacts()
 	facts.OperatorCap = 2
-	budget := NewResourceBudget(func() BudgetFacts { return facts })
+	budget := admission.NewResourceBudget(func() admission.BudgetFacts { return facts })
 	m := newTestPackagerHLS(t, slowItemSource{}, time.Hour)
 	m.WithBudget(budget)
 
@@ -80,7 +83,7 @@ func TestPackagerHLS_AViewerTuneEvictsAnIdleWarmBeforeItIsRefused(t *testing.T) 
 	warm.release() // the warm is done; its packager lingers in its grace, holding a slot
 
 	// Warming only ever uses spare room: a second warm on the full host is refused, displacing nothing.
-	if _, err := m.acquirePlaylist("other-neighbour", true, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("other-neighbour", true, ""); !errors.Is(err, admission.ErrAtCapacity) {
 		t.Fatalf("a warm on a full host: err = %v, want ErrAtCapacity", err)
 	}
 	viewer, err := m.acquirePlaylist("surfed-to", false, "")
@@ -95,7 +98,7 @@ func TestPackagerHLS_AViewerTuneEvictsAnIdleWarmBeforeItIsRefused(t *testing.T) 
 		t.Fatalf("ledger after eviction = %+v, want exactly the two watched sessions", use)
 	}
 	// Only watched work is left, so the next viewer is refused rather than evicting a viewer.
-	if _, err := m.acquirePlaylist("third", false, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("third", false, ""); !errors.Is(err, admission.ErrAtCapacity) {
 		t.Fatalf("a viewer with only watched work running: err = %v, want ErrAtCapacity", err)
 	}
 }
@@ -208,11 +211,11 @@ func (b *lockedBuffer) String() string {
 
 // warmFacts is a measured NVENC host where every stream is cheap, so only the operator cap (0 =
 // none) bounds how many packagers run.
-func warmFacts(operatorCap int) BudgetFacts {
+func warmFacts(operatorCap int) admission.BudgetFacts {
 	f := premiumFacts(true)
 	f.OperatorCap = operatorCap
-	f.Costs[HDRKey(ClassHDR4K, 1080, DefaultToneCurve)] = ClassCost{Speed: 12, CPUCores: 0.1}
-	f.Costs[CostKey{Class: ClassPremium4K, Height: premiumHeight}] = ClassCost{Speed: 12, CPUCores: 0.1}
+	f.Costs[admission.HDRKey(media.ClassHDR4K, 1080, media.DefaultToneCurve)] = admission.ClassCost{Speed: 12, CPUCores: 0.1}
+	f.Costs[admission.CostKey{Class: media.ClassPremium4K, Height: premiumHeight}] = admission.ClassCost{Speed: 12, CPUCores: 0.1}
 	return f
 }
 
@@ -251,7 +254,7 @@ func TestPackagerHLS_APremiumViewersWarmAlsoWarmsTheNeighboursPremium(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.WithBudget(NewResourceBudget(func() BudgetFacts { return warmFacts(0) }))
+	m.WithBudget(admission.NewResourceBudget(func() admission.BudgetFacts { return warmFacts(0) }))
 	t.Cleanup(m.Stop)
 
 	takePremium(t, m, "tv", "watched")
@@ -292,7 +295,7 @@ func TestPackagerHLS_WarmVariantReadNeverPromotesOrStarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.WithBudget(NewResourceBudget(func() BudgetFacts { return warmFacts(2) }))
+	m.WithBudget(admission.NewResourceBudget(func() admission.BudgetFacts { return warmFacts(2) }))
 	t.Cleanup(m.Stop)
 	m.notePremiumTaker("tv")
 	for _, class := range []FormatClass{FormatBaseline, Format4KHDR} {
@@ -355,7 +358,7 @@ func TestPackagerHLS_APremiumWarmOnlyUsesSpareRoom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.WithBudget(NewResourceBudget(func() BudgetFacts { return warmFacts(3) }))
+	m.WithBudget(admission.NewResourceBudget(func() admission.BudgetFacts { return warmFacts(3) }))
 	t.Cleanup(m.Stop)
 
 	takePremium(t, m, "tv", "watched")

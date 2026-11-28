@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -39,13 +40,13 @@ func TestPackagerStitchesMixedFormatItems(t *testing.T) {
 		{"slate", "color=c=black:s=640x360:r=30", 640, 360, 30, 48000},
 	}
 	paths := map[string]string{}
-	formats := map[string]MediaFormat{}
+	formats := map[string]media.MediaFormat{}
 	for _, s := range sources {
 		p := filepath.Join(dir, s.name+".mkv")
 		ffmpegRun(t, "-f", "lavfi", "-i", s.lavfi, "-f", "lavfi", "-i", "sine=f=440:r="+strconv.Itoa(s.rate),
 			"-t", "6", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", p)
 		paths[s.name] = p
-		formats[s.name] = MediaFormat{VideoCodec: "h264", Width: s.w, Height: s.h, FrameRate: float64(s.fps),
+		formats[s.name] = media.MediaFormat{VideoCodec: "h264", Width: s.w, Height: s.h, FrameRate: float64(s.fps),
 			PixelFormat: "yuv420p", AudioCodec: "aac", AudioChannels: 1, AudioSampleRate: s.rate, Container: "matroska,webm"}
 	}
 	args := func(name string, seek time.Duration, slot packager.Slot) []string {

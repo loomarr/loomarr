@@ -456,7 +456,7 @@ durably off-air requires persisted projection lifecycle state and retry, not a o
 
 ## Admission
 
-One ledger, `playout.ResourceBudget`, admits every stream against what this host **measured**, not a
+One ledger, `admission.ResourceBudget`, admits every stream against what this host **measured**, not a
 static number. A packager takes one lease when it starts, and a stream is admitted against
 `min(GPU throughput at 1.2×, CPU allowance ÷ measured CPU per stream, encoder sessions)`, per stream
 class and ladder rung. The classes are 8-bit SDR up to 1080p, 10-bit up to 1080p, and 4K or HDR with

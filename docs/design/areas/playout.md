@@ -18,11 +18,11 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`playout`** · 11 importers · → `media/encode`, `media/measure`, `media/proctree`, `platform/diagnostics`, `platform/langcode`, `playout/admission`, `playout/media`, `playout/packager`, `playout/timeline`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
-- **`playout/admission`** · 1 importer · → `playout/media`
+- **`playout/admission`** · 5 importers · → `playout/media`
   Decides what a host can encode at once: the resource budget and its leases, the measured and host-derived capacity limits, and the speed monitor that steps a heavy item down the software ladder.
 - **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `platform/store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
-- **`playout/bench`** · → `media/encode`, `playout`, `playout/packager`
+- **`playout/bench`** · → `media/encode`, `playout`, `playout/media`, `playout/packager`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 - **`playout/channelbug`** · 1 importer · → `channels/schedule`, `media/encode`, `platform/diagnostics`, `platform/store/channelstore`, `playout`, `playout/watermark`
   Turns a channel's watermark policy into the bug its programmes air with: it picks the look, colour and holiday version, renders through playout/watermark, caches the files, and runs the per-encoder GPU overlay self-check that gates the bug.
@@ -30,11 +30,11 @@ One area of the [package map](../package-map.md#start-here).
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`playout/livetvpublish`** · 1 importer · → `library/mediaserver`, `playout/tunarr`
   Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
-- **`playout/media`** · 2 importers
+- **`playout/media`** · 5 importers
   Vocabulary of what a source is and what it costs to air: the probed MediaFormat, its stream class, the picture rectangle and the HDR tone curve.
 - **`playout/packager`** · 3 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
-- **`playout/resolve`** · 1 importer · → `channels/schedule`, `filler/asset`, `filler/cliplibrary`, `filler/pod`, `library/inventory`, `library/mediaserver`, `library/provision`, `library/tmdb`, `media/encode`, `media/images`, `media/measure`, `platform/diagnostics`, `platform/langcode`, `platform/metrics`, `platform/store/channelstore`, `platform/store/librarystore`, `playout`, `playout/subtitles`, `playout/timeline`
+- **`playout/resolve`** · 1 importer · → `channels/schedule`, `filler/asset`, `filler/cliplibrary`, `filler/pod`, `library/inventory`, `library/mediaserver`, `library/provision`, `library/tmdb`, `media/encode`, `media/images`, `media/measure`, `platform/diagnostics`, `platform/langcode`, `platform/metrics`, `platform/store/channelstore`, `platform/store/librarystore`, `playout`, `playout/admission`, `playout/media`, `playout/subtitles`, `playout/timeline`
   Adapter that makes internal playout work (§9.1): where three separately-verified pieces finally compose.
 - **`playout/subtitles`** · 4 importers · → `media/bgexec`, `platform/langcode`
   Serves a channel's soft subtitles beside its stream (#2088 decision 5): the text subtitle tracks the programme on air carries, and the chosen track's cues on the channel's wall clock.

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/playout/admission"
 )
 
 // Admission on a full host (#1780). Measured on the real Shield on rc.5: 38 of 120 channel surfs
@@ -145,7 +147,7 @@ func admitReason(key packagedKey, speculative bool) string {
 // evicts idle work, one packager at a time in pickIdleVictim's order, while that keeps it at the
 // first rung; with nothing idle left it may drop a rung, or is refused. A warm is admitted only into
 // spare room, except that a baseline warm may reclaim a premium warm's (#1037).
-func (m *PackagerHLS) admit(ctx context.Context, key packagedKey, req AdmitRequest, speculative bool) (*Lease, error) {
+func (m *PackagerHLS) admit(ctx context.Context, key packagedKey, req admission.AdmitRequest, speculative bool) (*admission.Lease, error) {
 	if m.budget == nil {
 		return nil, nil
 	}
@@ -163,7 +165,7 @@ func (m *PackagerHLS) admit(ctx context.Context, key packagedKey, req AdmitReque
 	return lease, err
 }
 
-func (m *PackagerHLS) admitEvicting(ctx context.Context, key packagedKey, req AdmitRequest, speculative bool) (*Lease, error) {
+func (m *PackagerHLS) admitEvicting(ctx context.Context, key packagedKey, req admission.AdmitRequest, speculative bool) (*admission.Lease, error) {
 	top, evictable := req, victimPremium
 	switch {
 	case !speculative:
@@ -175,7 +177,7 @@ func (m *PackagerHLS) admitEvicting(ctx context.Context, key packagedKey, req Ad
 	}
 	for {
 		lease, err := m.budget.Admit(ctx, top)
-		if !errors.Is(err, ErrAtCapacity) {
+		if !errors.Is(err, admission.ErrAtCapacity) {
 			return lease, err
 		}
 		if evictable == 0 || !m.evictIdle(ctx, key, evictable) {
@@ -183,7 +185,7 @@ func (m *PackagerHLS) admitEvicting(ctx context.Context, key packagedKey, req Ad
 		}
 	}
 	if speculative {
-		return nil, ErrAtCapacity
+		return nil, admission.ErrAtCapacity
 	}
 	return m.budget.Admit(ctx, req)
 }
