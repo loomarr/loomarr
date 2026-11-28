@@ -3,9 +3,9 @@ migration-rehearsal-script	scripts/migration-rehearsal.sh	contracts,agent
 hardware-gate-script	scripts/check-hardware-gate.sh	contracts,agent
 migration-order-check	scripts/check-migration-order.sh;scripts/check-migration-order-test.sh	agent,policy
 leaf-go	internal/proposals/suggest/score.go	contracts,go,postgres,image
-releaseverify-production	internal/platform/releaseverify/ci_container_downloads.go	policy
-releaseverify-red-tests	internal/platform/releaseverify/ci_container_downloads_test.go	policy
-releaseverify-policy-fixtures	internal/platform/releaseverify/testdata/make_policy_normalization.mk;internal/platform/releaseverify/testdata/make_policy_normalization.golden	policy
+releaseverify-production	internal/platform/releaseverify/ci_container_downloads.go	agent,policy
+releaseverify-red-tests	internal/platform/releaseverify/ci_container_downloads_test.go	agent,policy
+releaseverify-policy-fixtures	internal/platform/releaseverify/testdata/make_policy_normalization.mk;internal/platform/releaseverify/testdata/make_policy_normalization.golden	agent,policy
 store-go	internal/platform/store/store.go	contracts,go,postgres,image
 postgres-test-image-authority	internal/testkit/postgresimage/image.txt	contracts,go,go_full,postgres,image,policy
 postgres-test-image-owner	internal/testkit/postgresimage/image.go	contracts,go,go_full,postgres,image,policy

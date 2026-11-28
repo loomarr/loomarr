@@ -116,9 +116,10 @@ classify() {
       ;;
   esac
   # The macOS agent job is the only run under bash 3.2 and BSD tools, so every script and Make
-  # module selects it (#4641). This adds the gate without claiming the path.
+  # module selects it (#4641), and so does releaseverify, whose tests run those scripts there. This
+  # adds the gate without claiming the path.
   case "$path" in
-    scripts/*|mk/*)
+    scripts/*|mk/*|cmd/releaseverify/*|internal/platform/releaseverify/*)
       select_gate agent
       ;;
   esac
