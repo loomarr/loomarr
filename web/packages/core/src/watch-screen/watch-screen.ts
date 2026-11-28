@@ -1,0 +1,369 @@
+// The watching screen of The Cross (frontend-design §9.1, target), the same on every client. Pure:
+// a client feeds it what happened, with the time, draws `watchScreenView`, does what it asks, and
+// sends a `tick` at the view's `nextAt`. It starts no timer and touches no player.
+
+import type { ChannelLineup, LineupChannel } from "../channel-lineup";
+import { type ChannelListEvent, channelListReduce, createChannelListState } from "../channel-list";
+import type {
+  WatchControl,
+  WatchKeyInput,
+  WatchMenuName,
+  WatchRequest,
+  WatchScreenEvent,
+  WatchScreenState,
+  WatchScreenStateArgs,
+  WatchScreenStep,
+  WatchScreenView,
+} from "./watch-screen.type";
+
+/** How long the bare picture waits before the lower third, the quiet row and the hint rest. */
+const WATCH_REST_MS = 5000;
+/** How long typed digits wait for another before they tune. */
+const WATCH_DIGITS_MS = 1600;
+/** How many channels left the screen remembers. */
+const LEFT_LIMIT = 20;
+
+const createWatchScreenState = ({
+  at,
+  group,
+  hintSeen = false,
+  layout,
+  watchedId,
+}: WatchScreenStateArgs): WatchScreenState => ({
+  activeAt: at,
+  behindMs: 0,
+  digits: undefined,
+  focus: undefined,
+  handOff: undefined,
+  hintSeen,
+  layout,
+  leftIds: [],
+  list: createChannelListState({ group, television: layout === "tv", watchedId }),
+  listFromControl: false,
+  menu: undefined,
+  paused: false,
+  pausedAt: undefined,
+  pointerHeld: false,
+  watchedId,
+});
+
+/** Only the bare picture rests: anything open, focused, pointed at, paused or typed holds it. */
+const held = (state: WatchScreenState) =>
+  state.list.open ||
+  state.menu !== undefined ||
+  state.focus !== undefined ||
+  state.pointerHeld ||
+  state.paused ||
+  state.digits !== undefined;
+
+/**
+ * The key the screen acts on, or undefined when it is not the screen's: a key with a modifier, one
+ * a control or the open list already took, one typed into a field, or one an input method is
+ * still building.
+ */
+const watchKeyOf = (input: WatchKeyInput): string | undefined =>
+  input.altKey || input.ctrlKey || input.metaKey || input.defaultPrevented || input.inField || input.composing
+    ? undefined
+    : input.key;
+
+/** The longest channel number, so typed digits stop where no channel could be named. */
+const digitsWidth = <C extends LineupChannel>(lineup: ChannelLineup<C>) =>
+  Math.max(1, ...lineup.channels.map((channel) => String(channel.number).length));
+
+const unplayable = (channel: LineupChannel) => `${channel.number} ${channel.name} cannot be played right now`;
+
+// The arrow keys the open list takes when focus is not already in it.
+const LIST_KEYS: Record<string, ChannelListEvent> = {
+  ArrowDown: { by: 1, type: "move" },
+  ArrowLeft: { by: -1, type: "across" },
+  ArrowRight: { by: 1, type: "across" },
+  ArrowUp: { by: -1, type: "move" },
+  End: { to: 1, type: "edge" },
+  Enter: { type: "choose" },
+  Home: { to: -1, type: "edge" },
+};
+
+const MENU_KEYS: Record<string, WatchMenuName> = { "?": "shortcuts", a: "audio", c: "subtitles" };
+
+/**
+ * The watching screen's interaction model. Flipping tunes at once; the list only looks until OK or
+ * a click. It asks for every effect in `requests` and performs none.
+ */
+const watchScreenReduce = <C extends LineupChannel>(
+  state: WatchScreenState,
+  event: WatchScreenEvent,
+  lineup: ChannelLineup<C>,
+): WatchScreenStep => {
+  const { at } = event;
+  // Everything but the clock is activity, and wakes the screen.
+  const woken: WatchScreenState = event.type === "tick" ? state : { ...state, activeAt: at };
+  const stay = (next: WatchScreenState = woken): WatchScreenStep => ({ requests: [], state: next });
+  const ask = (next: WatchScreenState, ...requests: WatchRequest[]): WatchScreenStep => ({
+    requests,
+    state: next,
+  });
+  const handTo = (s: WatchScreenState, to: "list" | "channels") => ({ seq: (s.handOff?.seq ?? 0) + 1, to });
+
+  // A change of channel: the one left is remembered, and pause, digits and the hint are over.
+  const changed = (s: WatchScreenState, channelId: string): WatchScreenState => ({
+    ...s,
+    behindMs: 0,
+    digits: undefined,
+    hintSeen: true,
+    leftIds:
+      s.watchedId === undefined
+        ? s.leftIds
+        : [s.watchedId, ...s.leftIds.filter((id) => id !== s.watchedId && id !== channelId)].slice(
+            0,
+            LEFT_LIMIT,
+          ),
+    list: channelListReduce(s.list, { channelId, type: "tuned" }, lineup).state,
+    paused: false,
+    pausedAt: undefined,
+    watchedId: channelId,
+  });
+  const tuneTo = (s: WatchScreenState, channelId: string): WatchScreenStep =>
+    channelId === s.watchedId ? stay(s) : ask(changed(s, channelId), { channelId, type: "tune" });
+
+  const togglePause = (s: WatchScreenState): WatchScreenStep =>
+    s.paused
+      ? ask(
+          {
+            ...s,
+            behindMs: s.behindMs + Math.max(0, at - (s.pausedAt ?? at)),
+            paused: false,
+            pausedAt: undefined,
+          },
+          { type: "resume" },
+        )
+      : ask({ ...s, paused: true, pausedAt: at }, { type: "pause" });
+
+  const goLive = (s: WatchScreenState): WatchScreenStep =>
+    s.paused || s.behindMs > 0
+      ? ask({ ...s, behindMs: 0, paused: false, pausedAt: undefined }, { type: "goLive" })
+      : stay(s);
+
+  const fullScreen = (s: WatchScreenState) => ask(s, { on: s.layout !== "full", type: "fullScreen" });
+
+  const toggleMenu = (s: WatchScreenState, name: WatchMenuName): WatchScreenStep =>
+    s.menu?.name === name
+      ? stay({ ...s, menu: undefined })
+      : ask({ ...s, menu: { name } }, { name, type: "menu" });
+
+  // The list reported something, or a key was sent to it. Closing it hands focus back to Channels
+  // when Channels opened it.
+  const listStep = (s: WatchScreenState, listEvent: ChannelListEvent): WatchScreenStep => {
+    const step = channelListReduce(s.list, listEvent, lineup);
+    const closed = s.list.open && !step.state.open;
+    const next: WatchScreenState = {
+      ...s,
+      handOff: closed && s.listFromControl ? handTo(s, "channels") : s.handOff,
+      list: step.state,
+      listFromControl: closed ? false : s.listFromControl,
+    };
+    return step.tune ? tuneTo(next, step.tune) : stay(next);
+  };
+
+  const openList = (s: WatchScreenState, fromControl: boolean): WatchScreenStep => ({
+    requests: [],
+    state: {
+      ...s,
+      list: channelListReduce(s.list, { type: "open" }, lineup).state,
+      listFromControl: fromControl,
+    },
+  });
+
+  const openFind = (s: WatchScreenState): WatchScreenStep =>
+    s.layout === "tv"
+      ? stay(s)
+      : stay({
+          ...s,
+          list: channelListReduce(s.list, { query: "", type: "find" }, lineup).state,
+          listFromControl: s.list.open ? s.listFromControl : false,
+        });
+
+  const commitDigits = (s: WatchScreenState): WatchScreenStep => {
+    const typed = s.digits?.typed ?? "";
+    const cleared = { ...s, digits: undefined };
+    const channel = lineup.channelByNumber(typed);
+    if (!channel) return ask(cleared, { text: `There is no channel ${typed}`, type: "message" });
+    if (!channel.playable) return ask(cleared, { text: unplayable(channel), type: "message" });
+    return tuneTo(cleared, channel.id);
+  };
+
+  const lastChannel = (s: WatchScreenState): WatchScreenStep => {
+    const last = lineup.lastChannel;
+    if (!last) return ask(s, { text: "There is no last channel yet", type: "message" });
+    if (!last.playable) {
+      const text = last.channel ? unplayable(last.channel) : "The last channel is no longer listed";
+      return ask(s, { text, type: "message" });
+    }
+    return tuneTo(s, last.id);
+  };
+
+  const flip = (s: WatchScreenState, direction: -1 | 1): WatchScreenStep => {
+    // Recent is newest first, which is no order to flip in: it flips in number order.
+    const group = s.list.group === "recent" ? "all" : s.list.group;
+    const to = lineup.neighbour(s.watchedId, direction, group);
+    return to ? tuneTo(s, to.id) : stay(s);
+  };
+
+  // One step back: a menu's page, the menu, typed digits, then the list's own steps, then full screen.
+  const back = (s: WatchScreenState): WatchScreenStep => {
+    if (s.menu?.page !== undefined) return stay({ ...s, menu: { name: s.menu.name } });
+    if (s.menu) return stay({ ...s, menu: undefined });
+    if (s.digits) return stay({ ...s, digits: undefined });
+    if (s.list.open) return listStep(s, { type: "back" });
+    return s.layout === "full" ? ask(s, { on: false, type: "fullScreen" }) : stay(s);
+  };
+
+  const press = (s: WatchScreenState, control: WatchControl): WatchScreenStep => {
+    switch (control) {
+      case "channels":
+        return s.list.open ? listStep(s, { type: "close" }) : openList(s, true);
+      case "guide":
+        return ask(
+          { ...s, list: channelListReduce(s.list, { type: "close" }, lineup).state, menu: undefined },
+          { type: "guide" },
+        );
+      case "pause":
+        return togglePause(s);
+      case "audio":
+      case "more":
+      case "subtitles":
+        return toggleMenu(s, control);
+      case "volume":
+        return ask(s, { type: "mute" });
+      case "fullscreen":
+        return fullScreen(s);
+      case "live":
+        return goLive(s);
+      case "airplay":
+        return ask(s, { type: "airplay" });
+    }
+  };
+
+  const key = (s: WatchScreenState, pressed: string): WatchScreenStep => {
+    const letter = pressed.length === 1 ? pressed.toLowerCase() : pressed;
+    const isBack = pressed === "Escape" || (s.layout === "tv" && pressed === "Backspace");
+    // Full screen answers from anywhere, a menu and the open list included.
+    if (letter === "f" && s.layout !== "tv") return fullScreen(s);
+    if (isBack) return back(s);
+    // An open menu keeps every other key.
+    if (s.menu) return stay(s);
+
+    if (/^[0-9]$/.test(pressed) && s.layout !== "tv") {
+      const typed = `${s.digits?.typed ?? ""}${pressed}`.slice(0, digitsWidth(lineup));
+      return stay({ ...s, digits: { commitAt: at + WATCH_DIGITS_MS, typed } });
+    }
+    if (s.digits && pressed === "Enter") return commitDigits(s);
+
+    // The open list owns its keys; it took them already when focus was in it.
+    const listEvent = s.list.open ? LIST_KEYS[pressed] : undefined;
+    if (listEvent) {
+      const step = listStep(s, listEvent);
+      return step.state.list.open
+        ? { ...step, state: { ...step.state, handOff: handTo(step.state, "list") } }
+        : step;
+    }
+
+    switch (letter) {
+      case "ArrowDown":
+        return flip(s, 1);
+      case "ArrowUp":
+        return flip(s, -1);
+      // A focused control presses itself with Space.
+      case " ":
+        return s.focus ? stay(s) : togglePause(s);
+      case "/":
+        return openFind(s);
+      case "g":
+        return ask(
+          { ...s, list: channelListReduce(s.list, { type: "close" }, lineup).state },
+          { type: "guide" },
+        );
+      case "l":
+        return lastChannel(s);
+      case "m":
+        return ask(s, { type: "mute" });
+      case "End":
+        return goLive(s);
+    }
+    const menu = MENU_KEYS[letter];
+    return menu ? toggleMenu(s, menu) : stay(s);
+  };
+
+  switch (event.type) {
+    case "tick":
+      return state.digits && at >= state.digits.commitAt ? commitDigits(state) : stay(state);
+    case "pointerMove":
+      return stay();
+    case "pointerHold":
+      return stay({ ...woken, pointerHeld: event.held });
+    case "focus":
+      return stay({ ...woken, focus: event.control });
+    case "press":
+      return press(woken, event.control);
+    case "pictureClick":
+      // A click away from an open layer closes it and does nothing else.
+      if (woken.menu) return stay({ ...woken, menu: undefined });
+      if (woken.list.open) return listStep(woken, { type: "close" });
+      return togglePause(woken);
+    case "pictureDoubleClick":
+      // Its two clicks paused and resumed already, so it leaves the picture as it was.
+      return fullScreen(woken);
+    case "list":
+      return listStep(woken, event.event);
+    case "menuPage":
+      return stay(woken.menu ? { ...woken, menu: { name: woken.menu.name, page: event.page } } : woken);
+    case "closeMenu":
+      return stay({ ...woken, menu: undefined });
+    case "back":
+      return back(woken);
+    case "tuned":
+      return stay(event.channelId === woken.watchedId ? woken : changed(woken, event.channelId));
+    case "layout":
+      return stay({
+        ...woken,
+        layout: event.layout,
+        list: { ...woken.list, television: event.layout === "tv" },
+      });
+    case "key":
+      return key(woken, event.key);
+  }
+};
+
+/** What to draw at `now`. After a tick, pass `Math.max(now, nextAt)`. */
+const watchScreenView = <C extends LineupChannel>(
+  state: WatchScreenState,
+  lineup: ChannelLineup<C>,
+  now: number,
+): WatchScreenView<C> => {
+  const holding = held(state);
+  const restAt = state.activeAt + WATCH_REST_MS;
+  const awake = holding || now < restAt;
+  const times = [state.digits?.commitAt, !holding && awake ? restAt : undefined].filter(
+    (time): time is number => time !== undefined,
+  );
+  const typed = state.digits?.typed;
+  return {
+    awake,
+    behindSeconds: state.paused ? 0 : Math.floor(state.behindMs / 1000),
+    digits: typed === undefined ? undefined : { target: lineup.channelByNumber(typed), typed },
+    hint: awake && !state.hintSeen && !state.list.open && state.menu === undefined,
+    lastChannel: lineup.lastChannel,
+    listOpen: state.list.open,
+    menu: state.menu,
+    nextAt: times.length ? Math.min(...times) : null,
+    paused: state.paused,
+  };
+};
+
+export {
+  createWatchScreenState,
+  WATCH_DIGITS_MS,
+  WATCH_REST_MS,
+  watchKeyOf,
+  watchScreenReduce,
+  watchScreenView,
+};

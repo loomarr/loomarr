@@ -1,0 +1,585 @@
+import { describe, expect, it } from "vitest";
+
+import { createChannelLineup, type LineupChannel } from "../channel-lineup";
+import {
+  createWatchScreenState,
+  WATCH_DIGITS_MS,
+  WATCH_REST_MS,
+  type WatchRequest,
+  type WatchScreenEvent,
+  type WatchScreenStateArgs,
+  watchKeyOf,
+  watchScreenReduce,
+  watchScreenView,
+} from "../watch-screen";
+
+const channel = (number: number, over: Partial<LineupChannel> = {}): LineupChannel => ({
+  id: `ch-${number}`,
+  name: `Channel ${number}`,
+  number,
+  playable: true,
+  ...over,
+});
+
+// Twelve channels; 5 cannot be played.
+const CHANNELS = Array.from({ length: 12 }, (_, i) =>
+  channel(i + 1, i + 1 === 5 ? { playable: false } : i + 1 === 3 ? { name: "Game Night" } : {}),
+);
+
+type Input = WatchScreenEvent extends infer E ? (E extends { at: number } ? Omit<E, "at"> : never) : never;
+
+/** A client in miniature: it keeps the state, builds the lineup from it and ticks at `nextAt`. */
+const screen = (args: Partial<WatchScreenStateArgs> = {}, channels = CHANNELS) => {
+  let state = createWatchScreenState({ at: 0, layout: "full", watchedId: "ch-1", ...args });
+  let now = 0;
+  const requests: WatchRequest[] = [];
+  const lineup = () =>
+    createChannelLineup({ channels, favouriteIds: ["ch-9", "ch-2"], leftIds: state.leftIds });
+  const send = (event: Input, at = now) => {
+    now = at;
+    const step = watchScreenReduce(state, { ...event, at } as WatchScreenEvent, lineup());
+    state = step.state;
+    requests.push(...step.requests);
+    return step.requests;
+  };
+  const view = (at = now) => watchScreenView(state, lineup(), at);
+  const wait = (ms: number) => {
+    const until = now + ms;
+    for (let guard = 0; guard < 100; guard += 1) {
+      const next = view(now).nextAt;
+      if (next === null || next > until) break;
+      send({ type: "tick" }, Math.max(now, next));
+    }
+    now = until;
+  };
+  return {
+    get now() {
+      return now;
+    },
+    get state() {
+      return state;
+    },
+    key: (key: string, at = now) => send({ key, type: "key" }, at),
+    requests,
+    send,
+    tunes: () => requests.flatMap((request) => (request.type === "tune" ? [request.channelId] : [])),
+    view,
+    wait,
+  };
+};
+
+describe("rule 1: flipping tunes, and only the lower third shows", () => {
+  it("tunes the next and previous channel at once, through the lineup's neighbours", () => {
+    const s = screen();
+    expect(s.key("ArrowDown")).toEqual([{ channelId: "ch-2", type: "tune" }]);
+    expect(s.state.watchedId).toBe("ch-2");
+    s.key("ArrowUp");
+    s.key("ArrowUp");
+    expect(s.tunes()).toEqual(["ch-2", "ch-1", "ch-12"]);
+  });
+
+  it("passes a channel that cannot be played", () => {
+    const s = screen({ watchedId: "ch-4" });
+    s.key("ArrowDown");
+    expect(s.tunes()).toEqual(["ch-6"]);
+  });
+
+  it("never opens the list, and wakes the screen", () => {
+    const s = screen();
+    s.wait(WATCH_REST_MS);
+    expect(s.view().awake).toBe(false);
+    s.key("ArrowDown");
+    expect(s.view()).toMatchObject({ awake: true, listOpen: false });
+  });
+
+  it("flips within the group in play, and in number order from Recent", () => {
+    const favourites = screen({ group: "favourites", watchedId: "ch-9" });
+    favourites.key("ArrowDown");
+    expect(favourites.tunes()).toEqual(["ch-2"]);
+    const recent = screen({ group: "recent", watchedId: "ch-7" });
+    recent.key("ArrowDown");
+    expect(recent.tunes()).toEqual(["ch-8"]);
+  });
+
+  it("lands ten flips in a second on the tenth channel along", () => {
+    const s = screen();
+    for (let i = 0; i < 10; i += 1) s.key("ArrowDown", i * 100);
+    // 5 cannot be played, so ten steps from 1 is 12.
+    expect(s.tunes().at(-1)).toBe("ch-12");
+    expect(s.tunes()).toHaveLength(10);
+    expect(s.state.watchedId).toBe("ch-12");
+  });
+});
+
+describe("rule 2: Channels opens the list, and the list only looks", () => {
+  it("opens without tuning, and moving through it never tunes", () => {
+    const s = screen();
+    expect(s.send({ control: "channels", type: "press" })).toEqual([]);
+    expect(s.view().listOpen).toBe(true);
+    for (const key of ["ArrowDown", "ArrowDown", "ArrowUp", "ArrowDown", "ArrowRight", "ArrowLeft"])
+      s.key(key);
+    s.send({ event: { by: 1, type: "move" }, type: "list" });
+    expect(s.tunes()).toEqual([]);
+  });
+
+  it("tunes on OK and stays open; Esc closes it and gives focus back to Channels", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.key("ArrowDown");
+    s.key("ArrowDown");
+    s.key("Enter");
+    expect(s.tunes()).toEqual(["ch-3"]);
+    expect(s.view().listOpen).toBe(true);
+    const before = s.state.handOff?.seq ?? 0;
+    s.key("Escape");
+    expect(s.view().listOpen).toBe(false);
+    expect(s.state.handOff).toEqual({ seq: before + 1, to: "channels" });
+  });
+
+  it("sends focus to the list's cursor when a key reaches it from outside", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.key("ArrowDown");
+    expect(s.state.handOff?.to).toBe("list");
+  });
+
+  it("does not hand focus to Channels when a key opened the list", () => {
+    const s = screen();
+    s.key("/");
+    s.send({ event: { type: "close" }, type: "list" });
+    expect(s.state.handOff).toBeUndefined();
+  });
+});
+
+describe("rule 3: only the bare picture goes quiet", () => {
+  it("rests five seconds after the last thing that happened", () => {
+    const s = screen();
+    expect(s.view().nextAt).toBe(WATCH_REST_MS);
+    s.wait(WATCH_REST_MS - 1);
+    expect(s.view().awake).toBe(true);
+    s.wait(1);
+    expect(s.view()).toMatchObject({ awake: false, nextAt: null });
+  });
+
+  it.each([
+    ["the list is open", { control: "channels", type: "press" }],
+    ["a menu is open", { control: "subtitles", type: "press" }],
+    ["a control holds focus", { control: "pause", type: "focus" }],
+    ["the pointer rests on the controls", { held: true, type: "pointerHold" }],
+    ["the picture is paused", { key: " ", type: "key" }],
+    ["digits are pending", { key: "1", type: "key" }],
+  ] as const)("never rests while %s", (_, event) => {
+    const s = screen();
+    s.send(event as Input);
+    expect(s.view().nextAt === null || s.state.digits !== undefined).toBe(true);
+    if (s.state.digits) {
+      // Pending digits hold the screen until they commit.
+      expect(s.view(WATCH_DIGITS_MS - 1).awake).toBe(true);
+      return;
+    }
+    s.wait(60_000);
+    expect(s.view().awake).toBe(true);
+  });
+
+  it("rests again five seconds after what held it lets go", () => {
+    const s = screen();
+    s.send({ held: true, type: "pointerHold" });
+    s.wait(20_000);
+    s.send({ held: false, type: "pointerHold" });
+    expect(s.view().nextAt).toBe(s.now + WATCH_REST_MS);
+  });
+
+  it("wakes on pointer movement, and the clock alone wakes nothing", () => {
+    const s = screen();
+    s.wait(WATCH_REST_MS);
+    s.send({ type: "tick" });
+    expect(s.view().awake).toBe(false);
+    s.send({ type: "pointerMove" });
+    expect(s.view().awake).toBe(true);
+  });
+
+  it("does the job of the key that wakes it", () => {
+    const s = screen();
+    s.wait(WATCH_REST_MS);
+    s.key("m");
+    expect(s.requests).toEqual([{ type: "mute" }]);
+    expect(s.view().awake).toBe(true);
+  });
+});
+
+describe("rule 4: digits tune direct", () => {
+  it("replaces the numeral and commits on Enter", () => {
+    const s = screen();
+    s.key("1");
+    s.key("2");
+    expect(s.view().digits).toEqual({ target: expect.objectContaining({ id: "ch-12" }), typed: "12" });
+    s.key("Enter");
+    expect(s.tunes()).toEqual(["ch-12"]);
+    expect(s.view().digits).toBeUndefined();
+  });
+
+  it("commits by itself 1.6 seconds after the last digit", () => {
+    const s = screen();
+    s.key("7");
+    s.wait(WATCH_DIGITS_MS - 1);
+    expect(s.tunes()).toEqual([]);
+    s.wait(1);
+    expect(s.tunes()).toEqual(["ch-7"]);
+  });
+
+  it("is cancelled by Esc", () => {
+    const s = screen();
+    s.key("7");
+    s.key("Escape");
+    s.wait(WATCH_DIGITS_MS * 2);
+    expect(s.tunes()).toEqual([]);
+    expect(s.requests).toEqual([]);
+  });
+
+  it("says when no channel has the number, and tunes nothing", () => {
+    const s = screen();
+    s.key("9");
+    s.key("9");
+    expect(s.view().digits).toEqual({ target: undefined, typed: "99" });
+    s.key("Enter");
+    expect(s.requests).toEqual([{ text: "There is no channel 99", type: "message" }]);
+  });
+
+  it("says when the channel cannot be played", () => {
+    const s = screen();
+    s.key("5");
+    s.key("Enter");
+    expect(s.requests).toEqual([{ text: "5 Channel 5 cannot be played right now", type: "message" }]);
+  });
+
+  it("takes no more digits than the longest channel number has", () => {
+    const s = screen();
+    for (const key of ["1", "2", "3"]) s.key(key);
+    expect(s.view().digits?.typed).toBe("12");
+  });
+});
+
+describe("rule 5: pause, behind live and Go live", () => {
+  it("pauses and resumes on Space, behind live by the time paused, and End goes live", () => {
+    const s = screen();
+    s.key(" ", 1000);
+    expect(s.view()).toMatchObject({ awake: true, paused: true });
+    s.key(" ", 31_000);
+    expect(s.requests).toEqual([{ type: "pause" }, { type: "resume" }]);
+    expect(s.view().behindSeconds).toBe(30);
+    s.key("End");
+    expect(s.requests.at(-1)).toEqual({ type: "goLive" });
+    expect(s.view().behindSeconds).toBe(0);
+  });
+
+  it("adds each pause to how far behind it is", () => {
+    const s = screen();
+    s.send({ type: "pictureClick" }, 0);
+    s.send({ type: "pictureClick" }, 10_000);
+    s.send({ type: "pictureClick" }, 12_000);
+    s.send({ type: "pictureClick" }, 17_000);
+    expect(s.view().behindSeconds).toBe(15);
+  });
+
+  it("does nothing on End at live", () => {
+    const s = screen();
+    s.key("End");
+    expect(s.requests).toEqual([]);
+  });
+
+  it("toggles full screen on a double click and leaves the picture playing", () => {
+    const s = screen();
+    s.send({ type: "pictureClick" }, 0);
+    s.send({ type: "pictureClick" }, 150);
+    s.send({ type: "pictureDoubleClick" }, 150);
+    expect(s.view().paused).toBe(false);
+    expect(s.requests.at(-1)).toEqual({ on: false, type: "fullScreen" });
+  });
+
+  it("closes the open list on a click on the picture, and does not pause", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.send({ type: "pictureClick" });
+    expect(s.view()).toMatchObject({ listOpen: false, paused: false });
+    expect(s.requests).toEqual([]);
+  });
+
+  it("ends a pause on a channel change", () => {
+    const s = screen();
+    s.key(" ", 0);
+    s.key("ArrowDown", 4000);
+    expect(s.view()).toMatchObject({ behindSeconds: 0, paused: false });
+  });
+});
+
+describe("rule 6: the desktop's keys", () => {
+  it("opens the list with find on /", () => {
+    const s = screen();
+    s.key("/");
+    expect(s.view().listOpen).toBe(true);
+    expect(s.state.list.query).toBe("");
+  });
+
+  it("asks for the Guide on G, and closes the list", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.key("G");
+    expect(s.requests).toEqual([{ type: "guide" }]);
+    expect(s.view().listOpen).toBe(false);
+  });
+
+  it("opens Subtitles on C, Audio on A and the shortcuts on ?", () => {
+    const s = screen();
+    s.key("c");
+    expect(s.view().menu).toEqual({ name: "subtitles" });
+    s.key("Escape");
+    s.key("A");
+    expect(s.view().menu).toEqual({ name: "audio" });
+    s.key("Escape");
+    s.key("?");
+    expect(s.requests).toEqual([
+      { name: "subtitles", type: "menu" },
+      { name: "audio", type: "menu" },
+      { name: "shortcuts", type: "menu" },
+    ]);
+  });
+
+  it("mutes on M", () => {
+    const s = screen();
+    s.key("M");
+    expect(s.requests).toEqual([{ type: "mute" }]);
+  });
+
+  it("asks for full screen on F from anywhere", () => {
+    const window = screen({ layout: "window" });
+    window.key("f");
+    expect(window.requests).toEqual([{ on: true, type: "fullScreen" }]);
+    const full = screen();
+    full.key("c");
+    full.key("F");
+    full.key("Escape");
+    full.send({ control: "channels", type: "press" });
+    full.key("f");
+    expect(full.requests.filter((request) => request.type === "fullScreen")).toEqual([
+      { on: false, type: "fullScreen" },
+      { on: false, type: "fullScreen" },
+    ]);
+    expect(full.view().listOpen).toBe(true);
+  });
+
+  it("tunes the last channel on L", () => {
+    const s = screen();
+    s.key("ArrowDown");
+    s.key("l");
+    expect(s.tunes()).toEqual(["ch-2", "ch-1"]);
+    s.key("l");
+    expect(s.tunes().at(-1)).toBe("ch-2");
+  });
+
+  it("says why L does nothing when the last channel cannot be played, or there is none", () => {
+    const s = screen();
+    s.key("l");
+    expect(s.requests).toEqual([{ text: "There is no last channel yet", type: "message" }]);
+    const gone = screen({ watchedId: "ch-5" });
+    gone.key("ArrowDown");
+    expect(gone.view().lastChannel).toMatchObject({ id: "ch-5", playable: false });
+    gone.key("l");
+    expect(gone.requests.at(-1)).toEqual({ text: "5 Channel 5 cannot be played right now", type: "message" });
+    expect(gone.tunes()).toEqual(["ch-6"]);
+  });
+
+  it("leaves full screen on Esc on the bare picture", () => {
+    const s = screen();
+    s.key("Escape");
+    expect(s.requests).toEqual([{ on: false, type: "fullScreen" }]);
+  });
+
+  it("leaves Space to the control that holds focus", () => {
+    const s = screen();
+    s.send({ control: "volume", type: "focus" });
+    s.key(" ");
+    expect(s.requests).toEqual([]);
+  });
+
+  it("keeps every other key for an open menu", () => {
+    const s = screen();
+    s.key("c");
+    for (const key of ["ArrowDown", "m", " ", "l", "1"]) s.key(key);
+    expect(s.requests).toEqual([{ name: "subtitles", type: "menu" }]);
+  });
+
+  it("goes live from the quiet row and the lower third's Go live", () => {
+    const s = screen();
+    s.key(" ", 0);
+    s.key(" ", 3000);
+    s.send({ control: "live", type: "press" });
+    expect(s.requests.at(-1)).toEqual({ type: "goLive" });
+  });
+});
+
+describe("rule 7: Back goes one step", () => {
+  it("returns from a menu's page to the menu, then closes it", () => {
+    const s = screen();
+    s.send({ control: "more", type: "press" });
+    s.send({ page: "picture", type: "menuPage" });
+    s.send({ type: "back" });
+    expect(s.view().menu).toEqual({ name: "more" });
+    s.key("Escape");
+    expect(s.view().menu).toBeUndefined();
+    expect(s.requests).toEqual([{ name: "more", type: "menu" }]);
+  });
+
+  it("takes the list's tabs back to the list, closes the list, then the bare picture", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.send({ event: { type: "tabs" }, type: "list" });
+    s.key("Escape");
+    expect(s.state.list.cursor.kind).toBe("row");
+    s.key("Escape");
+    expect(s.view().listOpen).toBe(false);
+    expect(s.requests).toEqual([]);
+    s.key("Escape");
+    expect(s.requests).toEqual([{ on: false, type: "fullScreen" }]);
+  });
+
+  it("closes a menu over the list before the list", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.key("a");
+    s.key("Escape");
+    expect(s.view()).toMatchObject({ listOpen: true, menu: undefined });
+  });
+
+  it("closes find before the list", () => {
+    const s = screen();
+    s.key("/");
+    s.key("Escape");
+    expect(s.view().listOpen).toBe(true);
+    expect(s.state.list.query).toBeNull();
+  });
+});
+
+describe("rule 8: the first-run hint", () => {
+  it("shows until the first channel change, then never again", () => {
+    const s = screen();
+    expect(s.view().hint).toBe(true);
+    s.send({ control: "channels", type: "press" });
+    expect(s.view().hint).toBe(false);
+    s.key("Escape");
+    expect(s.view().hint).toBe(true);
+    s.key("ArrowDown");
+    expect(s.view().hint).toBe(false);
+    s.key("ArrowUp");
+    s.send({ type: "pointerMove" });
+    expect(s.view().hint).toBe(false);
+  });
+
+  it("rests with the controls", () => {
+    const s = screen();
+    s.wait(WATCH_REST_MS);
+    expect(s.view().hint).toBe(false);
+    s.send({ type: "pointerMove" });
+    expect(s.view().hint).toBe(true);
+  });
+
+  it("never shows when the caller says it was seen before", () => {
+    expect(screen({ hintSeen: true }).view().hint).toBe(false);
+  });
+
+  it("goes when the channel changes from outside", () => {
+    const s = screen();
+    s.send({ channelId: "ch-4", type: "tuned" });
+    expect(s.view().hint).toBe(false);
+    expect(s.state.leftIds).toEqual(["ch-1"]);
+    expect(s.requests).toEqual([]);
+  });
+});
+
+describe("sequences from the prototype", () => {
+  it("flip, flip, wait, wake by key", () => {
+    const s = screen();
+    s.key("ArrowDown", 0);
+    s.key("ArrowDown", 400);
+    s.wait(WATCH_REST_MS + 400);
+    expect(s.view().awake).toBe(false);
+    s.key("ArrowDown");
+    expect(s.view().awake).toBe(true);
+    expect(s.tunes()).toEqual(["ch-2", "ch-3", "ch-4"]);
+  });
+
+  it("open the list, look, tune, close", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.send({ event: { channelId: "ch-8", type: "focusRow" }, type: "list" });
+    s.send({ event: { by: 1, type: "move" }, type: "list" });
+    expect(s.tunes()).toEqual([]);
+    s.send({ event: { type: "choose" }, type: "list" });
+    expect(s.tunes()).toEqual(["ch-9"]);
+    s.send({ event: { type: "back" }, type: "list" });
+    expect(s.view().listOpen).toBe(false);
+  });
+
+  it("/ find, type, Down, Enter", () => {
+    const s = screen();
+    s.key("/");
+    s.send({ event: { query: "Channel 1", type: "find" }, type: "list" });
+    // Channel 1 (watched), 10, 11 and 12 match.
+    s.send({ event: { by: 1, type: "move" }, type: "list" });
+    s.send({ event: { type: "choose" }, type: "list" });
+    expect(s.tunes()).toEqual(["ch-10"]);
+    expect(s.state.list.query).toBeNull();
+  });
+
+  it("digits with and without a match", () => {
+    const s = screen();
+    s.key("4");
+    s.wait(WATCH_DIGITS_MS);
+    s.key("4");
+    s.key("0");
+    s.wait(WATCH_DIGITS_MS);
+    expect(s.tunes()).toEqual(["ch-4"]);
+    expect(s.requests.at(-1)).toEqual({ text: "There is no channel 40", type: "message" });
+  });
+
+  it("pause, wait, resume, End", () => {
+    const s = screen();
+    s.key(" ", 0);
+    s.wait(90_000);
+    expect(s.view().awake).toBe(true);
+    s.key(" ");
+    expect(s.view().behindSeconds).toBe(90);
+    s.key("End");
+    expect(s.requests.map((request) => request.type)).toEqual(["pause", "resume", "goLive"]);
+  });
+
+  it("Esc from each layer", () => {
+    const s = screen();
+    s.key("1");
+    s.key("Escape");
+    expect(s.view().digits).toBeUndefined();
+    s.key("/");
+    s.key("Escape");
+    s.key("Escape");
+    expect(s.view().listOpen).toBe(false);
+    s.key("?");
+    s.key("Escape");
+    expect(s.view().menu).toBeUndefined();
+    s.key("Escape");
+    expect(s.requests).toEqual([
+      { name: "shortcuts", type: "menu" },
+      { on: false, type: "fullScreen" },
+    ]);
+  });
+});
+
+describe("watchKeyOf", () => {
+  it("passes a plain key and keeps the ones that are not the screen's", () => {
+    expect(watchKeyOf({ key: "ArrowDown" })).toBe("ArrowDown");
+    expect(watchKeyOf({ ctrlKey: true, key: "f" })).toBeUndefined();
+    expect(watchKeyOf({ key: "f", metaKey: true })).toBeUndefined();
+    expect(watchKeyOf({ altKey: true, key: "m" })).toBeUndefined();
+    expect(watchKeyOf({ defaultPrevented: true, key: "ArrowDown" })).toBeUndefined();
+    expect(watchKeyOf({ inField: true, key: "f" })).toBeUndefined();
+    expect(watchKeyOf({ composing: true, key: "Enter" })).toBeUndefined();
+  });
+});
