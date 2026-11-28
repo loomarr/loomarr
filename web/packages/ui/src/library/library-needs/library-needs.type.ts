@@ -132,6 +132,8 @@ interface LibraryNeedsCardsProps extends LibraryNeedsAnswers {
   empty?: ReactNode;
   /** Ignores exactly these titles in one save; absent offers no folder answer. */
   onIgnoreFolder?: (folder: string, ids: string[]) => Promise<void>;
+  /** Keeps a title with no guess as the household's own video; absent offers no such answer. */
+  onKeep?: (id: string) => Promise<void>;
   /** See why: opens a title's page. */
   onOpenTitle: (id: string) => void;
 }

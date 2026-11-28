@@ -131,6 +131,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
       personLink={(person) => <Link search={{ person }} to="/library" />}
       title={{
         kind: item.kind,
+        homeVideo: item.homeVideo,
         name: item.name,
         year: item.year,
         backdrop: body.backdropImage ? (

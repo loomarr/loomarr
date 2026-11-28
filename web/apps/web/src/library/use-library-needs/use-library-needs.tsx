@@ -109,6 +109,7 @@ const useLibraryNeeds = (enabled = true) => {
   const link = libraryApi.useLinkLibraryItem({ mutation: { onSettled: refresh } });
   const ignore = libraryApi.useIgnoreLibraryItem({ mutation: { onSettled: refresh } });
   const order = libraryApi.useChooseLibraryEpisodeOrder({ mutation: { onSettled: refresh } });
+  const keep = libraryApi.useKeepLibraryItem({ mutation: { onSettled: refresh } });
 
   // A mutation that answers with an error status rejects, so the card puts the question back and
   // says it wasn't saved.
@@ -124,7 +125,12 @@ const useLibraryNeeds = (enabled = true) => {
     },
   };
 
+  const onKeep = async (id: string) => {
+    await keep.mutateAsync({ id });
+  };
+
   return {
+    onKeep,
     needs,
     orders,
     problems,

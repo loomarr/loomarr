@@ -82,6 +82,17 @@ describe("LibraryPage", () => {
   // The tabs' counts ask for one title of each kind; the grid's pages ask for many.
   const isCount = (url: URL) => url.searchParams.get("limit") === "1";
 
+  it("calls a kept video a home video on the wall", async () => {
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      getListLibraryItemsMockHandler({ items: [{ ...alpha, homeVideo: true }], total: 1 }),
+    );
+    renderPage();
+
+    const card = await screen.findByRole("link", { name: /Alpha/ });
+    expect(card).toHaveTextContent("2001 · Home video");
+  });
+
   it("marks the titles Needs you holds on an admin's wall instead of calling them a Movie", async () => {
     server.use(
       getLibraryStatusMockHandler({ ...libraryStatus(), needsYou: 1 }),

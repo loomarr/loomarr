@@ -114,6 +114,8 @@ interface LibraryTitlePlaying {
 /** A movie or a series, as its page shows it. */
 interface LibraryTitleDetail {
   kind: LibraryKind;
+  /** Kept as the household's own video: no catalogue to read, so no Update details. */
+  homeVideo?: boolean;
   /** The wide art behind the title, drawn by the app. */
   backdrop?: ReactNode;
   /** The title's logo, drawn by the app in place of its name. */

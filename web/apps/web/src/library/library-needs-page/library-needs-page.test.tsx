@@ -118,6 +118,86 @@ describe("LibraryNeedsPage", () => {
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Ignore this" })).toHaveLength(2));
   });
 
+  it("keeps a title with no guess and undoes it once, however often Undo is pressed", async () => {
+    const kept: string[] = [];
+    const undone: string[] = [];
+    server.use(
+      http.post("*/v1/library/items/:id/keep", ({ params }) => {
+        kept.push(String(params.id));
+        gone = [String(params.id)];
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete("*/v1/library/items/:id/answer", ({ params }) => {
+        undone.push(String(params.id));
+        gone = [];
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderPage();
+    const [first] = await screen.findAllByRole("button", { name: "It's ours, keep it as is" });
+    if (!first) throw new Error("no card");
+    await userEvent.click(first);
+    await pressUndo();
+    await pressUndo();
+    expect(kept).toEqual(["one"]);
+    expect(vi.mocked(toast).mock.calls[0]?.[0]).toBe("Kept one.mkv");
+    expect(vi.mocked(toast).mock.calls[0]?.[1]).toMatchObject({
+      duration: 30_000,
+      actionButtonStyle: { height: 44, minWidth: 44 },
+    });
+    await waitFor(() => expect(undone).toEqual(["one"]));
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "It's ours, keep it as is" })).toHaveLength(2),
+    );
+  });
+
+  it("says why an Undo of a keep was refused, in the server's words", async () => {
+    server.use(
+      http.post("*/v1/library/items/:id/keep", () => new HttpResponse(null, { status: 204 })),
+      http.delete("*/v1/library/items/:id/answer", () =>
+        HttpResponse.json({ title: "Nothing to undo", detail: "It was changed since." }, { status: 409 }),
+      ),
+    );
+    renderPage();
+    const [first] = await screen.findAllByRole("button", { name: "It's ours, keep it as is" });
+    if (!first) throw new Error("no card");
+    await userEvent.click(first);
+    await pressUndo();
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Nothing to undo", {
+        description: "It was changed since.",
+        duration: 30_000,
+      }),
+    );
+  });
+
+  it("offers no keep on a card with a guess, even one whose name doesn't agree", async () => {
+    const guess = {
+      externalId: { provider: "tmdb", id: "1" },
+      kind: "movie",
+      name: "Made Up Title",
+      nameMatches: false,
+      yearMatches: false,
+      lengthMatches: false,
+      episodesMatches: false,
+    };
+    server.use(
+      http.get("*/v1/library/needs", () =>
+        HttpResponse.json({
+          needs: [
+            { ...need("one"), candidates: [guess] },
+            { ...need("two"), candidates: [{ ...guess, nameMatches: true }] },
+          ],
+          orders: [],
+          problems: [],
+        }),
+      ),
+    );
+    renderPage();
+    await screen.findByRole("button", { name: "Find it" });
+    expect(screen.queryByRole("button", { name: "It's ours, keep it as is" })).not.toBeInTheDocument();
+  });
+
   it("lists the ignored titles page by page and brings one back", async () => {
     renderPage();
     await userEvent.click(await screen.findByRole("tab", { name: /Ignored/ }));
