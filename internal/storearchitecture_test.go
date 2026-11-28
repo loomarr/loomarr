@@ -137,15 +137,19 @@ var clusterPackages = map[string]bool{
 	modulePath + "/internal/platform/store/librarystore":     true,
 }
 
-// A cluster's names have one spelling (identitystore.User, clipstore.Clip), so a reader lands on
-// the package that owns them. The store root therefore re-exports none of them.
+// A cluster or kernel name has one spelling (identitystore.User, storedb.Tx), so a reader lands on
+// the package that owns it. The store root therefore re-exports none of them but ErrNotFound, the
+// one sentinel every consumer tests for.
 func TestStoreRootReExportsNoClusterName(t *testing.T) {
 	storePkg := loomarrPackages(t)[modulePath+"/internal/platform/store"]
 	if storePkg == nil || len(storePkg.GoFiles) == 0 {
 		t.Fatal("internal/platform/store is not in the package graph — the scan would vacuously pass")
 	}
 	for name, cluster := range storeClusterAliases(t, storePkg) {
-		t.Errorf("store re-exports %s.%s: consumers name the cluster package", cluster, name)
+		if name == "ErrNotFound" && cluster == "storedb" {
+			continue
+		}
+		t.Errorf("store re-exports %s.%s: consumers name %s", cluster, name, cluster)
 	}
 }
 
@@ -163,7 +167,7 @@ var ErrNotFound = storedb.ErrNotFound`
 		t.Fatal(err)
 	}
 	got := storeClusterAliases(t, &build.Package{Dir: dir, GoFiles: []string{"a.go"}})
-	want := map[string]string{"Clip": "clipstore", "ErrTaxonConflict": "clipstore"}
+	want := map[string]string{"Clip": "clipstore", "ErrTaxonConflict": "clipstore", "ErrNotFound": "storedb"}
 	if !maps.Equal(got, want) {
 		t.Errorf("storeClusterAliases = %v, want %v", got, want)
 	}
@@ -182,7 +186,9 @@ func storeClusterAliases(t *testing.T, storePkg *build.Package) map[string]strin
 			t.Fatalf("parse %s: %v", path, err)
 		}
 		clusters := map[string]bool{}
-		for importPath := range clusterPackages {
+		sources := maps.Clone(clusterPackages)
+		sources[modulePath+"/internal/platform/store/storedb"] = true
+		for importPath := range sources {
 			for alias := range importNames(t, path, file, importPath) {
 				clusters[alias] = true
 			}
