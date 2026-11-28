@@ -8,7 +8,11 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { WatermarkPolicy } from "@loomarr/api/models/watermarkPolicy";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { type OnScreenLogoPolicy, type OnScreenLogoPreviewRequest, OnScreenLogoSection } from "@loomarr/ui";
+import {
+  type OnScreenLogoPolicy,
+  type OnScreenLogoPreviewRequest,
+  OnScreenLogoSection,
+} from "@loomarr/ui/watching";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 import { toast } from "sonner";

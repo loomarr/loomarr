@@ -1,7 +1,8 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
 import { type GuideLayout, layoutGuide, useGuideWindow } from "@loomarr/core/guide";
-import { type SurfChannelData, type WatchingScheduleData, watchingPanelFromGuide } from "@loomarr/ui";
+import { type WatchingScheduleData, watchingPanelFromGuide } from "@loomarr/ui";
+import type { SurfChannelData } from "@loomarr/ui/watching";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { DrawerChannel } from "../channel-drawer";

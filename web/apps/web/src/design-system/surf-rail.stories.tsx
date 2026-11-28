@@ -1,6 +1,6 @@
 import { Screen, Surface, Text } from "@loomarr/design-system";
 import { surfGroups } from "@loomarr/fixtures";
-import { SurfRail, type SurfSelection } from "@loomarr/ui";
+import { SurfRail, type SurfSelection } from "@loomarr/ui/watching";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect } from "storybook/test";
