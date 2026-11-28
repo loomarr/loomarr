@@ -1,5 +1,6 @@
 export type {
   ChannelListDetail,
+  ChannelListHandle,
   ChannelListLayout,
   ChannelListProps,
   ChannelListScroll,
