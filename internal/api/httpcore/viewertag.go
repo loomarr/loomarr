@@ -82,7 +82,7 @@ func WithViewerTag(u, tag string) string {
 	return u + "&" + ViewerQueryParam + "=" + url.QueryEscape(tag)
 }
 
-// WithPlayoutViewer names the request's viewer to playout (playout.WithViewer), which learns from it
+// WithPlayoutViewer names the request's viewer to playout (hls.WithViewer), which learns from it
 // whether that viewer's client takes the premium (#1037). The key is the person and the device,
 // never the label, which the household may rename.
 func WithPlayoutViewer(ctx context.Context, v viewing.Viewer, ok bool) context.Context {

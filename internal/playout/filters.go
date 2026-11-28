@@ -119,7 +119,7 @@ func GPUFiltersFor(ffmpegPath string) func() encode.GPUFilters {
 	}
 }
 
-// hdrToSDR is the CPU HDR→SDR filter chain on one curve (a CPU curve: see ToneCurve.cpu).
+// HDRToSDR is the CPU HDR→SDR filter chain on one curve (a CPU curve: see media.ToneCurve.CPU).
 //
 // The three steps are not interchangeable and the order is the whole trick:
 //

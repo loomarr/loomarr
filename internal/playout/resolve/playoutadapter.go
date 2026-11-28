@@ -538,7 +538,7 @@ func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, air
 	}
 }
 
-// StillAiring is the cold-channel still's view of the schedule (playout.StillAiringResolver): the
+// StillAiring is the cold-channel still's view of the schedule (hls.StillAiringResolver): the
 // programme on now, with its source resolved lazily. Unlike AiringNow it writes nothing (no airing
 // history, no filler pick), because showing a picture is not airing it. It runs on every still
 // request, so it reads only the accepted cycle; the source lookup, which can cost a media-server

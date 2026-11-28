@@ -683,7 +683,7 @@ func (s *Handlers) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // stillHandler serves a channel's current frame for the channel-switch overlay. The frame is
-// decoded at most once per segment (warm) or per airing (cold, from the source; playout.Origin.Still),
+// decoded at most once per segment (warm) or per airing (cold, from the source; hls.Origin.Still),
 // so this never transcodes per request.
 // Every failure — no provider, no segment, a failed decode — is the same 404: the client's answer
 // to all of them is "show the card on the plain background", and a broken image is worse.
@@ -746,7 +746,7 @@ func (s *Handlers) registerPlayout(api huma.API) {
 	}, "A continuous transport stream of whatever the channel is playing now.",
 		"video/mp2t"), s.streamHandler)
 
-	// The latest still frame of a channel, for the switch overlay (internal/playout/still.go). Authed like
+	// The latest still frame of a channel, for the switch overlay (internal/playout/hls/still.go). Authed like
 	// the HLS routes, so the play-url's signature covers it.
 	streamOp[playoutChannelInput](s, api, httpcore.BytesResponse(huma.Operation{
 		OperationID: "playout-still", Method: http.MethodGet, Path: "/v1/playout/still/{id}",

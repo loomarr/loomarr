@@ -808,7 +808,7 @@ func (c *packagedChannel) variant(class playout.FormatClass) hlsVariant {
 }
 
 // variantOf describes a format's media playlist from its output and, once it has one, its channel
-// init. A premium with no init yet names its predicted CODECS (premiumCodecs), because a web player
+// init. A premium with no init yet names its predicted CODECS (PremiumCodecs), because a web player
 // offers it only when it can decode that exact string.
 func variantOf(class playout.FormatClass, o playout.OutputProfile, init []byte) hlsVariant {
 	v := hlsVariant{

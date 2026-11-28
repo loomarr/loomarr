@@ -23,7 +23,7 @@ const scratchLock = ".owner"
 // unwritten before it is taken for a dead process's.
 const unlockedQuiet = 24 * time.Hour
 
-// newScratchRoot sweeps base of abandoned roots, then creates and locks this process's own. The
+// NewScratchRoot sweeps base of abandoned roots, then creates and locks this process's own. The
 // returned release drops the lock; the caller removes the root with it.
 func NewScratchRoot(base, prefix string, log *slog.Logger) (root string, release func(), err error) {
 	if log == nil {

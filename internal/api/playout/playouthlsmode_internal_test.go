@@ -25,7 +25,7 @@ type modeProbePlayout struct {
 	err          error
 	asset        hls.Asset
 	assetOK      bool
-	viewer       string // playout.ViewerFrom the last call's context
+	viewer       string // hls.ViewerFrom the last call's context
 	speculative  bool
 }
 
