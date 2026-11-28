@@ -1,7 +1,5 @@
 import { decadeTint, Icon, icons, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
 import type { ReactNode } from "react";
-import type { TextStyle } from "react-native";
-
 import { PictureInk } from "../picture-ink";
 import type { QuietRowDevice } from "../quiet-row";
 import { RingedControl } from "../ringed-control";
@@ -23,17 +21,14 @@ interface LowerThirdProps {
   state: LowerThirdState;
 }
 
-// The numeral and title sizes of frontend-design §9.2; the type roles carry none of them. The line
-// height is a string because Tamagui reads a bare number as a multiple of the size.
-const sized = (size: number, ratio: number) =>
-  ({ fontSize: size, lineHeight: `${Math.round(size * ratio)}px` }) as unknown as TextStyle;
-const SIZES: Record<QuietRowDevice, { numeral: TextStyle; title: TextStyle }> = {
-  full: { numeral: sized(64, 1), title: sized(34, 1.12) },
-  landscape: { numeral: sized(40, 1), title: sized(22, 1.12) },
-  portrait: { numeral: sized(44, 1), title: sized(22, 1.12) },
-  tv: { numeral: sized(52, 1), title: sized(30, 1.12) },
-  window: { numeral: sized(56, 1), title: sized(28, 1.12) },
-};
+// The numeral and title roles per device (frontend-design §2.2 and §9.2).
+const TYPE = {
+  full: { density: "pointer", numeral: "thirdNumeral", title: "thirdTitle" },
+  landscape: { density: "touch", numeral: "thirdNumeralSide", title: "thirdTitle" },
+  portrait: { density: "touch", numeral: "thirdNumeral", title: "thirdTitle" },
+  tv: { density: "tv", numeral: "thirdNumeral", title: "thirdTitle" },
+  window: { density: "pointer", numeral: "thirdNumeralWindow", title: "thirdTitleWindow" },
+} as const;
 
 const Dot = () => (
   <Surface aria-hidden backgroundColor="stateLive" borderRadius={4} borderWidth={0} height={7} width={7} />
@@ -129,9 +124,9 @@ const LowerThird = ({
       </VisuallyHidden>
       <Box alignItems="flex-end" aria-hidden minWidth={44}>
         <Text
-          style={SIZES[device].numeral}
+          density={TYPE[device].density}
           testID="lower-third-numeral"
-          textRole="numeral"
+          textRole={TYPE[device].numeral}
           tone={typing ? "signal" : decadeTint(decade)}
         >
           {state.kind === "typing" ? state.digits : channelNumber}
@@ -150,10 +145,10 @@ const LowerThird = ({
       <Box flexShrink={1} minWidth={0}>
         <Box aria-hidden>
           <Text
+            density={TYPE[device].density}
             numberOfLines={portrait ? 1 : 2}
-            style={SIZES[device].title}
             testID="lower-third-title"
-            textRole="heading"
+            textRole={TYPE[device].title}
             tone="primary"
           >
             {title}
@@ -197,10 +192,10 @@ const LowerThird = ({
       {portrait ? (
         <Box flexDirection="row">
           <RingedControl accessibilityLabel={paused ? "Play" : "Pause"} onPress={onTogglePause} size={44}>
-            <Icon decorative glyph={icons[paused ? "play" : "pause"]} size="touch" />
+            <Icon decorative glyph={icons[paused ? "play" : "pause"]} size="touch" tone="content" />
           </RingedControl>
           <RingedControl accessibilityLabel="More" onPress={onMore} size={44}>
-            <Icon decorative glyph={icons.more} size="touch" />
+            <Icon decorative glyph={icons.more} size="touch" tone="content" />
           </RingedControl>
         </Box>
       ) : null}

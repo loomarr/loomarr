@@ -1,6 +1,6 @@
 import { Icon, type IconName, icons, Surface, Text, Tooltip } from "@loomarr/design-system";
-import { type ComponentRef, Fragment, useRef, useState } from "react";
-import { Platform, type View } from "react-native";
+import { Fragment, useRef, useState } from "react";
+import { Platform } from "react-native";
 
 import { PictureInk } from "../picture-ink";
 import { RingedControl } from "../ringed-control";
@@ -115,8 +115,8 @@ const QuietRow = (props: QuietRowProps) => {
   const shared = (key: QuietRowKey) => ({
     onFocus: () => setStopKey(key),
     onPress: () => onPress(key),
-    ref: (node: ComponentRef<typeof View> | null) => {
-      if (node) controls.current.set(key, node as unknown as { focus: () => void });
+    ref: (node: unknown) => {
+      if (node) controls.current.set(key, node as { focus: () => void });
       else controls.current.delete(key);
     },
     size,
@@ -146,7 +146,12 @@ const QuietRow = (props: QuietRowProps) => {
           on={open}
           {...shared(key)}
         >
-          <Icon decorative glyph={icons[key === "channels" ? "list" : "guide"]} size="control" />
+          <Icon
+            decorative
+            glyph={icons[key === "channels" ? "list" : "guide"]}
+            size="control"
+            tone="content"
+          />
           <Text numberOfLines={1} textRole="label" tone="primary">
             {words}
           </Text>
@@ -167,7 +172,7 @@ const QuietRow = (props: QuietRowProps) => {
         on={openKey === key}
         {...shared(key)}
       >
-        <Icon decorative glyph={icons[face.icon]} size="touch" />
+        <Icon decorative glyph={icons[face.icon]} size="touch" tone="content" />
       </RingedControl>
     );
     return device === "tv" ? button : <Tooltip content={tip}>{button}</Tooltip>;

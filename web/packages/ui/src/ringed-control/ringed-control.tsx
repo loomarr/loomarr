@@ -1,8 +1,19 @@
 import { Surface, useFocusLook } from "@loomarr/design-system";
-import { type ComponentProps, type ComponentRef, type ReactNode, type Ref, useState } from "react";
-import { Platform, Pressable, type View, type ViewStyle } from "react-native";
+import { type ReactNode, useState } from "react";
+import { Platform, Pressable, type ViewStyle } from "react-native";
 
-interface RingedControlProps extends Omit<ComponentProps<typeof Pressable>, "children" | "style"> {
+/**
+ * ⚠ Not React Native's prop types: Storybook's docgen follows a prop's types into their imports and
+ * cannot parse react-native's source. Anything else (a Tooltip's trigger handlers) passes through.
+ */
+interface RingedControlProps {
+  "aria-expanded"?: boolean | undefined;
+  onBlur?: (event: unknown) => void;
+  onFocus?: (event: unknown) => void;
+  onHoverIn?: (event: unknown) => void;
+  onHoverOut?: (event: unknown) => void;
+  onPress?: (() => void) | undefined;
+  tabIndex?: 0 | -1;
   accessibilityLabel: string;
   children: ReactNode;
   /** Shows as on: what the control opens is open. */
@@ -13,7 +24,8 @@ interface RingedControlProps extends Omit<ComponentProps<typeof Pressable>, "chi
   focusLabel?: ReactNode;
   /** What the face stands at inside the target, where the target is taller than the drawing. */
   faceHeight?: number;
-  ref?: Ref<ComponentRef<typeof View>>;
+  /** The control's host node, so a toolbar can move focus to it. */
+  ref?: (node: unknown) => void;
 }
 
 // The browser's own test of keyboard focus, so a click never draws the amber ring. A native view has
@@ -42,10 +54,10 @@ const RingedControl = ({
   const [hovered, setHovered] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook({
-    onBlur: (event: unknown) => onBlur?.(event as never),
+    onBlur: (event: unknown) => onBlur?.(event),
     onFocus: (event: unknown) => {
       setKeyboard(fromKeyboard(event));
-      onFocus?.(event as never);
+      onFocus?.(event);
     },
   });
   const amber = focused && keyboard;
@@ -55,7 +67,7 @@ const RingedControl = ({
   return (
     <Pressable
       accessibilityRole="button"
-      {...rest}
+      {...(rest as object)}
       {...focusHandlers}
       onHoverIn={(event) => {
         setHovered(true);
