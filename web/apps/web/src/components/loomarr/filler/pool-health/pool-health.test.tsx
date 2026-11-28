@@ -150,11 +150,10 @@ describe("PoolHealth", () => {
     expect(screen.getByText("every channel matches exactly")).toBeInTheDocument();
   });
 
-  // ⚠ **The note must describe the same population the fraction counts.** It used to say "every
-  // channel has commercials" whenever nothing had fallen to the bumper card — true, but an answer
-  // to a different question than the headline, which counts EXACT matches. An install where every
-  // channel sat on the middle rung rendered "0/2 · every channel has commercials": two numbers
-  // that read as a contradiction and were both correct. Seen live 2026-08-03.
+  // ⚠ **The note must describe the same population the fraction counts.** "Every channel has
+  // commercials" is true whenever nothing has fallen to the bumper card, but it answers a different
+  // question than the headline, which counts EXACT matches: with every channel on the middle rung it
+  // reads "0/2 · every channel has commercials", two correct numbers that look like a contradiction.
   it("names the middle rung rather than claiming coverage the fraction denies", () => {
     render(
       <PoolHealth

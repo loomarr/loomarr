@@ -40,22 +40,19 @@ const presets: SettingPreset[] = [
 
 // Captures every PATCH /v1/settings body so the test can assert the exact edit.
 //
-// ⚠ This replaced a local `stubFetch` that swapped out global `fetch` (V53d). Two things changed
-// and both matter:
+// ⚠ It is an MSW handler, not a swapped-out global `fetch` (V53d). Two things follow and both
+// matter:
 //
-//   1. The ROUTES are no longer written here. `getSettingsPatchMockHandler` carries the method and
-//      path from the spec, so a renamed endpoint is fixed by a regenerate. The old stub matched on
-//      `init?.method === "PATCH"` alone — it would have accepted a PATCH to ANY url, including one
-//      the component should never have called.
-//   2. Request capture survives, because the generated handler's override may be a FUNCTION of the
-//      request. That was the capability worth checking before migrating: 12 of the 31 files assert
-//      on what was sent, not just on what came back.
+//   1. The ROUTES are not written here. `getSettingsPatchMockHandler` carries the method and
+//      path from the spec, so a renamed endpoint is fixed by a regenerate. A stub matching on
+//      the method alone would accept a PATCH to ANY url, including one the component should never
+//      call.
+//   2. The generated handler's override may be a FUNCTION of the request, so the test asserts on
+//      what was sent, not just on what came back.
 //
-// ⚠ ONLY the PATCH is stubbed, and the migration is what revealed that. The old `stubFetch`
-// answered every non-PATCH call with `{ entries: [] }`, which read as "the modal loads the
-// settings list on mount" — it does not. Dropping that branch changes nothing, and the
-// unhandled-request guard proves it rather than leaving it to inspection: an unmatched GET would
-// now fail this test by name. A catch-all stub cannot tell "handled" from "never asked for".
+// ⚠ ONLY the PATCH is stubbed: the modal does not load the settings list on mount, and the
+// unhandled-request guard fails this test by name on an unmatched GET. A catch-all stub cannot
+// tell "handled" from "never asked for".
 const captureSettings = () => {
   const patches: unknown[] = [];
   server.use(

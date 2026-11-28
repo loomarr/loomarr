@@ -3,9 +3,8 @@ import { clipMediaURL } from "./clip-thumb";
 
 // §10 V45a: a clip's wire identity is its content HASH — hex, no slashes, no special
 // characters — so the route is a plain `/v1/filler/media/{hash}` with a single
-// `encodeURIComponent` over the WHOLE value. That replaced the old path-based per-segment
-// encoding (preserving `/` while escaping `?`/`#`/non-ASCII) — a hash has no segments to
-// preserve, so there is no reason to treat it any differently from an ordinary path param.
+// `encodeURIComponent` over the WHOLE value. A hash has no
+// segments to preserve, so it is treated like an ordinary path param.
 //
 // ⚠ **`clipThumbURL`/`clipHoverURL` were retired in V52 phase 8** with the routes they addressed;
 // a clip's still and hover loop are image-service images now (§22). Their assertions are not

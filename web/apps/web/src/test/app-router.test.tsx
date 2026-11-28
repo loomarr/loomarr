@@ -338,11 +338,9 @@ describe("post-login redirect", () => {
   // A test that passes with the protection removed is worse than no test.
 });
 
-// ⚠ A SERVER HICCUP IS NOT A LOGOUT. The guard used to be a bare `catch {}` over a query with
-// retry:false, so ANY failure — a 500, a proxy blip, this app's own self-restart — reported a
-// valid session as signed out and bounced the user to /login, and an operator restarting from the
-// Dashboard hit it every time. Now the failing route's error boundary shows the problem with a
-// retry, under the root's restart overlay.
+// ⚠ A SERVER HICCUP IS NOT A LOGOUT. A guard that treats any failure of its query (a 500, a proxy
+// blip, this app's own self-restart) as signed out bounces a valid session to /login. The failing
+// route's error boundary shows the problem with a retry instead, under the root's restart overlay.
 describe("_authed guard distinguishes a failure from a logout", () => {
   const at = (router: ReturnType<typeof renderApp>) => router.state.location.href;
 
@@ -569,7 +567,7 @@ describe("admin-only routes", () => {
 
   it("a member at /settings gets their own Settings, not a bare Forbidden", async () => {
     // The index reads the settings list (shared with the layout) for everyone, and the server
-    // refuses it to a member, which is what used to replace the page with "Forbidden".
+    // refuses it to a member, which must not replace the page with "Forbidden".
     let reads = 0;
     stubAuth(true, MEMBER);
     server.use(

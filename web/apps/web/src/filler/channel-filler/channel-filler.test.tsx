@@ -53,7 +53,7 @@ const HEALTHY: CoverageDTO["criteria"] = [
 ];
 
 // ⚠ The DRAFT preview returns the pod AND the coverage for the same selection (§10 V51f), so the
-// meter and the timeline below it can no longer describe two different things.
+// meter and the timeline below it describe the same thing.
 const previewBody: PreviewDraftPodsOutputBody = {
   coverage: {
     level: "exact",

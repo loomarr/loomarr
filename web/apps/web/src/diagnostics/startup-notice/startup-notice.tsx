@@ -29,8 +29,8 @@ const healthSignature = (health: HealthReport) => {
 
 // One shell-level notice per set of affected checks in a process generation. Dismissing it holds
 // until that set changes to one not yet seen or Loomarr restarts: a check that flaps between
-// passing and warning re-raised the same notice on every return (2026-11-18: ~1,180 transitions a
-// day). Home's status strip and Diagnostics still show each recurrence.
+// passing and warning would otherwise raise the same notice on every return. Home's status strip
+// and Diagnostics still show each recurrence.
 const HealthNotice = ({ enabled }: { enabled: boolean }) => {
   const navigate = useNavigate();
   const onHome = useLocation({ select: (location) => location.pathname === "/" });

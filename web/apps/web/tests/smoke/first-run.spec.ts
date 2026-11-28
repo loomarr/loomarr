@@ -43,10 +43,9 @@ const checkNamed = (
 
 test.describe.configure({ mode: "serial" });
 
-// FINDING 1, now FIXED: a fresh install used to bounce the owner to /login, which no
-// credential could pass because no account existed yet — and nothing on the page said
-// so. The unauthenticated GET /v1/setup/state (§7) is what lets the guards tell an
-// unclaimed install from a signed-out one.
+// FINDING 1: a fresh install must not send the owner to /login, which no credential can pass
+// while no account exists. The unauthenticated GET /v1/setup/state (§7) is what lets the guards
+// tell an unclaimed install from a signed-out one.
 test("1 · a fresh install lands the operator on the wizard, not a login they cannot pass", async ({
   page,
 }) => {
@@ -195,11 +194,10 @@ test("6 · wiring Tunarr to the real library makes tunarr_library green, idempot
 
   // Driven from SETTINGS, not the wizard — which is the point of FINDING 2's fix.
   //
-  // This step used to be unreachable here: the wizard resumes at the first incomplete
-  // step, offers only Back/Continue with a non-clickable rail, and Live TV was not
-  // skippable — so the library wiring sat behind a check this install cannot turn green
-  // (its media server is the maintainer's real Emby, which the smoke must not write to).
-  // The wiring actions now live on Settings → Connections for the life of the install,
+  // The wizard resumes at the first incomplete step, offers only Back/Continue with a
+  // non-clickable rail, and this install cannot turn the Live TV check green (its media server is
+  // the maintainer's real Emby, which the smoke must not write to).
+  // The wiring actions live on Settings → Connections for the life of the install,
   // so this needs no wizard navigation at all.
   await page.goto("/settings/connections");
 

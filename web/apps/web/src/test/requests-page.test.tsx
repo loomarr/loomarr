@@ -8,7 +8,7 @@ import { ADMIN, failed, journey, MEMBER, renderAt, stub } from "@/test/requests-
 // #1405 — the Requests page's own entry points (its landing tab and first-request empty state).
 // The lists, the detail and the nav badge have colocated specs under queue/.
 //
-// Home no longer repeats "requests need you" or a failed request on its own strip (#1822
+// Home does not repeat "requests need you" or a failed request on its own strip (#1822
 // evidence: "Neutral channel inventory count") — that now has its own surface, the Requests nav
 // badge, with "Your requests" or "On the way" still on Home itself. There is nothing left here to
 // drive through Home's strip.

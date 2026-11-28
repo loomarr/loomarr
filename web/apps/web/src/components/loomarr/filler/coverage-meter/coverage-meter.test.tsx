@@ -77,12 +77,9 @@ describe("CoverageMeter", () => {
 
   // ⚠ **The component renders the rungs it is GIVEN and never invents a missing one.**
   //
-  // This test used to be about `EraStrict`, which dropped the widened rung server-side — a field
-  // set in tests and nowhere else, deleted in V51f, so every rung now always arrives. The
-  // assertion survives its premise because the real property was never about that setting: a
-  // component that filled in an absent rung at zero would be manufacturing a catalog gap the
-  // server never reported, and would do it for any future reason a rung goes missing (an older
-  // server, a partial response) rather than only for the one flag that used to cause it.
+  // A component that filled in an absent rung at zero would be manufacturing a catalog gap the
+  // server never reported, whatever the reason a rung goes missing (an older server, a partial
+  // response).
   it("renders only the rungs the server sent, never a fabricated zero", async () => {
     renderMeter(
       <CoverageMeter

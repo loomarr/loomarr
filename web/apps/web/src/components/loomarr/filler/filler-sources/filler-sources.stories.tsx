@@ -78,9 +78,8 @@ const WithRegisteredSources: Story = {
 //
 // It carries the two states that only exist on a group, which is why it is one story and not two:
 // Archive.org is HALF-running (one collection on, one off — the case a single boolean cannot say,
-// and why the group has no switch), while YouTube is fully DORMANT, which used to render as if it
-// were running because every off-state was gated on `switchable && !enabled` and a group is not
-// switchable.
+// and why the group has no switch), while YouTube is fully DORMANT. A group is not switchable, so
+// an off-state gated on `switchable && !enabled` would draw a dormant group as running.
 const GroupedByProvider: Story = {
   args: { sources: fillerSourcesGrouped, onSelect: noop, onToggleEnabled: noop },
 };
@@ -91,9 +90,8 @@ const ManySources: Story = {
   args: { sources: fillerSourcesManyGrouped, onSelect: noop, onToggleEnabled: noop },
 };
 
-// A provider with nothing under it — an INVITATION, not a fault. It used to draw the same red
-// `not configured` caution Badge a broken drop-folder gets, telling an operator something is
-// wrong when nothing is.
+// A provider with nothing under it — an INVITATION, not a fault. The red `not configured` caution
+// Badge a broken drop-folder gets would tell an operator something is wrong when nothing is.
 const EmptyProvider: Story = {
   args: { sources: fillerSourcesEmptyProvider, onSelect: noop, onToggleEnabled: noop },
 };

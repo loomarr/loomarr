@@ -30,11 +30,9 @@ import { me, user } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 
-// ⚠ The allowlist used to be built by SPREADING the signed-in user —
-// `USERS = [{ ...ADMIN, local: true }, { ...MEMBER, local: false }]` — but `MeBody` and `UserBody`
-// are different types: `UserBody` also requires `effectiveQuota` and `pendingAcquisitions`. Both
-// rows were served without either field, and the untyped stub was happy to. `pendingAcquisitions`
-// is a number the quota column reads.
+// ⚠ The allowlist is not built by spreading the signed-in user: `MeBody` and `UserBody` are
+// different types, and `UserBody` also requires `effectiveQuota` and `pendingAcquisitions`, a
+// number the quota column reads. An untyped stub would serve rows without either.
 const ADA = user({ id: "u1", name: "Ada", role: "admin", local: true });
 const GRACE = user({
   id: "u2",
@@ -46,19 +44,17 @@ const GRACE = user({
   effectiveQuota: 5,
 });
 
-// ⚠ FOUR endpoints in this file were being matched by URL SUBSTRING, and three of those matches
-// were wrong in a way no assertion could see:
+// ⚠ Matching these endpoints by URL SUBSTRING goes wrong in ways no assertion can see:
 //
-//   • `u.includes("/sessions")` matched BOTH `GET /v1/users/:id/sessions` (a user's live sessions)
+//   • `u.includes("/sessions")` matches BOTH `GET /v1/users/:id/sessions` (a user's live sessions)
 //     and `DELETE /v1/sessions/:hash` (revoking one). Two endpoints, one branch.
-//   • `u.includes("/v1/users") && method === "PATCH"` matched a PATCH to ANY path under
-//     `/v1/users` and always answered with Grace.
-//   • `u.includes("/v1/users/candidates")` had to be tested BEFORE `u.includes("/v1/users")`,
-//     because `includes` has no notion of a more specific route. So did `/v1/users/import` and
-//     `/v1/users/sync`. The ordering was load-bearing and nothing enforced it.
+//   • `u.includes("/v1/users") && method === "PATCH"` matches a PATCH to ANY path under
+//     `/v1/users`.
+//   • `u.includes("/v1/users/candidates")` must be tested BEFORE `u.includes("/v1/users")`,
+//     because `includes` has no notion of a more specific route, and nothing enforces the order.
 //
-// Every one of those is now a route-bound handler: MSW parses the path, so `POST /v1/users`
-// (create) and `POST /v1/users/:id/password` (admin reset) can no longer answer for each other.
+// So each is a route-bound handler: MSW parses the path, so `POST /v1/users`
+// (create) and `POST /v1/users/:id/password` (admin reset) cannot answer for each other.
 const stubUsers = ({
   who = me(),
   userSync = true,

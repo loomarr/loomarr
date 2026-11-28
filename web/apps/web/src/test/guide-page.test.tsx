@@ -264,8 +264,8 @@ describe("Guide", () => {
     expect(screen.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
   });
 
-  // A failed refetch (the SSE bus invalidating every window) used to swap the whole page for an
-  // error. The Guide on screen stays, and a Notice says it may be stale until a refresh lands.
+  // A failed refetch (the SSE bus invalidates every window) must not swap the page for an error.
+  // The Guide on screen stays, and a Notice says it may be stale until a refresh lands.
   it("keeps the Guide on screen and says so when a refresh fails", async () => {
     const user = userEvent.setup();
     stubGuide();
@@ -603,8 +603,8 @@ describe("Guide", () => {
     });
 
     // TanStack v5 shows placeholder data only while a query is pending, so a NEW window that fails
-    // has no data at all. The page used to give itself to the error then, taking the controls (and
-    // the way back to a window that works) with it.
+    // has no data at all. A page given over to the error then would take the controls (and the way
+    // back to a window that works) with it.
     describe("that fails to load", () => {
       // The first windows answer (the opened one and its prefetched neighbours); `fail()` then makes
       // the server error for everything not already cached.

@@ -21,10 +21,9 @@ const CHANNEL: ChannelDTO = {
 } as ChannelDTO;
 
 describe("ChannelAdvanced — playout backend", () => {
-  // The reachability assertion. `policy.playout.backend` was PATCHable and unreachable: §9.1
-  // promised a channel "can be moved from its own page" and no page offered the move, so the
-  // override existed only for a hand-written policy_json. A control that renders but does not
-  // commit is the same defect wearing a nicer coat, so this asserts the committed value.
+  // The reachability assertion. §9.1 promises a channel "can be moved from its own page", so the
+  // page offers `policy.playout.backend`. A control that renders but does not commit leaves the
+  // override reachable only by hand-written policy_json, so this asserts the committed value.
   it("commits a backend choice through onPolicyChange", async () => {
     const onPolicyChange = vi.fn();
     render(<ChannelAdvanced channel={CHANNEL} onPolicyChange={onPolicyChange} />);

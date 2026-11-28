@@ -191,8 +191,8 @@ describe("the playout choice reshapes the wizard", () => {
     expect(resolveStep("library", ctx)).not.toBe("library");
   });
 
-  // Tunarr is no longer a Connections sub-item on EITHER path: its form moved to the Playout
-  // step, under the choice that makes it relevant. So `?conn=tunarr` opens nothing anywhere.
+  // Tunarr is not a Connections sub-item on EITHER path: its form is on the Playout step, under
+  // the choice that makes it relevant. So `?conn=tunarr` opens nothing anywhere.
   it("no longer treats tunarr as a connection sub-item", () => {
     expect(isConnectionId("tunarr", PLAYOUT_TUNARR)).toBe(false);
     expect(isConnectionId("tunarr", PLAYOUT_INTERNAL)).toBe(false);
@@ -253,7 +253,7 @@ describe("wizard deep links", () => {
   // `?conn=` is constrained to the Connections step's OWN sub-items, so a link cannot ask to
   // reveal a block that does not exist there.
   it("accepts only real connection ids", () => {
-    // tunarr is deliberately NOT one: its form moved to the Playout step.
+    // tunarr is deliberately NOT one: its form is on the Playout step.
     expect(isConnectionId("tunarr", PLAYOUT_TUNARR)).toBe(false);
     expect(isConnectionId("media_server")).toBe(true);
     expect(isConnectionId("ai")).toBe(true);

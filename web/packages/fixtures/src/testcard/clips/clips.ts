@@ -126,10 +126,8 @@ const taggedClip: ClipDTO = {
 
 // A clip whose frame was extracted (V17b/V30) and adopted into the image service (§22).
 //
-// ⚠ **The `hash` used to carry an inline data URI, and that hack retired with V52 phase 8.** It
-// existed because `clipThumbURL` passed `data:` values through unchanged, which was the only way a
-// story could show a card WITH a frame while rendering offline against storybook-static. Artwork
-// is an image record now, so the hash is an ordinary hash again and the assets come from
+// ⚠ **The `hash` is an ordinary hash, never an inline data URI.** Artwork is an image record, and
+// a story rendering offline against storybook-static gets its assets from
 // `.storybook/story-assets/` via `staticDirs`.
 //
 // ⚠ Same-origin asset paths, never data URIs — a base64 data URI always contains a comma, which is

@@ -94,7 +94,7 @@ describe("the frame-to-query map", () => {
 });
 
 describe("settings invalidation", () => {
-  // The queries a saved setting can change. LLM status is the one the save bar used to skip.
+  // The queries a saved setting can change. LLM status is one of them.
   const derived = [
     ["/v1/settings"],
     ["/v1/setup/status"],
