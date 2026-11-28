@@ -59,18 +59,11 @@ const SEGMENT_WORD: Record<PodEntryDTO["role"], string> = {
 const segmentLabel = (entry: PodEntryDTO): string =>
   `${SEGMENT_WORD[entry.role]}, ${formatClipDuration(entry.durationMs)}`;
 
-const PodTimeline = ({
-  entries,
-  matchLevel = "exact",
-  era,
-  audience,
-  className,
-  onPreview,
-}: PodTimelineProps) => {
+const PodTimeline = ({ entries, matchLevel = "exact", era, audience, onPreview }: PodTimelineProps) => {
   const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
   const chip = MATCH[matchLevel];
   return (
-    <Stack className={className} gap="inline">
+    <Stack gap="inline">
       <Stack align="center" direction="row" gap="inline" wrap>
         <Text as="span" textRole="hint" tone="secondary">{`Pod · ${formatClipDuration(total)}`}</Text>
         {era ? <Badge shape="square" tone="neutral">{`${era}s`}</Badge> : null}

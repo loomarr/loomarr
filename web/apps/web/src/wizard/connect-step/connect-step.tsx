@@ -32,7 +32,7 @@ const ConnectStep = ({ check, cta, onConnect, isPending = false, error, children
       <Action
         disabled={isPending}
         onPress={onConnect}
-        style={{ alignSelf: "flex-start" }}
+        alignSelf="flex-start"
         variant={connected ? "outline" : undefined}
       >
         {isPending ? "Working…" : connected ? "Run again" : cta}

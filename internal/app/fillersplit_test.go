@@ -151,7 +151,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 			{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 		}}
 		n := 0
-		a.splitter = filler.NewSplitter(storeadapter.NewSplit(st, nil), tools, nil, drop,
+		a.splitter = filler.NewSplitter(storeadapter.NewSplit(st, nil).Ports(), tools, nil, drop,
 			func() time.Duration { return 10 * time.Second },
 			func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 	}
@@ -179,7 +179,7 @@ func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	tools := blockingSplitTools{
 		started: started, cancelled: cancelled, release: release,
 	}
-	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil), tools, nil, drop,
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil).Ports(), tools, nil, drop,
 		func() time.Duration { return 10 * time.Second }, func() string { return "sp-owned" }, time.Now, nil)
 	lifecycle := newGenerationLifecycle(t.Context())
 	application := &Application{lifecycle: lifecycle}
@@ -486,7 +486,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 	}
 
 	n := 0
-	sp := filler.NewSplitter(storeadapter.NewSplit(st, nil), splitFakeTools{chapters: []tools.Chapter{
+	sp := filler.NewSplitter(storeadapter.NewSplit(st, nil).Ports(), splitFakeTools{chapters: []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
 		{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 	}}, nil, drop, func() time.Duration { return 10 * time.Second },
@@ -629,9 +629,9 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 
 	firstTools := &gatedSplitTools{entered: make(chan struct{}, 1), release: make(chan struct{})}
 	secondTools := &gatedSplitTools{}
-	first := filler.NewSplitter(storeadapter.NewSplit(st, nil), firstTools, nil, drop,
+	first := filler.NewSplitter(storeadapter.NewSplit(st, nil).Ports(), firstTools, nil, drop,
 		func() time.Duration { return 10 * time.Second }, func() string { return "owner-a" }, func() time.Time { return now }, nil)
-	second := filler.NewSplitter(storeadapter.NewSplit(st, nil), secondTools, nil, drop,
+	second := filler.NewSplitter(storeadapter.NewSplit(st, nil).Ports(), secondTools, nil, drop,
 		func() time.Duration { return 10 * time.Second }, func() string { return "owner-b" }, func() time.Time { return now }, nil)
 
 	firstErr := make(chan error, 1)

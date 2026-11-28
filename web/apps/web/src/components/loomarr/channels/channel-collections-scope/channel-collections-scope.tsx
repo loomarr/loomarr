@@ -41,7 +41,7 @@ import type { ChannelCollectionsScopeProps } from "./channel-collections-scope.t
 // label — never to drop anything, because being wrong then costs the operator nothing.
 const isFranchise = (name: string): boolean => name.trim().endsWith("Collection");
 
-const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollectionsScopeProps) => {
+const ChannelCollectionsScope = ({ policy, onChange }: ChannelCollectionsScopeProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -92,7 +92,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
   if (unavailable) return null;
 
   return (
-    <Stack className={className} gap="inline">
+    <Stack gap="inline">
       <Stack align="center" direction="row" gap="1.5">
         <Text textRole="label">Only these collections</Text>
         <FieldHelp label="Only these collections">
@@ -178,7 +178,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                   setQuery("");
                   setAdding(false);
                 }}
-                style={{ alignSelf: "flex-start" }}
+                alignSelf="flex-start"
                 variant="ghost"
               >
                 Cancel
@@ -190,12 +190,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
               You have no collections yet. Make one in your media server and it will show up here.
             </Text>
           ) : (
-            <Action
-              icon="plus"
-              onPress={() => setAdding(true)}
-              style={{ alignSelf: "flex-start" }}
-              variant="outline"
-            >
+            <Action icon="plus" onPress={() => setAdding(true)} alignSelf="flex-start" variant="outline">
               Add a collection…
             </Action>
           )}

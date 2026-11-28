@@ -12,7 +12,6 @@ interface ChannelAutoCurateProps {
   // so the control can say *why* it is unavailable instead of silently accepting a setting
   // that will never fire.
   intentBacked?: boolean;
-  className?: string;
 }
 
 export type { ChannelAutoCurateProps };

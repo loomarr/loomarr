@@ -62,6 +62,8 @@ type LibraryNeed struct {
 	Origin LibraryOrigin
 	// Searched is what was last searched for it; "" never.
 	Searched string
+	// Frame is the image hash of a frame of its main file; "" until one is taken.
+	Frame string
 }
 
 // LibraryIgnoredTitle is a title the maintainer said is not one.
@@ -98,17 +100,25 @@ type LibraryNeedsStore interface {
 	// video: ErrNotKeepable, and nothing saved, otherwise.
 	KeepLibraryNeed(ctx context.Context, itemID string, at time.Time) (LibraryAnswered, error)
 	// HomeVideosWithoutPoster returns the kept titles that have no poster, each with its main file.
-	HomeVideosWithoutPoster(ctx context.Context) ([]LibraryHomeVideoFrame, error)
+	HomeVideosWithoutPoster(ctx context.Context) ([]LibraryFrameFile, error)
 	// PutHomeVideoPoster gives a title the frame extracted from frame's file, only while the title
 	// is still kept, has no poster and plays that file: false, and nothing saved, otherwise.
-	PutHomeVideoPoster(ctx context.Context, frame LibraryHomeVideoFrame, imageHash string) (bool, error)
+	PutHomeVideoPoster(ctx context.Context, frame LibraryFrameFile, imageHash string) (bool, error)
 	// SetLibraryItemImage makes imageHash the title's only image in role.
 	SetLibraryItemImage(ctx context.Context, itemID, role, imageHash string) error
 	// ClearLibraryPoster removes a title's posters, except a frame of the file a kept title still
 	// plays.
 	ClearLibraryPoster(ctx context.Context, itemID string) error
-	// ClearStaleHomeVideoPosters removes each frame whose title plays another main file.
-	ClearStaleHomeVideoPosters(ctx context.Context) error
+	// LibraryNeedsWithoutFrame returns the titles waiting in Needs you that have no frame, each
+	// with its main file.
+	LibraryNeedsWithoutFrame(ctx context.Context) ([]LibraryFrameFile, error)
+	// PutLibraryNeedFrame gives a title the frame extracted from frame's file, only while the
+	// title still waits in Needs you, has no frame and plays that file: false, and nothing saved,
+	// otherwise.
+	PutLibraryNeedFrame(ctx context.Context, frame LibraryFrameFile, imageHash string) (bool, error)
+	// ClearStaleLibraryFrames removes each home video's frame whose title plays another main
+	// file, and each Needs you frame whose title plays another or no longer waits in Needs you.
+	ClearStaleLibraryFrames(ctx context.Context) error
 	// KeptLibraryTitle reports whether a file belongs to a title kept as a home video.
 	KeptLibraryTitle(ctx context.Context, kind string, origin LibraryOrigin, groups []LibraryID) (bool, error)
 	// RestoreLibraryIgnored takes back the ignore of titles, all in one transaction:
@@ -237,8 +247,8 @@ func (s *Store) LibraryNeedsYouCount(ctx context.Context) (int, error) {
 }
 
 func (s *Store) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
-	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, i.origin_authority, i.origin_key, i.searched
-		`+needsFrom()+` ORDER BY i.sort_name, i.id`))
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, i.origin_authority, i.origin_key, i.searched,
+		`+itemImage(LibraryFrameRole)+needsFrom()+` ORDER BY i.sort_name, i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("library needs: %w", err)
 	}
@@ -248,7 +258,7 @@ func (s *Store) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 		var catalog, set string
 		if err := rows.Scan(&n.ID, &n.Kind, &n.Name, &n.SortName, &n.Year, &catalog, &n.Match.Basis, &n.Match.App,
 			&n.Match.Page, &set, &n.Poster, &n.Backdrop, &n.Logo, &n.Files, &n.Pending, &n.Unplayable, &n.ExtraCopies, &n.ExtraBytes, &n.HomeVideo, &n.Unidentified, &n.Origin.Authority, &n.Origin.Key,
-			&n.Searched); err != nil {
+			&n.Searched, &n.Frame); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("library needs: %w", err)
 		}

@@ -244,13 +244,7 @@ const RuleRow = ({
   );
 };
 
-const ChannelRulesEditor = ({
-  policy,
-  onChange,
-  lineupKeys = [],
-  vocabulary,
-  className,
-}: ChannelRulesEditorProps) => {
+const ChannelRulesEditor = ({ policy, onChange, lineupKeys = [], vocabulary }: ChannelRulesEditorProps) => {
   const rules = policy.rules ?? [];
   const [drafts, setDrafts] = useState<RuleDraft[]>(() =>
     rules.map((r) => draftFromRule(r, lineupKeys, vocabulary)),
@@ -300,7 +294,7 @@ const ChannelRulesEditor = ({
   };
 
   return (
-    <Stack className={className} gap="control" render="section">
+    <Stack gap="control" render="section">
       <div>
         <Text as="h3" textRole="heading">
           Wall-clock rules
@@ -349,7 +343,7 @@ const ChannelRulesEditor = ({
               </Stack>
             </SortableContext>
           </DndContext>
-          <Action icon="plus" onPress={addRule} style={{ alignSelf: "flex-start" }} variant="outline">
+          <Action icon="plus" onPress={addRule} alignSelf="flex-start" variant="outline">
             Add rule
           </Action>
         </>

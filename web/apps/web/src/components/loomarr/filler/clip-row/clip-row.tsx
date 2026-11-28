@@ -15,12 +15,11 @@ import type { ClipRowProps } from "./clip-row.type";
 // column headers to associate cells with — the labels are in the values themselves.
 //
 // Titles and thumbnails open the same inspection panel as Grid, without extra action rows.
-const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowProps) => (
+const ClipRow = ({ clip, selected, onToggleSelect, onOpen }: ClipRowProps) => (
   <Grid
     align="center"
     borderBottomWidth={1}
     borderColor="borderDecorative"
-    className={className}
     paddingHorizontal={12}
     paddingVertical={8}
     // Selection is neutral (#1909): amber is for focus and the primary action.

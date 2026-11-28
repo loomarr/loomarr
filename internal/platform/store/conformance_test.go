@@ -77,6 +77,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		runParallel(t, "LibraryNeedsBatch", func(t *testing.T) { testLibraryNeedsBatch(t, newStore) })
 		runParallel(t, "LibraryHomeVideo", func(t *testing.T) { testLibraryHomeVideo(t, newStore) })
 		runParallel(t, "LibraryHomeVideoPoster", func(t *testing.T) { testLibraryHomeVideoPoster(t, newStore) })
+		runParallel(t, "LibraryNeedFrame", func(t *testing.T) { testLibraryNeedFrame(t, newStore) })
 		runParallel(t, "LibraryMemberReads", func(t *testing.T) { testLibraryMemberReads(t, newStore) })
 		runParallel(t, "LibraryFilters", func(t *testing.T) { testLibraryFilters(t, newStore) })
 		runParallel(t, "LibraryWall", func(t *testing.T) { testLibraryWall(t, newStore) })

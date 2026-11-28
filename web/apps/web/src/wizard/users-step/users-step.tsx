@@ -117,7 +117,7 @@ const UsersStep = () => {
         onPress={() =>
           importUsers.mutate({ data: { ids: [...selected] } }, { onSuccess: () => setSelected(new Set()) })
         }
-        style={{ alignSelf: "flex-start" }}
+        alignSelf="flex-start"
       >
         {importUsers.isPending
           ? "Importing…"

@@ -44,6 +44,8 @@ type LibraryFile struct {
 	// Either is "" until known.
 	ItemID   string
 	SeriesID string
+	// DurationMs is the length its header gave, 0 until it is read. Only LibraryItemsFiles reads it.
+	DurationMs int64
 }
 
 // LibraryFileCounts counts the present files of every root.

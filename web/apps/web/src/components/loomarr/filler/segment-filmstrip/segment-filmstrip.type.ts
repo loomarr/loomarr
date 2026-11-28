@@ -27,7 +27,6 @@ interface SegmentFilmstripProps {
   // Clicking or pressing Enter opens the shared Sheet for this span. The exact trigger is returned
   // so the Sheet can restore focus when it closes.
   onSelect?: (key: string, trigger: HTMLButtonElement) => void;
-  className?: string;
 }
 
 export type { FilmstripSegment, SegmentFilmstripProps };

@@ -9,7 +9,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -17,10 +16,13 @@ import (
 
 // Defects bridges the store to the defect floor (#2034) and its enforcement
 // (#2036). Held clips are listed: admission waits at the defects rung for their verdict.
-type Defects struct{ st records.Store }
+type Defects struct {
+	fingerprintRows
+	st records.Store
+}
 
 // NewDefects returns the defect floor's store over st.
-func NewDefects(st records.Store) Defects { return Defects{st: st} }
+func NewDefects(st records.Store) Defects { return Defects{fingerprintRows: st, st: st} }
 
 func (a Defects) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
 	err := a.st.RetireDefectiveCopy(ctx, hash, at)
@@ -31,7 +33,7 @@ func (a Defects) RetireDefectiveCopy(ctx context.Context, hash string, at time.T
 }
 
 func (a Defects) GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error) {
-	return Sync(a).GetClip(ctx, hash)
+	return findClip(ctx, a.st, hash)
 }
 
 func (a Defects) ListClipPaths(ctx context.Context) ([]string, error) {
@@ -44,14 +46,6 @@ func (a Defects) ListClipPaths(ctx context.Context) ([]string, error) {
 		paths[i] = c.Path
 	}
 	return paths, nil
-}
-
-func (a Defects) ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
-	return a.st.ListClipFingerprints(ctx, algorithm)
-}
-
-func (a Defects) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error {
-	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
 }
 
 func (a Defects) ListDefectClips(ctx context.Context) ([]defectfloor.DefectClip, error) {

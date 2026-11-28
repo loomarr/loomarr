@@ -7,7 +7,6 @@ interface ChannelProgrammingChangesProps {
   draftPolicy?: ChannelPolicy;
   // The household guide timezone, so slot times read as the Guide shows them.
   timeZone?: string;
-  className?: string;
 }
 
 export type { ChannelProgrammingChangesProps };

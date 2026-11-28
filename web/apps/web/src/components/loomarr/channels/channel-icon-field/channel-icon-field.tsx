@@ -45,7 +45,6 @@ const ChannelIconField = ({
   logoImage,
   onSetLogo,
   isAdmin = false,
-  className,
 }: ChannelIconFieldProps) => {
   const urlInputId = useId();
   const pickerId = useId();
@@ -129,7 +128,7 @@ const ChannelIconField = ({
   };
 
   return (
-    <Stack className={className} gap="control">
+    <Stack gap="control">
       <Stack align="center" direction="row" gap="control">
         {/* The web mock's 48px tile: a muted placeholder when there's no icon yet, never a
             broken-image glyph. */}
@@ -199,12 +198,7 @@ const ChannelIconField = ({
         <Card id={pickerId} padding={16}>
           <Stack gap="4">
             {logo && (
-              <Action
-                disabled={clearing}
-                onPress={() => void clear()}
-                style={{ alignSelf: "flex-start" }}
-                variant="ghost"
-              >
+              <Action disabled={clearing} onPress={() => void clear()} alignSelf="flex-start" variant="ghost">
                 {clearing ? "Clearing…" : "Clear"}
               </Action>
             )}

@@ -53,16 +53,16 @@ func testLibraryHomeVideoPoster(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	frames := func() []librarystore.LibraryHomeVideoFrame {
+	frames := func() []librarystore.LibraryFrameFile {
 		got, err := st.HomeVideosWithoutPoster(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return got
 	}
-	movie := librarystore.LibraryHomeVideoFrame{ItemID: "m1", Path: "/media/b-first.mkv", DurationMs: 1000, HDR: true}
-	show := librarystore.LibraryHomeVideoFrame{ItemID: "s1", Path: "/media/show/e1.mkv", DurationMs: 3000}
-	if got, want := frames(), []librarystore.LibraryHomeVideoFrame{movie, show}; !reflect.DeepEqual(got, want) {
+	movie := librarystore.LibraryFrameFile{ItemID: "m1", Path: "/media/b-first.mkv", DurationMs: 1000, HDR: true}
+	show := librarystore.LibraryFrameFile{ItemID: "s1", Path: "/media/show/e1.mkv", DurationMs: 3000}
+	if got, want := frames(), []librarystore.LibraryFrameFile{movie, show}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("frames wanted = %+v, want %+v", got, want)
 	}
 
@@ -74,14 +74,14 @@ func testLibraryHomeVideoPoster(t *testing.T, newStore NewStoreFunc) {
 		OwnerID: "m1", Role: "poster"}); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := frames(), []librarystore.LibraryHomeVideoFrame{show}; !reflect.DeepEqual(got, want) {
+	if got, want := frames(), []librarystore.LibraryFrameFile{show}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("with a poster = %+v, want %+v", got, want)
 	}
 	// A frame is saved only for the file the title plays, and only while it has no poster.
 	other := show
 	other.Revision = "stat:9:9"
 	for _, c := range []struct {
-		frame librarystore.LibraryHomeVideoFrame
+		frame librarystore.LibraryFrameFile
 		want  bool
 	}{{other, false}, {movie, false}, {show, true}, {show, false}} {
 		if put, err := st.PutHomeVideoPoster(ctx, c.frame, img.Hash); err != nil || put != c.want {
@@ -105,7 +105,7 @@ func testLibraryHomeVideoPoster(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("after clearing: show kept = %v, movie kept = %v; want true, false", poster("s1"), poster("m1"))
 	}
 	// The sweep keeps a frame of the file still played, and drops it once that file is gone.
-	if err := st.ClearStaleHomeVideoPosters(ctx); err != nil || !poster("s1") {
+	if err := st.ClearStaleLibraryFrames(ctx); err != nil || !poster("s1") {
 		t.Fatalf("a frame of the file still played was dropped: %v", err)
 	}
 	gone := files[3]
@@ -113,7 +113,7 @@ func testLibraryHomeVideoPoster(t *testing.T, newStore NewStoreFunc) {
 	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{gone}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.ClearStaleHomeVideoPosters(ctx); err != nil || poster("s1") {
+	if err := st.ClearStaleLibraryFrames(ctx); err != nil || poster("s1") {
 		t.Fatalf("a frame of a file no longer played was kept: %v", err)
 	}
 	gone.MissingAt = time.Time{}

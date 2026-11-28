@@ -15,7 +15,6 @@ type ChannelIdentityFieldProps = {
   onSave: (next: string | number) => Promise<void>;
   // Visual sizing hint: "title" (the big channel name) vs "compact" (the channel number).
   variant?: "title" | "compact";
-  className?: string;
 };
 
 export type { ChannelIdentityFieldProps };

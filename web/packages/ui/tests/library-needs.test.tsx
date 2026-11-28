@@ -41,6 +41,8 @@ const need = (id: string, over: Partial<LibraryNeed> = {}): LibraryNeed => ({
   id,
   kind: "movie",
   files: [`/media/movies/${id}/${id}.mkv`],
+  lengthMillis: 0,
+  bytes: 0,
   best: guess(),
   others: [],
   ...over,
@@ -198,6 +200,30 @@ describe("LibraryNeedsCards", () => {
     expect(onChooseOrder).toHaveBeenCalledWith("90000831", { choice: "files" });
     expect(host.textContent).toContain("Done. Tidewater keeps the names in its files.");
     expect(host.textContent).not.toContain("from TMDB");
+    cleanup();
+  });
+
+  it("shows a frame of the file with its length and size, the frame left out of what is read", () => {
+    const framed = need("90000811", {
+      lengthMillis: 252_000,
+      bytes: 2048,
+      frame: <img alt="" src="/frames/90000811.jpg" />,
+    });
+    const { host, cleanup } = mount(cards({ needs: [framed] }));
+    const frames = Array.from(host.querySelectorAll('img[src="/frames/90000811.jpg"]'));
+    expect(frames).toHaveLength(1);
+    expect(frames[0]?.getAttribute("alt")).toBe("");
+    expect(host.textContent).toContain("4m 12s · 2.0 KB");
+    cleanup();
+  });
+
+  it("draws an empty box until a frame is taken, and leaves out a length not read yet", () => {
+    const waiting = need("90000811", { bytes: 92_274_688 });
+    const { host, cleanup } = mount(cards({ needs: [waiting] }));
+    expect(host.querySelectorAll("img")).toHaveLength(0);
+    expect(host.textContent).toContain("88.0 MB");
+    expect(host.textContent).not.toContain("0s ·");
+    expect(host.textContent).not.toContain("0m ·");
     cleanup();
   });
 

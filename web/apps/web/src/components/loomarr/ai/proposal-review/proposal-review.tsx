@@ -75,7 +75,6 @@ const ProposalReview = ({
   onDeny,
   onEdit,
   onRevise,
-  className,
 }: ProposalReviewProps) => {
   const actionable = status === "draft" || status === "submitted" || status === "partially-edited";
   const [denying, setDenying] = useState(false);
@@ -152,15 +151,7 @@ const ProposalReview = ({
   }, [findingMore, revising]);
 
   return (
-    <Stack
-      className={className}
-      gap="5"
-      marginHorizontal="auto"
-      maxWidth={768}
-      paddingVertical={8}
-      render="section"
-      width="100%"
-    >
+    <Stack gap="5" marginHorizontal="auto" maxWidth={768} paddingVertical={8} render="section" width="100%">
       <Stack align="start" direction="row" gap="control" justify="between" render="header" wrap>
         <Stack gap="1" minWidth={0}>
           {showWorkflowHeading ? (

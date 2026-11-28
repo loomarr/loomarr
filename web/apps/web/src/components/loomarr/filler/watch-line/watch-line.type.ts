@@ -17,7 +17,6 @@ interface WatchLineProps {
   /** The web mock's `watchLine` — "3 of 4 sources on · 1,284 clips · checked 12m ago". */
   status: string;
   health: WatchHealth;
-  className?: string;
 }
 
 export type { WatchHealth, WatchLineProps };

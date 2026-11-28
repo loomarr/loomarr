@@ -33,7 +33,6 @@ interface ProposalReviewProps {
   revising?: boolean;
   revisionError?: string;
   showWorkflowHeading?: boolean;
-  className?: string;
 }
 
 export type { ProposalReviewProps, ProposalStatus };

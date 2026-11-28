@@ -116,12 +116,7 @@ const IntentForm = ({
         }
       </form.Subscribe>
 
-      <Action
-        layout="text"
-        onPress={() => setRefining((v) => !v)}
-        style={{ alignSelf: "flex-start" }}
-        variant="ghost"
-      >
+      <Action layout="text" onPress={() => setRefining((v) => !v)} alignSelf="flex-start" variant="ghost">
         {refining ? "Hide details" : "Add details"}
       </Action>
 

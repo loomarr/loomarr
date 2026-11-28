@@ -9,7 +9,6 @@ interface ClipRowProps {
   selected?: boolean;
   onToggleSelect?: () => void;
   onOpen?: () => void;
-  className?: string;
 }
 
 export type { ClipRowProps };

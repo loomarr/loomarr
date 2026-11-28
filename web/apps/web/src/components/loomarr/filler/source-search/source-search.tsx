@@ -72,7 +72,6 @@ const SourceSearch = ({
   queueing,
   searching,
   error,
-  className,
 }: SourceSearchProps) => {
   const loadingSet = new Set(loadingStats ?? []);
   const resultKey = results.map((result) => result.id).join(",");
@@ -124,7 +123,7 @@ const SourceSearch = ({
   }, [ids, onVisible]);
 
   return (
-    <Stack className={className} gap="control">
+    <Stack gap="control">
       {/* A real form, so Enter submits — this is a search box, and needing the mouse to run it
           is the kind of papercut that makes a surface feel broken. */}
       <Stack

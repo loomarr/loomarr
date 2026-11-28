@@ -15,7 +15,7 @@ interface LibraryNeedCandidate {
   /** Absent when unknown. */
   year?: number;
   overview?: string;
-  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
+  /** Its artwork, drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
   nameMatches: boolean;
   yearMatches: boolean;
@@ -34,6 +34,15 @@ interface LibraryNeed {
   folder?: string;
   /** Its files on this machine (a series' episodes), in path order. */
   files: readonly string[];
+  /** The first file's length in milliseconds; 0 until its details are read. */
+  lengthMillis: number;
+  /** The first file's size in bytes. */
+  bytes: number;
+  /**
+   * A 16:9 frame of its main file, drawn by the app with an empty alt: the file name heads the
+   * card. Absent draws a neutral box.
+   */
+  frame?: ReactNode;
   /** The one guess good enough to ask about: its name agrees. Absent asks the household to find it. */
   best?: LibraryNeedCandidate;
   /** The other guesses, best first, shown before anything is typed into the search. */
@@ -46,7 +55,7 @@ interface LibraryProblem {
   id: string;
   kind: LibraryKind;
   name: string;
-  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
+  /** Its artwork, drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
   /** Its files that can't be played. */
   unplayable: number;
@@ -96,7 +105,7 @@ interface LibraryOrderNeed {
   /** The library show's id: what an answer is for. */
   id: string;
   name: string;
-  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
+  /** Its artwork, drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
   /** How far each season runs on disk, by season. */
   disk: readonly LibrarySeasonSize[];

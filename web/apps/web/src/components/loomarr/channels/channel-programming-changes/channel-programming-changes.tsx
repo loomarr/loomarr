@@ -96,12 +96,7 @@ const ChangeRow = ({
 // #1882). It compares the draft against the saved channel over the channel's schedule window, so
 // it answers "what will this edit change on air, and when" where the cycle preview answers "what
 // airs at one moment".
-const ChannelProgrammingChanges = ({
-  channelId,
-  draftPolicy,
-  timeZone,
-  className,
-}: ChannelProgrammingChangesProps) => {
+const ChannelProgrammingChanges = ({ channelId, draftPolicy, timeZone }: ChannelProgrammingChangesProps) => {
   const changes = channelsApi.usePreviewChannelProgrammingChanges();
 
   // The same debounce and serialized key as the cycle preview, so both settle together. `from`
@@ -188,7 +183,7 @@ const ChannelProgrammingChanges = ({
   }
 
   return (
-    <Stack aria-labelledby="programming-changes-heading" className={className} gap="inline" render="section">
+    <Stack aria-labelledby="programming-changes-heading" gap="inline" render="section">
       <Text as="h3" id="programming-changes-heading" textRole="heading">
         What changes
       </Text>

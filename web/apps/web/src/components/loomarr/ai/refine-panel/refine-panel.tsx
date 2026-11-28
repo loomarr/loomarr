@@ -20,14 +20,7 @@ type PanelState = "idle" | "open" | "running" | "landed";
 // result lands as a diff to review before anything is applied. Nothing here mutates
 // the channel until Apply — the diff review IS the gate (§7), same as any other
 // suggestion.
-const RefinePanel = ({
-  channelId,
-  channelName,
-  current,
-  currentPolicy,
-  onApplied,
-  className,
-}: RefinePanelProps) => {
+const RefinePanel = ({ channelId, channelName, current, currentPolicy, onApplied }: RefinePanelProps) => {
   const [state, setState] = useState<PanelState>("idle");
   const headingId = useId();
 
@@ -85,14 +78,7 @@ const RefinePanel = ({
   return (
     // The web mock's card: always open, a one-line input and "Suggest changes". The running and
     // review states below are today's; the mock draws neither.
-    <Card
-      aria-labelledby={headingId}
-      borderRadius={8}
-      className={className}
-      gap={10}
-      padding={16}
-      render="section"
-    >
+    <Card aria-labelledby={headingId} borderRadius={8} gap={10} padding={16} render="section">
       <Stack align="center" direction="row" gap="inline" wrap>
         <Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />
         <Text as="h3" id={headingId} textRole="cardLabel">

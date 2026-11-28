@@ -36,14 +36,10 @@ const LABEL: Record<ProvisioningState, string> = {
 // The DOM text is the sentence-case label ("Downloading") — that IS the accessible name a screen
 // reader speaks (§5.3), so no aria-label is needed (and aria-label on a generic <span> isn't
 // ARIA-valid).
-const StateBadge = ({ state, className }: StateBadgeProps) => (
-  <Badge
-    shape="square"
-    tone={TONE[state]}
-    // Loomarr gave up on this title (§4). The strike-through is the one visual the base chip
-    // has no notion of, and it is genuinely domain-specific.
-    className={className}
-  >
+const StateBadge = ({ state }: StateBadgeProps) => (
+  <Badge shape="square" tone={TONE[state]}>
+    {/* Loomarr gave up on this title (§4). The strike-through is the one visual the base chip
+        has no notion of, and it is genuinely domain-specific. */}
     {state === "unavailable" ? (
       <span style={{ textDecoration: "line-through" }}>{LABEL[state]}</span>
     ) : (

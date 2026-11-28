@@ -72,7 +72,7 @@ interface LibraryReadyTitle {
   name: string;
   /** Whether it is ready to watch; one still being prepared shows faded. */
   ready: boolean;
-  /** Its poster; absent draws a plain tile. */
+  /** Its poster; absent draws the stand-in. */
   poster?: ReactNode;
 }
 

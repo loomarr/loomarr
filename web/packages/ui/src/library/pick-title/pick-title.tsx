@@ -76,7 +76,7 @@ const PickTitle = ({
       {list.map((c) => (
         <Line flexWrap="nowrap" key={`${c.externalId.namespace}:${c.externalId.value}`}>
           <Stack flexShrink={0} width={28}>
-            <LibraryPoster art={c.poster} name={c.poster ? c.name : ""} />
+            <LibraryPoster art={c.poster} name={c.name} small />
           </Stack>
           <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
             <Text textRole="body">{nameYear(c)}</Text>

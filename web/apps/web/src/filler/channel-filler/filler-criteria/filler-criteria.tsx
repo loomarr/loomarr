@@ -366,7 +366,7 @@ const FillerCriteria = ({
               const { era: _era, ...rest } = selection;
               onChange({ ...rest, eraWindows: [{ from: YEAR_MIN, to: YEAR_MAX }] });
             }}
-            style={{ alignSelf: "flex-start" }}
+            alignSelf="flex-start"
             variant="outline"
           >
             Use date ranges
@@ -379,7 +379,7 @@ const FillerCriteria = ({
               const { eraWindows: _windows, ...rest } = selection;
               onChange({ ...rest, era: {} });
             }}
-            style={{ alignSelf: "flex-start" }}
+            alignSelf="flex-start"
             variant="outline"
           >
             Use any era
@@ -392,7 +392,7 @@ const FillerCriteria = ({
               const { era: _era, eraWindows: _windows, ...rest } = selection;
               onChange(rest);
             }}
-            style={{ alignSelf: "flex-start" }}
+            alignSelf="flex-start"
             variant="ghost"
           >
             Follow the channel&rsquo;s era ({scopeLabel})

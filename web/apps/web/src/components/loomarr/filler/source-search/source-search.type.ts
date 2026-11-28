@@ -46,7 +46,6 @@ interface SourceSearchProps {
   queueing?: string | null;
   searching?: boolean;
   error?: string | null;
-  className?: string;
 }
 
 export type { SourceSearchProps };

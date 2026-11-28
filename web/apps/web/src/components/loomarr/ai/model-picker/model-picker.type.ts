@@ -16,7 +16,6 @@ interface ModelPickerProps {
   // nothing until bytes start flowing.
   pulling?: { tag: string; percent?: number };
   busy?: boolean;
-  className?: string;
 }
 
 export type { ModelPickerProps };

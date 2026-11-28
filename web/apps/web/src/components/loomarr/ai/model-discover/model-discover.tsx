@@ -25,7 +25,6 @@ const ModelDiscover = ({
   sourceError = false,
   pulling,
   onPull,
-  className,
 }: ModelDiscoverProps) => {
   const [expanded, setExpanded] = useState(false);
   const total = results?.length ?? 0;
@@ -33,7 +32,7 @@ const ModelDiscover = ({
   const hiddenCount = total - (visible?.length ?? 0);
 
   return (
-    <Stack className={className} gap="2.5">
+    <Stack gap="2.5">
       <div>
         <Text as="p" textRole="cardLabel" tone="secondary">
           Need a different model?
@@ -142,12 +141,12 @@ const ModelDiscover = ({
       )}
 
       {!expanded && hiddenCount > 0 && (
-        <Action onPress={() => setExpanded(true)} style={{ alignSelf: "flex-start" }} variant="ghost">
+        <Action onPress={() => setExpanded(true)} alignSelf="flex-start" variant="ghost">
           {`Show ${hiddenCount} more`}
         </Action>
       )}
       {expanded && total > DEFAULT_VISIBLE && (
-        <Action onPress={() => setExpanded(false)} style={{ alignSelf: "flex-start" }} variant="ghost">
+        <Action onPress={() => setExpanded(false)} alignSelf="flex-start" variant="ghost">
           Show fewer
         </Action>
       )}

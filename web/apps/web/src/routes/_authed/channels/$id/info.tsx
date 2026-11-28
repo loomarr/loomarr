@@ -52,7 +52,7 @@ const InfoScreen = () => {
           </Text>
           {air.buildSchedule && isAdmin ? (
             <Action
-              style={{ alignSelf: "flex-start" }}
+              alignSelf="flex-start"
               disabled={reconcile.isPending}
               onPress={() => reconcile.mutate({ id })}
               variant="outline"

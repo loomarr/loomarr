@@ -181,7 +181,6 @@ const ProposalEdit = (props: ProposalEditProps) => {
     renderFeedback,
     showNote = false,
     disabled,
-    className,
   } = props;
   const controlled = Object.hasOwn(props, "value");
   const injectedMovieCollections = Object.hasOwn(props, "movieCollections");
@@ -334,7 +333,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
   const edited = dropped.length > 0 || added.length > 0 || note.trim() !== "";
 
   return (
-    <Stack className={className} gap="control">
+    <Stack gap="control">
       <Stack align="center" direction="row" gap="inline" justify="between" wrap>
         <div>
           <Text as="h3" textRole="heading">
@@ -439,7 +438,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
                 setQuery("");
                 setAdding(false);
               }}
-              style={{ alignSelf: "flex-start" }}
+              alignSelf="flex-start"
               variant="ghost"
             >
               Cancel
@@ -450,7 +449,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
             disabled={disabled}
             icon="plus"
             onPress={() => setAdding(true)}
-            style={{ alignSelf: "flex-start" }}
+            alignSelf="flex-start"
             variant="outline"
           >
             Add title
@@ -462,7 +461,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
           disabled={disabled || findingMore}
           icon={findingMore ? "loading" : undefined}
           onPress={onFindMore}
-          style={{ alignSelf: "flex-start" }}
+          alignSelf="flex-start"
           variant="outline"
         >
           {findingMore ? "Finding more suggestions…" : "Find more suggestions"}

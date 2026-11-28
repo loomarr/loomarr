@@ -10,7 +10,6 @@ interface PodTimelineProps {
   matchLevel?: PodPoolDTOMatchLevel;
   era?: number;
   audience?: string;
-  className?: string;
   onPreview?: (entry: PodEntryDTO) => void;
 }
 

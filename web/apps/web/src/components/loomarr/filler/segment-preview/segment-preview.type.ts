@@ -26,7 +26,6 @@ interface SegmentPreviewProps {
   // The split-review Sheet already has an explicit opening gesture and owns the selected clip.
   // In that context render only the player, without a second thumbnail/toggle inside the panel.
   embedded?: boolean;
-  className?: string;
 }
 
 export type { SegmentPreviewProps };

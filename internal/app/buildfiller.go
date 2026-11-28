@@ -172,7 +172,7 @@ func buildSplitter(st records.Store, set resolved, layout cliplibrary.Layout, lo
 	tools := buildFillerMediaTools(set, recorder)
 
 	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
-	splitter := filler.NewSplitter(storeadapter.NewSplit(st, wake), tools, splitProvider, dir,
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, wake).Ports(), tools, splitProvider, dir,
 		func() time.Duration { return settings.FillerMinDuration.Get(set) }, newID, time.Now, log).
 		WithStorageGovernor(governor)
 	if imageService != nil {
@@ -397,7 +397,7 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 				Tools:    fillerTools,
 				Loudness: fillerTools,
 				Provider: visionProvider,
-				Taxa:     storeadapter.NewVision(st),
+				Taxa:     st,
 				ClipDir:  clipDir,
 				Budget: func() int {
 					if !settings.FillerVisionEnabled.Get(set) {

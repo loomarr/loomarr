@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/housekeeping"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
@@ -83,7 +84,7 @@ type foundationStore interface {
 
 // artworkStore is what the image service's owners and jobs read and write.
 type artworkStore interface {
-	store.ImageStore
+	clipstore.ImageStore
 	store.ChannelStore
 	store.ClipStore
 	store.TitleStore
@@ -94,7 +95,7 @@ type artworkStore interface {
 type watermarkStore interface {
 	store.ChannelStore
 	store.SettingStore
-	store.ImageStore
+	clipstore.ImageStore
 }
 
 // podStore is what pod assembly reads.

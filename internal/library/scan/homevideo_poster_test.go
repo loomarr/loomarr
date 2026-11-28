@@ -85,7 +85,7 @@ func TestKeptShowPosterFollowsItsMainFile(t *testing.T) {
 		t.Run(what, func(t *testing.T) {
 			h, _, id := keptTitle(t, episodes...)
 			h.im.Artwork = storePosters{h}
-			wanted := func() []librarystore.LibraryHomeVideoFrame {
+			wanted := func() []librarystore.LibraryFrameFile {
 				t.Helper()
 				frames, err := h.st.HomeVideosWithoutPoster(ctx)
 				if err != nil {

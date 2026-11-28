@@ -214,8 +214,9 @@ availability.
 
 **Off the ladder since #4409.** No screen rung is registered: a cut piece meets the same bar as a
 single downloaded ad (defects, language, transcript, vision), and a row at `screen` is skipped. The
-qualification runtime only ever held, so no child could air. The package and its stored evidence
-types remain until their retirement (#4414); what follows describes them as built.
+qualification runtime only ever held, so no child could air. The package, its `screen` stage and its
+stored evidence types are [staged, not wired](filler.md#staged-not-wired) (#4453); what follows
+describes them as built.
 
 Every materialized child is screened after its final playback derivative exists; a result over the
 parent span, a stream-copy cut or a preflight rendition cannot prove the bytes that will air.

@@ -13,7 +13,6 @@ interface ChannelCyclePreviewProps {
   // ⚠ Omitted ⇒ byte-identical to the previous behaviour (the saved GET). The draft path is
   // additive; a caller that passes nothing cannot tell this prop exists.
   draftPolicy?: ChannelPolicy;
-  className?: string;
 }
 
 export type { ChannelCyclePreviewProps };

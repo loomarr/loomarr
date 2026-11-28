@@ -7607,6 +7607,9 @@ components:
         folder:
           description: Where it sits, from its media folder's name down; group cards by it
           type: string
+        frame:
+          $ref: "#/components/schemas/ImageDTO"
+          description: A 16:9 frame of its main file; absent until one is taken, and for a file that can't be played
         item:
           $ref: "#/components/schemas/LibraryItemDTO"
         searched:
@@ -7622,6 +7625,10 @@ components:
     LibraryNeedFileDTO:
       additionalProperties: false
       properties:
+        lengthMillis:
+          description: How long it plays, in milliseconds; absent until its details give a length
+          format: int64
+          type: integer
         path:
           description: The file on this machine
           type: string

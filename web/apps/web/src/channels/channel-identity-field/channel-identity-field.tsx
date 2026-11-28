@@ -22,7 +22,6 @@ const ChannelIdentityField = ({
   validate,
   onSave,
   variant = "title",
-  className,
 }: ChannelIdentityFieldProps) => {
   const id = useId();
   const committed = String(value);
@@ -78,7 +77,7 @@ const ChannelIdentityField = ({
   const wraps = variant === "title" && narrow;
 
   return (
-    <Stack className={className} gap="1">
+    <Stack gap="1">
       <Stack align="center" direction="row" gap="inline">
         {/* 448 px at most from `sm` up; below it the row is the name's alone (#1785). */}
         <Stack

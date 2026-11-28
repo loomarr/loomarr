@@ -34,7 +34,6 @@ interface ProposalEditProps {
   renderFeedback?: (item: ProposalItem) => ReactNode;
   showNote?: boolean;
   disabled?: boolean;
-  className?: string;
 }
 
 export type { ProposalEditProps };

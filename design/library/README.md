@@ -67,7 +67,10 @@ The maintainer raised these in order; they amend decisions 23–28 and 34 of #21
 1. **Posters first.** The wall opens on the posters. Needs you is one line above them, with a
    count and Review, not a strip of cards.
 2. **The wall has a count, tabs, sort, genre and a letter rail.** The tabs are All, Movies, Shows
-   and Collections. The letter rail is on desktop only.
+   and Collections. The letter rail is on desktop only. On a phone the wall keeps one row, the
+   search and a "Filters" control that counts what narrows it. The tabs, sort, genre and the other
+   filters sit in a sheet that control opens, which also says how many titles they leave (A5
+   critique, #4476). This supersedes the inline rows in the phone mock.
 3. **Members browse read-only.** A member sees the wall and the title pages, with no Needs you, no
    Fix and no settings. Members have their own phone bar, with Library in it.
 4. **Needs you is grouped by folder, and the file name leads each card.** It has two tabs, Waiting

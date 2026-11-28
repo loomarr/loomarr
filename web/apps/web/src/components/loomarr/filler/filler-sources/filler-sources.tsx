@@ -134,7 +134,6 @@ const FillerSources = ({
   descriptions = [],
   error,
   now,
-  className,
 }: FillerSourcesProps) => {
   const childrenByProvider = new Map<string, typeof sources>();
   for (const source of sources) {
@@ -243,7 +242,7 @@ const FillerSources = ({
   };
 
   return (
-    <Stack className={className} gap="section">
+    <Stack gap="section">
       <Stack align="start" direction="row" gap="4" wrap>
         <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0}>
           <Text as="h2" strong textRole="cardLabel">

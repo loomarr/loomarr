@@ -13,6 +13,7 @@ import (
 
 // Fetch bridges the store → acquisition.FetchStore (auto-fetch, §10 V38b).
 type Fetch struct {
+	remoteStateReader
 	st records.Store
 	// fetchEvery is the GLOBAL poll interval a source's override resolves against (§10 V38c).
 	// A closure so it hot-applies — an operator changing it expects the next pass to honour it.
@@ -22,7 +23,7 @@ type Fetch struct {
 
 // NewFetch returns the auto-fetcher's store over st. fetchEvery and home are read on every pass.
 func NewFetch(st records.Store, fetchEvery func() time.Duration, home func() pod.Geography) Fetch {
-	return Fetch{st: st, fetchEvery: fetchEvery, home: home}
+	return Fetch{remoteStateReader: st, st: st, fetchEvery: fetchEvery, home: home}
 }
 
 func (a Fetch) ListFetchSources(ctx context.Context) ([]acquisition.FetchSource, error) {
@@ -58,10 +59,6 @@ func (a Fetch) CatalogPaths(ctx context.Context) ([]string, error) {
 		paths[i] = c.Path
 	}
 	return paths, nil
-}
-
-func (a Fetch) ListAcquisitionRemoteStates(ctx context.Context) (map[string]acquisition.ExistingRemoteState, error) {
-	return a.st.ListAcquisitionRemoteStates(ctx)
 }
 
 func (a Fetch) MarkFetched(ctx context.Context, id string, at time.Time) error {

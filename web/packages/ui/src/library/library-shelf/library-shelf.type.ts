@@ -24,7 +24,7 @@ interface LibraryShelfTitle {
   year?: number;
   /** False while some of its files' details aren't read yet: it shows as Getting ready. */
   ready: boolean;
-  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
+  /** Its artwork, drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
   /** It needs a look: a file can't be played, or an extra copy takes space. */
   attention?: boolean;

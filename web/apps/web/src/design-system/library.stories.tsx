@@ -166,6 +166,9 @@ const Loading: Story = {
   args: { admin: admin({ needsYou: 6 }), counts: undefined, loading: true, titles: [] },
 };
 
+// A library with no artwork imported: each poster draws its colour and monogram over its caption.
+const NoArtwork: Story = { args: { titles: TITLES.map(({ poster, ...title }) => title) } };
+
 // Recently added first: the order the mock's home videos are shown in.
 const RecentlyAdded: Story = { args: { sort: "recent", titles: [...TITLES].reverse() } };
 
@@ -220,7 +223,8 @@ const filtering: NonNullable<LibraryShelfProps["filtering"]> = {
 };
 
 const openFilters: Story["play"] = async ({ canvas, userEvent }) => {
-  await userEvent.click(canvas.getByRole("button", { name: /^More filters/ }));
+  // More filters from a tablet up; a phone's one Filters control, which opens the sheet.
+  await userEvent.click(canvas.getByRole("button", { name: /^(More filters|Filters)/ }));
 };
 
 // The disclosure open, with nothing chosen yet.
@@ -242,8 +246,9 @@ const severalFilters = {
 
 const SeveralFilters: Story = { args: { genres: GENRES, genre: "Drama", filtering: severalFilters } };
 
-// The phone: the disclosure stacked, with what is on under it.
+// The phone: the sheet open over the one line of search and Filters, with what is on under it.
 const FiltersPhone: Story = {
+  globals: { viewport: { value: "mobile2" } },
   tags: ["route"],
   args: { genres: GENRES, filtering: severalFilters },
   play: openFilters,
@@ -293,6 +298,9 @@ const NEEDS: LibraryNeed[] = [
     id: "90000811",
     kind: "movie",
     files: ["/media/movies/Paper.Kites.1997.1080p/Paper.Kites.1997.1080p.mkv"],
+    lengthMillis: 6_132_000,
+    bytes: 1_503_238_553,
+    frame: art("#2e4a5c"),
     best: {
       externalId: { namespace: "tmdb", value: "90000901" },
       kind: "movie",
@@ -321,7 +329,10 @@ const NEEDS: LibraryNeed[] = [
   {
     id: "90000812",
     kind: "series",
+    // No frame yet: the card draws an empty box.
     files: ["/media/tv/disc2/title_t01.mkv", "/media/tv/disc2/title_t02.mkv"],
+    lengthMillis: 1_512_000,
+    bytes: 734_003_200,
     others: [],
   },
 ];
@@ -784,6 +795,11 @@ const MemberHomeVideo: Story = {
   render: () => <LibraryTitle onBack={() => {}} title={homeVideoTitle} />,
 };
 
+// No backdrop: no band, with the actions and the title block on the page.
+const NoBackdrop: Story = {
+  render: () => <LibraryTitle fix={titleFixes} onBack={() => {}} title={memberSeries} />,
+};
+
 const NotInLibrary: Story = {
   render: () => <LibraryTitleMissing onBack={() => {}} />,
 };
@@ -1241,6 +1257,8 @@ export {
   NeedsPhone,
   NeedsYou,
   NewCollection,
+  NoArtwork,
+  NoBackdrop,
   NoMatch,
   NothingNeedsYou,
   NotInLibrary,

@@ -204,7 +204,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		deps.owner.goRunAfterBuild(notice.Run)
 	}
 	if deps.images != nil {
-		posters := &homePosters{store: st, images: deps.images, busy: deps.watched, log: deps.log, now: time.Now,
+		posters := &titleFrames{store: st, images: deps.images, busy: deps.watched, log: deps.log, now: time.Now,
 			still: hls.FFmpegSourceStill(deps.ffmpegPath, playout.TonemapperFor(deps.ffmpegPath), deps.processes)}
 		deps.owner.goRunAfterBuild(posters.Run)
 	}

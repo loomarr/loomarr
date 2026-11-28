@@ -190,14 +190,7 @@ const CEILING_OPTIONS: { value: string; label: string }[] = [
   { value: "R", label: "R" },
 ];
 
-const ChannelPolicyFields = ({
-  policy,
-  onChange,
-  className,
-  show,
-  strategy,
-  cycle,
-}: ChannelPolicyFieldsProps) => {
+const ChannelPolicyFields = ({ policy, onChange, show, strategy, cycle }: ChannelPolicyFieldsProps) => {
   // The mode that will actually run, for the consequence line: the policy's own choice, else
   // what the scheduler resolved for "use channel strategy" (cycle.ordering), else the strategy.
   const effectiveOrdering = policy.ordering || cycle?.ordering || strategy || "";
@@ -227,7 +220,7 @@ const ChannelPolicyFields = ({
   return (
     // A responsive 2-column field grid (was a 1-wide stack): the Selects and single inputs sit
     // side by side, while the dates editor spans the full width. gap-x for columns, gap-y for rows.
-    <Grid className={className} columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
+    <Grid columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
       {/* Ordering — empty string means "inherit the channel's Strategy"; the select names that
           choice "inherit". */}
       {showOrdering && (
@@ -439,7 +432,7 @@ const ChannelPolicyFields = ({
             <Action
               layout="text"
               onPress={() => setAxesRequested(false)}
-              style={{ alignSelf: "flex-start" }}
+              alignSelf="flex-start"
               variant="ghost"
             >
               Use a single era

@@ -2,60 +2,31 @@ package storeadapter
 
 import (
 	"context"
-	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/acquisition"
-	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // Upkeep bridges the store to the upkeep job (#3855), which lets go of fetched rejects.
-type Upkeep struct{ st records.Store }
+type Upkeep struct {
+	upkeepRows
+	st records.Store
+}
 
 // NewUpkeep returns the upkeep job's store over st.
-func NewUpkeep(st records.Store) Upkeep { return Upkeep{st: st} }
+func NewUpkeep(st records.Store) Upkeep { return Upkeep{upkeepRows: st, st: st} }
 
-func (a Upkeep) ListClipPipelines(ctx context.Context, f pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error) {
-	return a.st.ListClipPipelines(ctx, f)
-}
-
-func (a Upkeep) RetireRejectedClip(ctx context.Context, hash string, rejectedBy, at time.Time) (bool, error) {
-	return a.st.RetireRejectedClip(ctx, hash, rejectedBy, at)
-}
-
-func (a Upkeep) RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error) {
-	return a.st.RetireReadyClip(ctx, hash, at)
-}
-
-func (a Upkeep) ListSettledReels(ctx context.Context) ([]string, error) {
-	return a.st.ListSettledReels(ctx)
-}
-
-func (a Upkeep) RetireSettledReel(ctx context.Context, hash string, at time.Time) (bool, error) {
-	return a.st.RetireSettledReel(ctx, hash, at)
-}
-
+// GetClip reports an absent clip as not found rather than as an error.
 func (a Upkeep) GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error) {
-	return NewSync(a.st).GetClip(ctx, hash)
+	return findClip(ctx, a.st, hash)
 }
 
+// ListReadyClips is the playable catalog.
 func (a Upkeep) ListReadyClips(ctx context.Context) ([]clipstore.Clip, error) {
 	return a.st.ListClips(ctx, clipstore.ClipFilter{})
 }
 
-func (a Upkeep) GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
-	return a.st.GetClipPipeline(ctx, hash)
-}
-
-func (a Upkeep) AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error) {
-	return a.st.AcquisitionArtifactForClip(ctx, mediaPath, clipHash)
-}
-
-func (a Upkeep) AcquisitionHasArtifacts(ctx context.Context, acquisitionID string) (bool, error) {
-	return a.st.AcquisitionHasArtifacts(ctx, acquisitionID)
-}
-
+// ListClipPaths is every catalogued path, held, composite and removed clips included.
 func (a Upkeep) ListClipPaths(ctx context.Context) ([]string, error) {
 	return NewDefects(a.st).ListClipPaths(ctx)
 }

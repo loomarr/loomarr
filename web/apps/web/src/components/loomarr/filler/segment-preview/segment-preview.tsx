@@ -33,7 +33,6 @@ const SegmentPreview = ({
   onOpenChange,
   autoPlay,
   embedded,
-  className,
 }: SegmentPreviewProps) => {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -73,7 +72,7 @@ const SegmentPreview = ({
 
   if (embedded) {
     return (
-      <div className={className} style={{ width: "100%" }} onErrorCapture={() => setFailedSource(sourceKey)}>
+      <div style={{ width: "100%" }} onErrorCapture={() => setFailedSource(sourceKey)}>
         {player}
       </div>
     );
@@ -85,7 +84,6 @@ const SegmentPreview = ({
     // tile and the player's own — this wrapper only listens.
     // biome-ignore lint/a11y/noStaticElementInteractions: keyboard-only listener, see above.
     <div
-      className={className}
       style={{ display: "contents" }}
       onKeyDown={(e) => {
         // ⚠ On the WRAPPER, not the panel. The tile and the panel are siblings, so a handler on

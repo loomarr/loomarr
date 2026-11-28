@@ -15,7 +15,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/split"
-	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -57,14 +56,38 @@ var ErrConditioningOwnershipMismatch = errors.New("filler: conditioning publicat
 // and an operator can confirm an edited list. Detection alone is never trusted, because its quality
 // is a property of the source (measured 69–100%, plan §6.4).
 
-// SplitStore is the slice of the store the splitter needs (mirrors sync.go's
-// pattern — declared here so filler doesn't import store; app bridges them).
-type SplitStore interface {
+// The splitter reaches storage through four ports, one per kind of record it touches. They are
+// declared here so filler doesn't import the store; app bridges them.
+
+// SplitPorts is the storage the splitter needs. The four ports share no method names, so the
+// splitter calls through the embedded fields directly.
+type SplitPorts struct {
+	SplitCatalog
+	SplitFingerprints
+	SplitChildMeta
+	SplitProposals
+}
+
+// SplitCatalog is the clip rows a split reads and publishes.
+type SplitCatalog interface {
 	GetClip(ctx context.Context, id string) (clipstore.Clip, bool, error)
 	ListClips(ctx context.Context) ([]clipstore.Clip, error) // the dedup candidate set
+	UpsertClip(ctx context.Context, c clipstore.Clip) error
+	// SetClipComposite marks the parent as a composite on confirm (§10 V45) — the parent is KEPT,
+	// not deleted, so its segments can point back at it and a re-split stays possible.
+	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
+	// ReleaseCompositeHolds exposes the fully resolved parent as a non-airable lineage container.
+	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
+}
+
+// SplitFingerprints is the creative-fingerprint cache duplicate detection reads and fills.
+type SplitFingerprints interface {
 	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
-	UpsertClip(ctx context.Context, c clipstore.Clip) error
+}
+
+// SplitChildMeta is what a published child carries besides its clip row.
+type SplitChildMeta interface {
 	// RecordFillerEraObservation carries a segment's guessed era onto its child as an uncited
 	// Context suggestion (#2323).
 	RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error
@@ -72,23 +95,13 @@ type SplitStore interface {
 	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
 	// UpsertClipPipeline durably enrolls a reviewed child before its media name is published.
 	UpsertClipPipeline(ctx context.Context, row pipelinestate.ClipPipeline) error
-	// ReplaceSplitChildren atomically makes keepHashes the airable generation for a parent.
-	// Superseded rows are tombstoned, never deleted; channel-pinned children are retained.
-	ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error)
-	// SetClipComposite marks the parent as a composite on confirm (§10 V45) — the parent is KEPT,
-	// not deleted, so its segments can point back at it and a re-split stays possible.
-	SetClipComposite(ctx context.Context, hash string, composite bool, at time.Time) error
-	// ReleaseCompositeHolds exposes the fully resolved parent as a non-airable lineage container.
-	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
-	// MarkPipelineComplete makes full confirmation the terminal owner of the parent pipeline row.
-	// It belongs inside the confirmation saga so the application cannot fail after commit.
-	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
+}
+
+// SplitProposals is the reviewed proposal's lifecycle, from detection to confirmation.
+type SplitProposals interface {
 	// CompleteSplitConfirmation atomically consumes one fully reviewed proposal, transitions its
 	// retained parent and replacement pipelines, and selects the replacement generation.
 	CompleteSplitConfirmation(ctx context.Context, completion SplitCompletion) (int, error)
-	// ListTaxa is the taxonomy path (§10 V45a): classify serves this vocabulary to the model and
-	// grounds the answer against it.
-	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 	UpsertSplitProposal(ctx context.Context, p SplitProposal) error
 	ListSplitProposals(ctx context.Context) ([]SplitProposal, error)
 	GetSplitProposal(ctx context.Context, id string) (SplitProposal, error)
@@ -127,7 +140,7 @@ type SplitPartialCompletion struct {
 // Unsplittable and tags empty) — an install without an LLM still gets the
 // coarse split, which is the honest degradation.
 type Splitter struct {
-	store    SplitStore
+	store    SplitPorts
 	tools    tools.MediaTools
 	provider llm.Provider
 	dropDir  string // FILLER_DIR — clip paths are relative to it (§10)
@@ -160,7 +173,7 @@ type SegmentLanguagePolicy struct {
 
 // NewSplitter builds the splitter. dropDir is the filler drop-folder root. minClipDuration may be
 // nil, which leaves MinSegmentMs as the only floor.
-func NewSplitter(store SplitStore, tools tools.MediaTools, provider llm.Provider, dropDir string, minClipDuration func() time.Duration, newID func() string, now func() time.Time, log *slog.Logger) *Splitter {
+func NewSplitter(store SplitPorts, tools tools.MediaTools, provider llm.Provider, dropDir string, minClipDuration func() time.Duration, newID func() string, now func() time.Time, log *slog.Logger) *Splitter {
 	if now == nil {
 		now = time.Now
 	}
