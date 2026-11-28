@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import type { PropsWithChildren } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -44,8 +44,13 @@ describe("useArrsFromRequester", () => {
         return HttpResponse.json({ arrs: [] });
       }),
     );
-    renderHook(() => useArrsFromRequester({ missing: false }), { wrapper });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(asks).toBe(0);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderHook(() => useArrsFromRequester({ missing: false }), { wrapper });
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(asks).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
