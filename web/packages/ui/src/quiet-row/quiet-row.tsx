@@ -51,6 +51,8 @@ interface QuietRowProps {
    * the row and the lower third together passes `false`; the row stays in the dark theme.
    */
   ownInk?: boolean;
+  /** Web: a pointer pressed one of the row's controls; a screen lets go of focus held beside it. */
+  onPointerPress?: () => void;
   paused?: boolean;
   ref?: Ref<QuietRowHandle>;
 }
@@ -58,6 +60,8 @@ interface QuietRowProps {
 interface QuietRowHandle {
   /** Moves focus to the control at the head of the row. */
   focusHead: () => void;
+  /** Takes focus off the row's control that holds it, if one does. */
+  releaseFocus: () => void;
 }
 
 const KEYS: Record<QuietRowDevice, readonly QuietRowKey[]> = {
@@ -103,8 +107,6 @@ const faceOf = (
   }
 };
 
-const keepFocus = (event: { preventDefault: () => void }) => event.preventDefault();
-
 const keysFor = ({ behindLive, device, paused }: QuietRowProps): readonly QuietRowKey[] =>
   device === "tv" && behindLive && !paused ? ["live", ...KEYS.tv] : KEYS[device];
 
@@ -114,7 +116,17 @@ const keysFor = ({ behindLive, device, paused }: QuietRowProps): readonly QuietR
  * presses and opens nothing.
  */
 const QuietRow = (props: QuietRowProps) => {
-  const { device, group, listOpen = false, onFocusKey, onPress, openKey, ownInk = true, ref } = props;
+  const {
+    device,
+    group,
+    listOpen = false,
+    onFocusKey,
+    onPointerPress,
+    onPress,
+    openKey,
+    ownInk = true,
+    ref,
+  } = props;
   const controls = useRef(new Map<QuietRowKey, RingedPressableHandle>());
   const focusedKey = useRef<QuietRowKey | undefined>(undefined);
   const keyboardKey = useRef<QuietRowKey | undefined>(undefined);
@@ -154,7 +166,12 @@ const QuietRow = (props: QuietRowProps) => {
     orphaned.current = false;
     if (keys[0]) focusKey(keys[0]);
   });
-  useImperativeHandle(ref, () => ({ focusHead: () => keys[0] && focusKey(keys[0]) }));
+  // Lets go of the focus a control of the row holds, and of nothing outside the row.
+  const releaseFocus = () => {
+    const held = focusedKey.current && controls.current.get(focusedKey.current);
+    (held as { blur?: () => void } | undefined)?.blur?.();
+  };
+  useImperativeHandle(ref, () => ({ focusHead: () => keys[0] && focusKey(keys[0]), releaseFocus }));
 
   const shared = (key: QuietRowKey) => ({
     onBlur: () => {
@@ -176,8 +193,13 @@ const QuietRow = (props: QuietRowProps) => {
       }
     },
     // A pointer never takes focus here, so a key pressed after a click is the picture's key and
-    // draws no ring on a control the viewer never moved to.
-    onMouseDown: keepFocus,
+    // draws no ring on a control the viewer never moved to. A pointer press also takes the
+    // keyboard's focus off whichever control of the row held it, and says so to the screen.
+    onMouseDown: () => {
+      releaseFocus();
+      onPointerPress?.();
+    },
+    pointerTakesNoFocus: true,
     onPress: () => onPress(key),
     ref: (node: RingedPressableHandle | null) => {
       if (node) controls.current.set(key, node);

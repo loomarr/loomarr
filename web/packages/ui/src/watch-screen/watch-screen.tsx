@@ -7,12 +7,12 @@ import {
   useReducedMotionPreference,
   VisuallyHidden,
 } from "@loomarr/design-system";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Animated, Platform } from "react-native";
 
 import { ChannelList, type ChannelListHandle } from "../channel-list";
 import { FirstRunHint } from "../first-run-hint";
-import { LowerThird, type LowerThirdState } from "../lower-third";
+import { LowerThird, type LowerThirdHandle, type LowerThirdState } from "../lower-third";
 import { QuietRow, type QuietRowHandle, type QuietRowKey } from "../quiet-row";
 import { TuneBars, TuneStatic } from "../tune-static";
 import { WatchScrim } from "../watch-scrim";
@@ -98,8 +98,9 @@ const WatchScreen = <C extends LineupChannel>({
   }, [send, showing]);
 
   // Whether the last thing to happen inside the screen was a key, so the model knows a list that a
-  // key closed from one a pointer closed.
-  const byKey = useRef(false);
+  // key closed from one a pointer closed. Away from the web every press is a remote's or a key's.
+  const byKey = useRef(Platform.OS !== "web");
+  const lowerThird = useRef<LowerThirdHandle>(null);
 
   // Focus goes where the model hands it: onto the list's cursor, or back to Channels.
   const handOff = state.handOff;
@@ -134,7 +135,10 @@ const WatchScreen = <C extends LineupChannel>({
       onGoLive={() => send({ control: "live", type: "press" })}
       onGoLiveDropped={() => quietRow.current?.focusHead()}
       onGoLiveFocus={(focused) => send({ control: focused ? "live" : undefined, type: "focus" })}
+      // A pointer press on Go live takes the keyboard's ring off the quiet row.
+      onPointerPress={() => quietRow.current?.releaseFocus()}
       ownInk={false}
+      {...(controls ? { ref: lowerThird } : {})}
       state={thirdState(channel)}
       {...(channel.decade === undefined ? {} : { decade: channel.decade })}
     />
@@ -151,6 +155,16 @@ const WatchScreen = <C extends LineupChannel>({
     : found
       ? [`${found.number} ${found.name}`, found.onNow].filter(Boolean).join(", ")
       : "No channel or programme matches";
+
+  // The lower third comes back under a pointer that has not moved when the list closes, and no
+  // pointer-enter comes with it, so on arrival it asks whether the pointer is already over it.
+  const holdIfHovered = useCallback(
+    (node: unknown) => {
+      const element = node as { matches?: (selector: string) => boolean } | null;
+      if (element?.matches?.(":hover")) send({ held: true, region: "lowerThird", type: "pointerHold" });
+    },
+    [send],
+  );
 
   // The pointer resting on the controls holds the screen awake.
   const holdOn = (region: "lowerThird" | "quietRow") =>
@@ -220,7 +234,9 @@ const WatchScreen = <C extends LineupChannel>({
             testID="watch-lower-third"
             {...holdOn("lowerThird")}
           >
-            {third(watched, true)}
+            <Surface backgroundColor="transparent" borderWidth={0} ref={holdIfHovered}>
+              {third(watched, true)}
+            </Surface>
           </Layer>
         ) : null}
 
@@ -252,6 +268,8 @@ const WatchScreen = <C extends LineupChannel>({
             listOpen={view.listOpen}
             muted={muted ?? false}
             onFocusKey={(key) => send({ control: key, type: "focus" })}
+            // A pointer press on the row takes the keyboard's ring off Go live.
+            onPointerPress={() => lowerThird.current?.releaseFocus()}
             onPress={(key) => send({ control: key, type: "press" })}
             ownInk={false}
             paused={view.paused}

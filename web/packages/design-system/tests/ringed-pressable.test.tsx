@@ -122,6 +122,22 @@ describe("RingedPressable", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
+  it("takes no focus from a pointer when asked, and still presses and still takes the keyboard's", async () => {
+    const onPress = vi.fn();
+    const onMouseDown = vi.fn();
+    draw({ onMouseDown, onPress, pointerTakesNoFocus: true });
+    await userEvent.click(pause());
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(onMouseDown).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(document.body);
+    await userEvent.tab();
+    expect(document.activeElement).toBe(pause());
+    cleanup();
+    draw();
+    await userEvent.click(pause());
+    expect(document.activeElement).toBe(pause());
+  });
+
   it("lays its face from the leading edge across the whole width when asked", () => {
     draw({ align: "start", fill: true });
     expect(getComputedStyle(pause()).width).toBe("100%");

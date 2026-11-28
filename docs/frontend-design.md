@@ -626,8 +626,9 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
   no pointer on the controls, not paused and no digits pending, the lower third, the quiet row and
   the hint rest. Focus a pointer gave holds nothing. A key or pointer movement wakes the screen, and
   the key that wakes it also does its job. Nothing that holds keyboard focus, the pointer or an open
-  layer goes quiet on a timer. Opening the list lets go of what the pointer and focus held on the
-  lower third, which the list takes the place of; a pointer resting on the quiet row holds on. A
+  layer goes quiet on a timer. Whenever the lower third is not drawn (the list takes its place, or
+  the channel leaves the lineup), what the pointer and focus held on it is let go; a pointer resting
+  on the quiet row holds on. A lower third drawn again under a still pointer holds the screen awake. A
   list that a key closes gives focus back to the Channels control that opened it; a pointer that
   closes it leaves focus alone.
 - **Digits tune direct.** Typed digits (as many as the longest channel number has) replace the
@@ -656,7 +657,7 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
 - **One amber ring** at any moment, on the quiet row, the lower third's Go live or the list's cursor;
   the list's rows, tabs and buttons are `RingedPressable`, so a mouse click leaves no keyboard ring.
   The quiet row's controls and Go live take no focus from a pointer, so a key pressed after a click
-  is the picture's key. With the list open, the cursor's fill stays visible on the pinned channel.
+  is the picture's key, and a pointer press on either takes the keyboard's ring off both. With the list open, the cursor's fill stays visible on the pinned channel.
 - **Find** announces the result under its cursor through a polite live region: the search field has
   no `aria-activedescendant`, so the result cannot be carried by the field itself.
 - **The model asks; the caller does.** It emits requests (tune this channel, pause, resume, go live,

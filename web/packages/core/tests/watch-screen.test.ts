@@ -717,6 +717,21 @@ describe("what holds the screen awake", () => {
     expect(s.view().awake).toBe(false);
   });
 
+  it("lets go of the lower third's holds when the watched channel leaves the lineup", () => {
+    const channels = [...CHANNELS];
+    const s = screen({}, channels);
+    s.send({ held: true, region: "lowerThird", type: "pointerHold" });
+    s.send({ control: "live", type: "focus" });
+    s.send({ held: true, region: "quietRow", type: "pointerHold" });
+    // The channel on screen goes from the lineup, and its lower third with it.
+    channels.splice(0, 1);
+    s.send({ type: "pointerMove" });
+    expect(s.state).toMatchObject({ focus: undefined, pointerOn: ["quietRow"] });
+    s.send({ held: false, region: "quietRow", type: "pointerHold" });
+    s.wait(WATCH_REST_MS);
+    expect(s.view().awake).toBe(false);
+  });
+
   it("keeps the pointer's hold on the quiet row through the list opening and closing", () => {
     const s = screen();
     s.send({ held: true, region: "quietRow", type: "pointerHold" }, 0);

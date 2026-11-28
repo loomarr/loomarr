@@ -4,7 +4,7 @@ import { idleTune, tuneView } from "@loomarr/core/tune";
 import { type WatchRequest, watchKeyOf } from "@loomarr/core/watch-screen";
 import { act, cleanup, fireEvent, renderUi, screen, userEvent } from "@loomarr/test-support";
 import { useEffect } from "react";
-import { Text } from "react-native";
+import { Platform, Text } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useWatchScreen, WatchScreen } from "../index";
@@ -107,6 +107,75 @@ const restedAfter = (ms: number) => {
   });
   return screen.queryByRole("note") === null;
 };
+
+describe("WatchScreen and focus a pointer meets", () => {
+  it("takes the keyboard's ring off Channels when the pointer presses Mute", () => {
+    vi.useFakeTimers();
+    keyboardFocus();
+    renderUi(<Harness hintSeen={false} />);
+    act(() => channelsControl().focus());
+    expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
+    click(screen.getByRole("button", { name: "Mute (M)" }));
+    expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.pointerLeave(screen.getByTestId("watch-quiet-row"));
+    expect(restedAfter(5000)).toBe(true);
+    key(" ", document.body);
+    expect(requests.mock.calls.map(([request]) => request.type)).toEqual(["mute", "pause"]);
+    requests.mockClear();
+  });
+
+  it("takes the keyboard's ring off Go live when the pointer presses the quiet row", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    keyboardFocus();
+    renderUi(<Harness />);
+    key(" ", document.body);
+    vi.setSystemTime(Date.now() + 5000);
+    key(" ", document.body);
+    const goLive = screen.getByRole("button", { name: "Go live" });
+    act(() => goLive.focus());
+    expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
+    click(screen.getByRole("button", { name: "Mute (M)" }));
+    expect(document.activeElement).toBe(document.body);
+    expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+    requests.mockClear();
+  });
+
+  it("holds awake when the lower third comes back under a pointer that is already on it", () => {
+    vi.useFakeTimers();
+    pointerFocus();
+    // The browser's answer for where the pointer is: over the lower third.
+    const matches = Element.prototype.matches;
+    Element.prototype.matches = new Proxy(matches, {
+      apply: (original, element: Element, args: [string]) =>
+        args[0] === ":hover"
+          ? Boolean(element.closest('[data-testid="watch-lower-third"]'))
+          : Reflect.apply(original, element, args),
+    });
+    renderUi(<Harness hintSeen={false} />);
+    click(channelsControl());
+    click(channelsControl());
+    expect(listbox()).toBeNull();
+    fireEvent.pointerLeave(screen.getByTestId("watch-quiet-row"));
+    expect(restedAfter(60_000)).toBe(false);
+  });
+
+  it("hands focus back to Channels away from the web, where every press is a remote's", () => {
+    const os = Platform.OS;
+    (Platform as { OS: string }).OS = "android";
+    try {
+      renderUi(<Harness />);
+      fireEvent.click(channelsControl());
+      expect(listbox()).not.toBeNull();
+      // OK on the watched channel closes the list.
+      fireEvent.click(screen.getByRole("option", { selected: true }));
+      expect(listbox()).toBeNull();
+      expect(document.activeElement).toBe(channelsControl());
+    } finally {
+      (Platform as { OS: string }).OS = os;
+    }
+  });
+});
 
 describe("WatchScreen at rest", () => {
   it("rests after a click on Mute, the pointer moving onto the picture, and a key", () => {

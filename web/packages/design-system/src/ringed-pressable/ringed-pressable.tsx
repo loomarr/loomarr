@@ -29,6 +29,11 @@ interface RingedPressableProps {
   highlighted?: boolean;
   /** Web: the DOM mousedown; `preventDefault` there keeps focus where it is. Native ignores it. */
   onMouseDown?: (event: { preventDefault: () => void }) => void;
+  /**
+   * Web: a pointer press takes no focus, so focus stays where it was and a key pressed after a
+   * click is not the control's. Keyboard and remote focus are unchanged. Off unless asked for.
+   */
+  pointerTakesNoFocus?: boolean;
   /** Called beside the control's own hover drawing, never in place of it. */
   onHoverIn?: () => void;
   onHoverOut?: () => void;
@@ -88,6 +93,7 @@ const RingedPressable = ({
   onKeyboardFocus,
   onMouseDown,
   onPress,
+  pointerTakesNoFocus = false,
   ref,
   role = "button",
   selected,
@@ -145,7 +151,14 @@ const RingedPressable = ({
       role={role}
       style={fill ? fillOutline : noOutline}
       {...(tabIndex === undefined ? {} : { tabIndex })}
-      {...(Platform.OS === "web" && onMouseDown ? ({ onMouseDown } as object) : {})}
+      {...(Platform.OS === "web" && (onMouseDown || pointerTakesNoFocus)
+        ? ({
+            onMouseDown: (event: { preventDefault: () => void }) => {
+              if (pointerTakesNoFocus) event.preventDefault();
+              onMouseDown?.(event);
+            },
+          } as object)
+        : {})}
     >
       {/* The target is `size` high; the face inside it may be drawn shorter. */}
       <Surface

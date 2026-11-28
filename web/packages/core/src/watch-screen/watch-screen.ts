@@ -98,10 +98,39 @@ const LIST_KEYS: Record<string, ChannelListEvent> = {
 const MENU_KEYS: Record<string, WatchMenuName> = { "?": "shortcuts", a: "audio", c: "subtitles" };
 
 /**
+ * The lower third is drawn while the list is closed and the watched channel is in the lineup. When
+ * it is not drawn it went with no pointer-leave or blur (the list took its place, or the channel
+ * left the lineup), so what the pointer and focus held on it is let go. The quiet row stays, and
+ * so does a pointer resting on it.
+ */
+const withoutHiddenThird = <C extends LineupChannel>(
+  state: WatchScreenState,
+  lineup: ChannelLineup<C>,
+): WatchScreenState => {
+  const drawn = !state.list.open && lineup.channels.some((channel) => channel.id === state.watchedId);
+  const held = state.pointerOn.includes("lowerThird") || state.focus === "live";
+  if (drawn || !held) return state;
+  return {
+    ...state,
+    focus: state.focus === "live" ? undefined : state.focus,
+    pointerOn: state.pointerOn.filter((region) => region !== "lowerThird"),
+  };
+};
+
+/**
  * The watching screen's interaction model. Flipping tunes at once; the list only looks until OK or
  * a click. It asks for every effect in `requests` and performs none.
  */
 const watchScreenReduce = <C extends LineupChannel>(
+  state: WatchScreenState,
+  event: WatchScreenEvent,
+  lineup: ChannelLineup<C>,
+): WatchScreenStep => {
+  const step = reduceStep(state, event, lineup);
+  return { ...step, state: withoutHiddenThird(step.state, lineup) };
+};
+
+const reduceStep = <C extends LineupChannel>(
   state: WatchScreenState,
   event: WatchScreenEvent,
   lineup: ChannelLineup<C>,
@@ -186,22 +215,10 @@ const watchScreenReduce = <C extends LineupChannel>(
     return step.tune ? tuneTo(next, step.tune) : stay(next);
   };
 
-  // The open list takes the lower third's place, which leaves with no pointer-leave or blur, so
-  // what the pointer and focus held there is let go here. The quiet row stays, and so does a
-  // pointer resting on it.
-  const opened = (s: WatchScreenState): WatchScreenState =>
-    s.list.open
-      ? s
-      : {
-          ...s,
-          focus: s.focus === "live" ? undefined : s.focus,
-          pointerOn: s.pointerOn.filter((region) => region !== "lowerThird"),
-        };
-
   const openList = (s: WatchScreenState, fromControl: boolean): WatchScreenStep => ({
     requests: [],
     state: {
-      ...opened(s),
+      ...s,
       list: channelListReduce(s.list, { type: "open" }, lineup).state,
       listFromControl: fromControl,
     },
@@ -211,7 +228,7 @@ const watchScreenReduce = <C extends LineupChannel>(
     s.layout === "tv"
       ? stay(s)
       : stay({
-          ...opened(s),
+          ...s,
           list: channelListReduce(s.list, { query: "", type: "find" }, lineup).state,
           listFromControl: s.list.open ? s.listFromControl : false,
         });

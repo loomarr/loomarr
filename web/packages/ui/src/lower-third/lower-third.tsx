@@ -9,13 +9,18 @@ import {
   ThemeScope,
   VisuallyHidden,
 } from "@loomarr/design-system";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef } from "react";
 
 import { focusHost } from "../focus-host";
 import { PictureInk } from "../picture-ink";
 import type { QuietRowDevice } from "../quiet-row";
 import { Box, Line } from "./layout";
 import { behindWords, type LowerThirdState, summaryOf, wholeMinutes } from "./summary";
+
+interface LowerThirdHandle {
+  /** Takes focus off Go live if it holds it. */
+  releaseFocus: () => void;
+}
 
 interface LowerThirdProps {
   channelName: string;
@@ -44,6 +49,9 @@ interface LowerThirdProps {
   ownInk?: boolean;
   /** An upright phone's More. */
   onMore?: () => void;
+  /** Web: a pointer pressed Go live; a screen lets go of focus held beside it. */
+  onPointerPress?: () => void;
+  ref?: Ref<LowerThirdHandle>;
   /** An upright phone's Pause, or Play while paused. */
   onTogglePause?: () => void;
   state: LowerThirdState;
@@ -86,6 +94,8 @@ const LowerThird = ({
   onGoLiveFocus,
   onMore,
   onTogglePause,
+  onPointerPress,
+  ref,
   ownInk = true,
   state,
 }: LowerThirdProps) => {
@@ -101,6 +111,12 @@ const LowerThird = ({
   const goLiveFocused = useRef(false);
   const orphaned = useRef(false);
   const pauseControl = useRef<RingedPressableHandle>(null);
+  const goLiveControl = useRef<RingedPressableHandle>(null);
+  // Lets go of the focus Go live holds, and of nothing else.
+  const releaseFocus = () => {
+    if (goLiveFocused.current) (goLiveControl.current as { blur?: () => void } | null)?.blur?.();
+  };
+  useImperativeHandle(ref, () => ({ releaseFocus }));
   if (!goLive && goLiveFocused.current) {
     orphaned.current = true;
     goLiveFocused.current = false;
@@ -209,9 +225,12 @@ const LowerThird = ({
                   goLiveFocused.current = true;
                 }}
                 {...(onGoLiveFocus ? { onKeyboardFocus: onGoLiveFocus } : {})}
-                // A pointer takes no focus, so a key after a click is the picture's.
-                onMouseDown={(event) => event.preventDefault()}
+                // A pointer takes no focus, so a key after a click is the picture's, and a press
+                // takes the keyboard's focus off the controls beside it.
+                onMouseDown={() => onPointerPress?.()}
                 onPress={onGoLive}
+                pointerTakesNoFocus
+                ref={goLiveControl}
                 size={touch ? 44 : 28}
                 // A desktop's key for it: the live edge is the end of what has aired.
                 tip={device === "full" || device === "window" ? "Go live (End)" : undefined}
@@ -263,5 +282,5 @@ const LowerThird = ({
   return ownInk ? <PictureInk edge="side">{body}</PictureInk> : <ThemeScope theme="dark">{body}</ThemeScope>;
 };
 
-export type { LowerThirdProps };
+export type { LowerThirdHandle, LowerThirdProps };
 export { LowerThird };

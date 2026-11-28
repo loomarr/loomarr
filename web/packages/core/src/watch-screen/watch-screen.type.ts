@@ -114,7 +114,6 @@ type WatchScreenEvent =
   | { type: "press"; control: WatchControl; at: number }
   | { type: "pictureClick"; at: number }
   | { type: "pictureDoubleClick"; at: number }
-  /** What the channel list reported. */
   /**
    * What the channel list reported. `fromKey` says a key caused it, so a list that a key closes
    * gives focus back to the Channels control that opened it; a pointer's close leaves focus alone.

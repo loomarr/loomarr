@@ -66,10 +66,6 @@ const pointOf = (event: GestureResponderEvent) => {
   return { x: native.pageX ?? native.clientX ?? 0, y: native.pageY ?? native.clientY ?? 0 };
 };
 
-// A pointer never takes focus, so the amber ring is the keyboard's and remote's alone and no press
-// scrolls the list under the pointer.
-const keepFocus = (event: { preventDefault: () => void }) => event.preventDefault();
-
 /** A box with no look of its own. */
 const Bare = (props: ComponentProps<typeof Surface>) => (
   <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} {...props} />
@@ -336,7 +332,9 @@ const ChannelList = <C extends LineupChannel>({
       setHovered(undefined);
       look(undefined);
     },
-    onMouseDown: keepFocus,
+    // A pointer never takes focus, so the amber ring is the keyboard's and remote's alone and no
+    // press scrolls the list under the pointer.
+    pointerTakesNoFocus: true,
     onPress: press(channel.id),
     ref: (isRow ? rowRef(channel.id) : undefined) as never,
     role: "option" as const,
@@ -424,7 +422,6 @@ const ChannelList = <C extends LineupChannel>({
         cursor={cursor}
         group={group}
         onEvent={onEvent}
-        onMouseDown={keepFocus}
         query={query}
         tabRef={(kind) => (node) => {
           if (node) tabs.current.set(kind, node);
