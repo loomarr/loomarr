@@ -260,14 +260,17 @@ func TestPreviewEmptyCatalogIsNotAnError(t *testing.T) {
 
 // Internal playout owns local file paths and never needs a Tunarr program uuid. This is the
 // exact media-server-only shape that decides whether reconcile may materialize break gaps.
-func TestHasPool_LocalClipNeedsNoTunarrProgramID(t *testing.T) {
+func TestPlayableDuration_LocalClipNeedsNoTunarrProgramID(t *testing.T) {
 	adapter := pod.NewAdapter(stubCatalog{clips: []pod.Clip{{
 		Hash: "local", Path: "commercials/local.mp4", Name: "Local ad",
 		Role: pod.Commercial, Era: 1992, Audience: pod.General, DurationMs: 30_000,
 	}}}, nil, nil, discardLogger())
 
-	if !adapter.HasPool(context.Background(), "internal", 42, pod.Selection{}) {
-		t.Fatal("local playable clip was treated as no filler pool without a Tunarr uuid")
+	if got := adapter.PlayableDurationMs(context.Background(), "internal", 42, pod.Selection{}); got <= 0 {
+		t.Fatalf("local playable clip has %d ms of playable media without a Tunarr uuid", got)
+	}
+	if ids := adapter.TunarrFillerIDs(context.Background(), "internal", 42, pod.Selection{}); len(ids) != 0 {
+		t.Fatalf("Tunarr filler ids = %v; local-only clip must not fabricate a remote uuid", ids)
 	}
 	if ids, ok := adapter.BuildFillerList(context.Background(), "internal", 42, pod.Selection{}); ok || len(ids) != 0 {
 		t.Fatalf("Tunarr filler list = %v, %v; local-only clip must not fabricate a remote uuid", ids, ok)

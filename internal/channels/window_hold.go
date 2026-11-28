@@ -29,16 +29,17 @@ import (
 // (a taxonomy edit or an emptied catalog). Whether breaks exist at all is decided there, so a
 // channel that gains or loses its filler re-deals after the programme on air rather than airing
 // empty breaks, or none, until the window turns.
-func (e *Engine) dealtFrom(ch channelstore.Channel, breaksPerHour int, deal []schedule.Slot) string {
+func dealtFrom(ch channelstore.Channel, breaksPerHour int, s scheduleSettings, deal []schedule.Slot) string {
 	h := fnv.New64a()
 	blob, _ := json.Marshal(deal) // slots are plain values: a marshal cannot fail
 	_, _ = h.Write(blob)
-	return e.edited(ch, breaksPerHour) + "." + strconv.FormatUint(h.Sum64(), 16)
+	return edited(ch, breaksPerHour, s) + "." + strconv.FormatUint(h.Sum64(), 16)
 }
 
-// edited is dealtFrom's <edited> half. It hashes JSON, not %v: policies hold optional fields
-// behind pointers, which %v prints as addresses that differ on every read.
-func (e *Engine) edited(ch channelstore.Channel, breaksPerHour int) string {
+// edited is dealtFrom's <edited> half, over the pass's settings snapshot. It hashes JSON, not %v:
+// policies hold optional fields behind pointers, which %v prints as addresses that differ on
+// every read.
+func edited(ch channelstore.Channel, breaksPerHour int, s scheduleSettings) string {
 	type entry struct {
 		Key                  string
 		SeasonMin, SeasonMax int
@@ -48,7 +49,7 @@ func (e *Engine) edited(ch channelstore.Channel, breaksPerHour int) string {
 	for _, l := range ch.Lineup {
 		entries = append(entries, entry{string(l.Key), l.SeasonMin, l.SeasonMax, l.EpisodeSelection})
 	}
-	cal := e.Calendar()
+	cal := s.Calendar
 	zone := ""
 	if cal.Zone != nil {
 		zone = cal.Zone.String()
@@ -63,7 +64,7 @@ func (e *Engine) edited(ch channelstore.Channel, breaksPerHour int) string {
 		Install       schedule.PendingPolicy
 		Zone, Country string
 		Holidays      any
-	}{entries, ch.Policy.Decided(), ch.Strategy, breaksPerHour, e.breakDurationFor(), e.defaultWindowFor(), e.policy,
+	}{entries, ch.Policy.Decided(), ch.Strategy, breaksPerHour, s.BreakLength, s.Window, s.Pending,
 		zone, cal.Country, cal.Holidays})
 	if err != nil {
 		return "" // the same "" every sweep, so a policy that cannot marshal never reads as an edit
