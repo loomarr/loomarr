@@ -42,6 +42,18 @@ type GuidePoker interface {
 // schedule.Availability so the pure domain can consume it directly.
 type Availability interface {
 	schedule.Availability
+	// Bind returns a view bound to ctx that remembers the first read that failed. The
+	// scheduler's seam can only say "available" or "not", so reconcile reads through a run and
+	// refuses to commit a lineup computed while a read was failing. A reconcile reads only
+	// through the run, so a decorator that observes reads wraps the run as well as Resolve.
+	Bind(ctx context.Context) AvailabilityRun
+}
+
+// AvailabilityRun is one reconcile's view of an Availability.
+type AvailabilityRun interface {
+	schedule.Availability
+	// Err is the first read that failed during the run, or nil when every answer is known.
+	Err() error
 }
 
 // EngineStore is the durable state the reconcile engine consumes. Keeping this
@@ -775,23 +787,37 @@ func (r *availabilityRun) note(err error) {
 	r.mu.Unlock()
 }
 
-// failure is the first read that failed during the run, or nil when every answer is known.
-func (r *availabilityRun) failure() error {
+// Err is the first read that failed during the run, or nil when every answer is known.
+func (r *availabilityRun) Err() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.err
 }
 
+// Bind is the store-backed run for one reconcile, reading under ctx.
+func (s *storeAvailability) Bind(ctx context.Context) AvailabilityRun {
+	return &availabilityRun{from: s, ctx: ctx}
+}
+
+// Infallible adapts a fixed set of answers to Availability. Its runs read nothing, so Err is
+// always nil. Never wrap an availability that reads (the store-backed one): its failed reads
+// would vanish and the reconcile guard with them.
+func Infallible(a schedule.Availability) Availability { return infallible{a} }
+
+type infallible struct{ schedule.Availability }
+
+func (i infallible) Bind(context.Context) AvailabilityRun { return infallibleRun(i) }
+
+type infallibleRun struct{ schedule.Availability }
+
+func (infallibleRun) Err() error { return nil }
+
 // reconcileAvailability is the availability a reconcile computes its lineup from, and a check
-// to make once it has: an error means a read failed and the lineup must not be committed. Only
-// the store-backed availability reads anything; a fixed set of answers cannot fail.
+// to make once it has: an error means a read failed and the lineup must not be committed. Every
+// Availability answers through its Bind, so a wrapper keeps the check as long as it delegates.
 func (e *Engine) reconcileAvailability(ctx context.Context) (schedule.Availability, func() error) {
-	fromStore, ok := e.avail.(*storeAvailability)
-	if !ok {
-		return e.avail, func() error { return nil }
-	}
-	run := &availabilityRun{from: fromStore, ctx: ctx}
-	return run, run.failure
+	run := e.avail.Bind(ctx)
+	return run, run.Err
 }
 
 // RollingWindow is the rolling-window length a channel with this policy resolves to at `at` (rule

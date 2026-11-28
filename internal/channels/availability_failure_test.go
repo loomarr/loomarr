@@ -91,6 +91,50 @@ func TestReconcileFailsAndKeepsTheLineupWhenATitleReadFails(t *testing.T) {
 	}
 }
 
+// wrappedAvailability decorates an Availability the way a metrics wrapper would, delegating
+// everything, Bind included.
+type wrappedAvailability struct {
+	channels.Availability
+}
+
+// The read-failure guard holds through any Availability that delegates Bind, not only the
+// store-backed one, so a decorator cannot silently let a reconcile commit titles missing.
+func TestReconcileFailsClosedThroughAWrappedAvailability(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	seedAvailableTitle(t, st, "movie:tmdb:90000001", provision.Title{MediaType: provision.Movie, TMDBID: 90000001}, "lib-1")
+	seedAvailableTitle(t, st, "movie:tmdb:90000002", provision.Title{MediaType: provision.Movie, TMDBID: 90000002}, "lib-2")
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "Lantern Road"), entry("movie:tmdb:90000002", "Harbour Nine"))
+
+	titles := &failingTitles{AvailabilityStore: st}
+	tun := tunarrtest.NewTunarr()
+	wrapped := func() channels.Availability {
+		return wrappedAvailability{channels.NewStoreAvailability(ctx, titles, nil, nil)}
+	}
+	if err := newEngine(st, tun, wrapped(), nil).Reconcile(ctx, "c1"); err != nil {
+		t.Fatalf("first reconcile: %v", err)
+	}
+	before, err := st.GetChannel(ctx, "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if programmeCount(before.Desired) != 2 {
+		t.Fatalf("the channel starts with %d programmes, want 2", programmeCount(before.Desired))
+	}
+
+	titles.fail.Store(true)
+	if err := newEngine(st, tun, wrapped(), nil).Reconcile(ctx, "c1"); err == nil {
+		t.Fatal("reconcile through a wrapped availability reported success although its titles could not be read")
+	}
+	after, err := st.GetChannel(ctx, "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if programmeCount(after.Desired) != 2 {
+		t.Errorf("the channel kept %d programmes after the failed read, want 2", programmeCount(after.Desired))
+	}
+}
+
 func TestReconcileFailsAndKeepsTheLineupWhenASeriesEpisodeReadFails(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
