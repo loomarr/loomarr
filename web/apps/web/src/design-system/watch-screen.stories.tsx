@@ -368,7 +368,10 @@ const BackOverBrightFrame: Story = {
   tags: ["checked-play"],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("button", { name: "Guide" })).toBeVisible();
+    // The quiet row has a Guide of its own; the back control is the one at the top leading corner.
+    await expect(
+      within(canvas.getByTestId("watch-back")).getByRole("button", { name: "Guide" }),
+    ).toBeVisible();
     await waitFor(() => expect(canvas.getByTestId("watch-scrim-corner")).toBeInTheDocument());
   },
 };
