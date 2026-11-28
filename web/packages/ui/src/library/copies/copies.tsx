@@ -21,12 +21,31 @@ const copyName = (file: LibraryTitleFile) => {
   return file.part ? `${name}, part ${file.part}` : name;
 };
 
-const removeWords = (file: LibraryTitleFile) =>
-  file.picture
+const removeWords = (file: LibraryTitleFile) => {
+  const copy = file.picture
     ? `Remove the ${pictureClass(file.picture)} copy`
     : isBroken(file)
       ? "Remove the broken copy"
       : "Remove the extra copy";
+  return file.part ? `${copy} of part ${file.part}` : copy;
+};
+
+// Each extra's Remove names one file: its words, then its size where the words repeat, then its
+// place among the copies that still match.
+const removeNames = (extras: readonly LibraryTitleFile[]) => {
+  const words = extras.map(removeWords);
+  const sized = extras.map((file, i) =>
+    words.filter((w) => w === words[i]).length > 1 ? `${words[i]}, ${formatBytes(file.size)}` : words[i],
+  );
+  return new Map(
+    extras.map((file, i) => {
+      const twins = sized.filter((s) => s === sized[i]).length;
+      if (twins < 2) return [file.path, sized[i] === words[i] ? undefined : sized[i]];
+      const place = sized.slice(0, i + 1).filter((s) => s === sized[i]).length;
+      return [file.path, `${sized[i]}, copy ${place} of ${twins}`];
+    }),
+  );
+};
 
 type Tone = ComponentProps<typeof Badge>["tone"];
 
@@ -113,7 +132,7 @@ const Copies = ({
 }) => {
   const extras = files.filter((file) => file.state === "extra");
   const attention = extras.length > 0 || files.some(isBroken);
-  const words = extras.map(removeWords);
+  const names = removeNames(extras);
   return (
     <Surface borderColor={attention ? "stateWarning" : undefined} gap="control" padding="section">
       <Text as="h2" textRole="title">
@@ -127,17 +146,9 @@ const Copies = ({
         </Text>
       ) : null}
       <Stack gap="control" role="list">
-        {files.map((file) => {
-          const repeated = words.filter((w) => w === removeWords(file)).length > 1;
-          return (
-            <Copy
-              accessibilityLabel={repeated ? `${removeWords(file)}, ${formatBytes(file.size)}` : undefined}
-              file={file}
-              key={file.path}
-              onRemove={onRemove}
-            />
-          );
-        })}
+        {files.map((file) => (
+          <Copy accessibilityLabel={names.get(file.path)} file={file} key={file.path} onRemove={onRemove} />
+        ))}
       </Stack>
     </Surface>
   );

@@ -327,8 +327,9 @@ const LibraryTitle = ({ title, onBack, fix, personLink }: LibraryTitleProps) => 
 
       <CastAndCrew personLink={personLink} title={title} />
 
-      {/* A movie with a copy that plays can be played, whatever else is broken. */}
-      {fix && title.unplayable > 0 && !title.files.some((file) => file.state === "plays") ? (
+      {/* The store leaves out a broken copy that another copy plays in place of, so what is left
+          is broken with nothing in its place: a part, an edition, or the only copy. */}
+      {fix && title.unplayable > 0 ? (
         <Unplayable count={title.unplayable} kind={title.kind} onCheck={fix.onCheckFiles} />
       ) : null}
 

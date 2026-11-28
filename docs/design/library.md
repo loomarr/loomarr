@@ -953,8 +953,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   ("Night Ferry has 2 episodes that can't be played", "Paper Kites has 2 extra copies", counted
   from `extraCopies`) with See why, which opens the title. While anything counts towards
   `needsYou`, Settings → Library's headline says "Up to date". The title's page gives an
-  unplayable title a warning card with Check files again, a movie only when none of its files has
-  state `plays`, and the shelf marks a ready title that needs a look with a dot (a phone grid has no
+  unplayable title a warning card with Check files again whenever `unplayable` counts a file. That
+  count leaves out a broken copy another copy plays in place of, so a broken part or edition with
+  nothing in its place still warns while another file plays. The shelf marks a ready title that needs a look with a dot (a phone grid has no
   room for a word), which a screen reader hears as "<name>, needs a look".
 - **Your collections** (step 12, decision 28). `library_collections` keeps the household's own
   collections and `library_collection_members` their titles in order, as `library_items` ids. A

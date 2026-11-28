@@ -124,9 +124,47 @@ describe("a movie's Copies card", () => {
     cleanup();
   });
 
+  it("tells two extras of one quality and size apart by their place", () => {
+    const { removes, cleanup } = render(
+      movie([
+        file("a", "plays", { picture: UHD }),
+        file("b", "extra", { picture: HD }),
+        file("c", "extra", { picture: HD }),
+      ]),
+    );
+    expect(removes().map((n) => n.getAttribute("aria-label"))).toEqual([
+      "Remove the 1080p copy, 3.7 GB, copy 1 of 2",
+      "Remove the 1080p copy, 3.7 GB, copy 2 of 2",
+    ]);
+    cleanup();
+  });
+
+  it("names an extra's part on its Remove", () => {
+    const { removes, cleanup } = render(
+      movie([
+        file("p1", "plays", { picture: HD, part: 1 }),
+        file("p2", "plays", { picture: HD, part: 2 }),
+        file("x2", "extra", { picture: UHD, part: 2 }),
+      ]),
+    );
+    expect(removes().map((n) => n.textContent)).toEqual(["Remove the 4K copy of part 2"]);
+    cleanup();
+  });
+
+  it("still says the movie can't be played when one part is broken, though another part plays", () => {
+    // The store counts a broken part with no copy in its place as unplayable.
+    const { host, cleanup } = render(
+      movie([file("p1", "plays", { picture: HD, part: 1 }), file("p2", "unplayable", { part: 2 })], 1),
+    );
+    expect(host.textContent).toContain("This movie can't be played");
+    expect(host.textContent).toContain("Check files again");
+    cleanup();
+  });
+
   it("calls a broken extra beside a playing copy broken, not the movie", () => {
+    // The store leaves a broken copy that another copy plays in place of out of the unplayable count.
     const { host, rows, removes, cleanup } = render(
-      movie([file("a", "plays", { picture: HD }), file("b", "extra")], 1),
+      movie([file("a", "plays", { picture: HD }), file("b", "extra")], 0),
     );
     expect(rows()[1]).toContain("Can't be played");
     expect(removes().map((n) => n.textContent)).toEqual(["Remove the broken copy"]);
