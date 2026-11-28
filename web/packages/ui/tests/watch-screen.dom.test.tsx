@@ -562,10 +562,13 @@ describe("WatchScreen", () => {
   });
 
   it("pauses on a click on the picture, and goes live on End", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     renderUi(<Harness />);
     const picture = screen.getByTestId("watch-picture").firstElementChild as Element;
     fireEvent.click(picture);
     expect(screen.getByRole("button", { name: "Play (Space)" })).toBeTruthy();
+    // Paused for two seconds, so the picture plays on behind live by whole seconds the lower third says.
+    vi.advanceTimersByTime(2000);
     fireEvent.click(picture);
     key("End", document.body);
     expect(requests.mock.calls.map(([request]) => request.type)).toEqual(["pause", "resume", "goLive"]);
