@@ -32,7 +32,9 @@ var _ BreakPlanner = (*planningPods)(nil)
 func (p *planningPods) BuildFillerList(context.Context, string, int64, pod.Selection) ([]string, bool) {
 	return nil, false
 }
-func (p *planningPods) HasPool(context.Context, string, int64, pod.Selection) bool { return true }
+func (p *planningPods) TunarrFillerIDs(context.Context, string, int64, pod.Selection) []string {
+	return nil
+}
 func (p *planningPods) PlayableDurationMs(context.Context, string, int64, pod.Selection) int64 {
 	return 120_000
 }

@@ -202,7 +202,7 @@ func (c *cycleCache) put(base uint64, at time.Time, zone *time.Location, slots [
 //
 // Three inputs live inside channels.Engine and are invisible from here: e.avail (availability,
 // which moves as titles land), the hot-applied e.breaksPerHour / e.defaultWindow settings, and
-// hasFillerPool (a live e.pods.HasPool probe — note the engine OVERWRITES the channel's stored
+// hasFillerPool (a live filler-pool probe — note the engine OVERWRITES the channel's stored
 // BreaksPerHour from it, so hashing the stored field would be worse than useless: it would look
 // like coverage while tracking a value the arrangement ignores).
 //

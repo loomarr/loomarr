@@ -178,24 +178,10 @@ func equivalenceCells() []equivalenceCell {
 	return cells
 }
 
-// forecastMatchesCommit reports whether the forecast at a reconcile's instant must show exactly
-// the slots that reconcile committed.
-//
-// A Tunarr channel diverges in two known cells, because reconcile asks for the uuid filler list
-// while the forecast asks HasPool. With clips that have files but no Tunarr uuid, reconcile airs
-// no breaks and the forecast shows them. With station material only, reconcile attaches it as the
-// filler list and airs breaks, and the forecast shows none.
-func forecastMatchesCommit(c equivalenceCell, step int) bool {
-	return !tunarrPoolDiverges(c)
-}
-
-func tunarrPoolDiverges(c equivalenceCell) bool {
-	return c.backend == schedule.PlayoutBackendTunarr && (c.pool == poolPathOnly || c.pool == poolBumperOnly)
-}
-
 // committedBreaks reports whether reconcile airs breaks for a cell. Every catalog with a playable
-// file gives an internal channel breaks, station material included; a Tunarr channel needs a clip
-// with a Tunarr uuid.
+// file gives an internal channel breaks, and every catalog with a Tunarr uuid gives a Tunarr
+// channel breaks. Station material counts: the fill ladder airs it before the offline card, so a
+// break never goes to dead air.
 func committedBreaks(c equivalenceCell) bool {
 	if c.pool == poolNone {
 		return false
@@ -211,9 +197,6 @@ func TestReconcileForecastEquivalence(t *testing.T) {
 		t.Run(c.name(), func(t *testing.T) {
 			run := runEquivalenceCell(t, c)
 			for i, step := range run.steps {
-				if !forecastMatchesCommit(c, i) {
-					continue
-				}
 				if got, want := slotsJSON(t, step.Forecast), slotsJSON(t, step.Committed); got != want {
 					t.Errorf("step %d at %v: forecast differs from the committed lineup\nforecast:  %s\ncommitted: %s",
 						i, step.At, got, want)
@@ -224,6 +207,47 @@ func TestReconcileForecastEquivalence(t *testing.T) {
 				t.Errorf("committed %d break slots, want breaks=%v", breaks, wantBreaks)
 			}
 		})
+	}
+}
+
+// podAssemblyCount counts the §17 pod-assembly observations.
+type podAssemblyCount int
+
+func (n *podAssemblyCount) FillerPodAssembled(string) { *n++ }
+
+// The forecast asks a Tunarr channel the same filler question reconcile asks, but only the
+// reconcile that attaches a list counts as assembling a pod: a guide poll must not inflate §17.
+func TestForecastDoesNotCountPodAssembly(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	var assembled podAssemblyCount
+	pods := pod.NewAdapter(poolUUID.catalog(), nil, func() pod.Policy {
+		return pod.Policy{PodMax: 4, BreakDurationMs: 60_000}
+	}, testkit.Logger()).WithMetrics(&assembled)
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
+	e := channels.New(st, tunarrtest.NewTunarr(), avail, nil, channels.Config{
+		ReconcileTTL: 10 * time.Minute, BreaksPerHour: 2, BreakDuration: time.Minute,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendTunarr, nil },
+	}, func() time.Time { return equivalenceStart }, testkit.Logger()).WithPods(pods)
+	seedChannel(t, st, "metric", 9, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
+
+	for range 3 {
+		_, slots, _, _, err := e.CyclePreview(ctx, "metric", equivalenceStart)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fillerSlotCount(slots) == 0 {
+			t.Fatal("the forecast shows no breaks for a channel whose clips carry Tunarr uuids")
+		}
+	}
+	if assembled != 0 {
+		t.Fatalf("three forecasts recorded %d pod assemblies, want 0", assembled)
+	}
+	if err := e.Reconcile(ctx, "metric"); err != nil {
+		t.Fatal(err)
+	}
+	if assembled != 1 {
+		t.Fatalf("a reconcile recorded %d pod assemblies, want 1", assembled)
 	}
 }
 
