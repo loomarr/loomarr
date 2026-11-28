@@ -682,6 +682,27 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 - Motion follows §2.4: 200 ms sheets, 120 ms fades, colour-only hover and focus; the tune is the one
   other movement.
 
+**The Cross's tune (target, not shipped).** The rules above describe the shipped players. This is the
+tune The Cross builds ([`design/watch/README.md`](../design/watch/README.md) item 9); the shared timing
+model (`@loomarr/core/tune`) and the part that draws it (`TuneStatic`, `TuneBars` in `@loomarr/ui`)
+exist and no player drives them. The tune is static and the seven bars along the crossing: no
+full-screen colour-bar band, no centred readout, no station-ident card, and no sound of its own (the
+web's Channel-change sound switch decides that).
+
+- **Changing channel** (the next channel is already streaming): about 150 ms of static, fading away so
+  the picture is clear 220 ms after the flip, inside the 340 ms a flip takes. The seven bars run once
+  along the crossing in those 340 ms. It adds no waiting time.
+- **Tuning in** (the first tune, or a channel that must spin up): the held picture is drained and under
+  static for exactly as long as the real wait. The bars wait in grey and lock to colour when the
+  picture arrives. "Tuning in…" belongs to the lower third.
+- **Fast flipping**: a flip that arrives while the picture is still covered turns the cover into one
+  low wash, uncovered once, 220 ms after the last flip, so the pictures between never show.
+- **Never more than three covers in a second.** When one more cover would be too soon after it, the
+  third stays up until a second has passed since the first.
+- **The static is dim**: fine grey snow over a darkened picture, never a white flash.
+- **Reduced motion**: a plain crossfade of the darkened picture, no static and no running bars. The
+  grey and locked bars of a tune-in still show, still.
+
 ### 9.5 What the keys open
 
 - **Where it opens.** On desktop and television, Subtitles, Audio, More and Volume open a **menu in the
