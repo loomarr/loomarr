@@ -795,7 +795,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   kept, has no poster and plays that file, checked and written in one transaction. The scanner owns
   the poster role: writing a kept title keeps the frame while the title plays the same file (same
   path and inventory revision), and clears it when that file changes (the job then takes a new
-  frame) or the answer is taken back. A failed frame is tried again after five minutes, doubling to
+  frame) or the answer is taken back. After it saves file rows, in a pass and in the header stage,
+  it also clears each frame whose title's main file is by then another one, so an added, renamed or
+  removed episode counts once its row and length are known. A failed frame is tried again after
+  five minutes, doubling to
   a day; the wait belongs to that file, so another one is tried at once, and it is held in memory,
   so a restart tries again.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
