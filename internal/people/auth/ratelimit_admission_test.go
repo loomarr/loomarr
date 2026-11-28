@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -123,33 +124,35 @@ func TestFailedGuessesAreCappedAcrossRotatingSources(t *testing.T) {
 // Attempts in flight count against the bucket before they resolve, so a burst of concurrent
 // attempts cannot all see the one token that is left and all be let through.
 func TestConcurrentAttemptsCannotOverrunTheAccountBucket(t *testing.T) {
-	limiter := NewLoginLimiter()
-	var mu sync.Mutex
-	admitted := 0
-	var wg sync.WaitGroup
-	release := make(chan struct{})
-	for i := 1; i <= 200; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			a, ok := attemptFrom(limiter, "2001:db8:3:"+strconv.Itoa(i)+"::1", "admin")
-			if !ok {
-				return
-			}
-			mu.Lock()
-			admitted++
-			mu.Unlock()
-			<-release // every admitted attempt is still checking its password
-			a.Failed()
-		}()
-	}
-	// Let the attempts reach the gate before any resolves.
-	time.Sleep(100 * time.Millisecond)
-	close(release)
-	wg.Wait()
-	if admitted > loginAccountBurst {
-		t.Fatalf("%d concurrent attempts admitted, want at most %d", admitted, loginAccountBurst)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		limiter := NewLoginLimiter()
+		var mu sync.Mutex
+		admitted := 0
+		var wg sync.WaitGroup
+		release := make(chan struct{})
+		for i := 1; i <= 200; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				a, ok := attemptFrom(limiter, "2001:db8:3:"+strconv.Itoa(i)+"::1", "admin")
+				if !ok {
+					return
+				}
+				mu.Lock()
+				admitted++
+				mu.Unlock()
+				<-release // every admitted attempt is still checking its password
+				a.Failed()
+			}()
+		}
+		// Every attempt is past the gate, refused or parked, before any resolves.
+		synctest.Wait()
+		close(release)
+		wg.Wait()
+		if admitted > loginAccountBurst {
+			t.Fatalf("%d concurrent attempts admitted, want at most %d", admitted, loginAccountBurst)
+		}
+	})
 }
 
 // What the exemption is and is not. It is for an address that has signed in as this account, and

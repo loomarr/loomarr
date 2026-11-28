@@ -33,7 +33,6 @@ internal/media/measure/job_test.go 1
 internal/media/proctree/supervisor_test.go 1
 internal/media/proctree/supervisor_unix_test.go 1
 internal/media/tools/conditioning_test.go 1
-internal/people/auth/ratelimit_admission_test.go 1
 internal/people/auth/sso_authelia_test.go 1
 internal/people/auth/sso_authentik_test.go 1
 internal/platform/llm/openai_stale_conn_test.go 1
@@ -55,4 +54,4 @@ internal/playout/tunarr/tunarr_test.go 1
 internal/proposals/suggest/fanout_internal_test.go 2
 internal/proposals/suggest/suggester_progress_test.go 1
 internal/proposals/suggest/worker_llmcause_test.go 1
-internal/proposals/suggest/worker_test.go 7
+internal/proposals/suggest/worker_test.go 1
