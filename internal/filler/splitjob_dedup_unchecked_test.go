@@ -17,7 +17,7 @@ import (
 )
 
 // splitStoreFor is the store a case hands the splitter: the memory store, or a wrapper of it.
-type splitStoreFor = filler.SplitStore
+type splitStoreFor = splitTestStore
 
 // catalogListFails is a split store whose catalog cannot be listed once armed (the fixture builder
 // lists it while the splitter is being set up).

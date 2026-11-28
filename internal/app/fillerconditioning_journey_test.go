@@ -280,7 +280,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatalf("composite source changed before split: %q, %v", parentBytes, err)
 	}
 
-	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil), splitFakeTools{chapters: []tools.Chapter{
+	splitter := filler.NewSplitter(storeadapter.NewSplit(st, nil).Ports(), splitFakeTools{chapters: []tools.Chapter{
 		{StartMs: 10_000, EndMs: 40_000, Title: "Reviewed advert"},
 	}}, nil, drop, func() time.Duration { return 10 * time.Second },
 		func() string { return "conditioning-proposal" }, time.Now, nil)
