@@ -158,7 +158,7 @@ Each `sheet-<device>.webp` is every drawn state for that device, labelled with i
    - **Reduced motion** gets a plain crossfade and no static.
    - Sound is unchanged: the web's Channel-change sound switch still decides it.
 10. **One key set, with its omissions written down.** In order: Pause, Subtitles, Audio, Volume,
-    Full screen, More. A television drops Pause, Volume and Full screen, which its remote has. A
+    Full screen, More. A television drops Volume and Full screen, which its remote has, and keeps Pause (item 6). A
     phone drops Volume and Full screen and adds AirPlay; upright, Pause and More sit by the lower
     third, under the thumb, and the rest at the top. Home is always named beside its arrow.
 11. **More holds only what has no key of its own**: Last channel, Picture, Playback details, Picture
@@ -263,6 +263,10 @@ review's faults (a repeat click tuning the wrong channel, messages that never sh
 rings, an unlabelled By decade, a Guide that could not move through the day) are fixed in the
 prototype and listed above. The same reviewer re-ran its findings against the fixes and scored
 32 of 40, with no heuristic under 3.
+
+The build is tracked in [#4722](https://github.com/loomarr/loomarr/issues/4722), with one sub-issue
+per slice. It also lists the places where The Cross differs from the shipped contract, each to
+settle in the slice that reaches it.
 
 Still open from that re-check: Go live has no key, F does nothing inside the Guide or a menu, the
 first list row on a television is cut at rest, a phone's By decade tab sits behind the Guide control
