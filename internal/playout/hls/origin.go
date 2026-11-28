@@ -2,6 +2,16 @@
 // packager that owns each channel's segment timeline with one encoder per item, and the guide's
 // stills taken from what is airing. It builds every encode with the engine's pipeline (package
 // playout) and admits it through the admission ledger; the engine never imports it.
+//
+// Two invariants are this package's.
+//
+// ONE PACKAGER PER CHANNEL FORMAT, N REFCOUNTED VIEWERS. A second viewer joins the running packager
+// rather than starting a second encode. Admission is bounded (admission.ErrAtCapacity), and room is
+// never made by dropping a household's stream: a channel's baseline outlives its other formats.
+//
+// A READER THAT FALLS PAST THE DVR WINDOW IS CUT OFF, NOT FED A GAP. An MPEG-TS tuner that stalls
+// that long gets packager.ErrSegmentGone and reconnects: a byte stream with a hole in it is corrupt,
+// not stale (internal/platform/events instead drops the message and keeps its subscriber).
 package hls
 
 import (
