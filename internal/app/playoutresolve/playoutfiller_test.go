@@ -107,16 +107,36 @@ func fillerResolver(t *testing.T, dir string, brk pod.Pod) *Resolver {
 	}
 	accepted := &stubChannels{}
 	accepted.ch.Desired, accepted.ch.PlayoutAnchor = slots, testPlayoutAnchor()
-	return &Resolver{
+	r := &Resolver{
 		// A break gap FIRST, so a clock at the epoch lands inside it.
 		engine:    stubCycle{slots: slots},
 		channels:  accepted,
 		now:       func() time.Time { return testPlayoutAnchor() },
 		tier:      func() string { return "balanced" },
 		encoder:   func() string { return "" },
-		pods:      stubPods{pod: brk},
 		fillerDir: dir,
 	}
+	r.SetPods(stubPods{pod: brk})
+	return r
+}
+
+// A break read while the assembler is being attached sees it or the offline card, without a race.
+func TestSetPodsWhileResolvingBreaks(t *testing.T) {
+	t.Parallel()
+	r := &Resolver{fillerDir: t.TempDir()}
+	gap := timeline.Airing{}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 100 {
+			if _, _, err := r.airingFiller(context.Background(), "ch1", gap, testPlayoutAnchor()); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+	r.SetPods(stubPods{})
+	<-done
 }
 
 func testPlayoutAnchor() time.Time { return time.Unix(1_700_000_000, 0).UTC() }
@@ -310,9 +330,9 @@ func TestAiringNow_BreakIsAssembledToItsSlot(t *testing.T) {
 	t.Parallel()
 	var asked []pod.BreakSlot
 	r := fillerResolver(t, t.TempDir(), pod.Pod{})
-	r.pods = stubPods{pod: pod.Pod{Entries: []pod.Entry{
+	r.SetPods(stubPods{pod: pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("ad.mp4"), Name: "ad", DurationMs: 30_000},
-	}}, asked: &asked}
+	}}, asked: &asked})
 	r.channels.(*stubChannels).ch.Desired = []schedule.Slot{
 		{Kind: schedule.SlotFiller, DurationMs: 113_366},
 		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
@@ -336,9 +356,9 @@ func TestAiringNow_PlaceholderIsNotABreakSlot(t *testing.T) {
 	t.Parallel()
 	var asked []pod.BreakSlot
 	r := fillerResolver(t, t.TempDir(), pod.Pod{})
-	r.pods = stubPods{pod: pod.Pod{Entries: []pod.Entry{
+	r.SetPods(stubPods{pod: pod.Pod{Entries: []pod.Entry{
 		{Path: clipAt("ad.mp4"), Name: "ad", DurationMs: 30_000},
-	}}, asked: &asked}
+	}}, asked: &asked})
 	r.channels.(*stubChannels).ch.Desired = []schedule.Slot{
 		{Kind: schedule.SlotFiller, Key: "movie:tmdb:90000009", DurationMs: (90 * time.Minute).Milliseconds()},
 		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},

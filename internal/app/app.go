@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -53,6 +54,10 @@ type Overrides struct {
 	// generates test clips and runs ffmpeg for about half a minute. run() sets it; composition tests
 	// leave it off so building an app never starts encoders.
 	CapacityProbe bool
+	// PlayoutMaxChannels and PlayoutMeasuredCosts give playout a capacity before any encoder trial
+	// or class probe. Composition tests set them; run() leaves them zero.
+	PlayoutMaxChannels   int
+	PlayoutMeasuredCosts *playout.MeasuredCosts
 	// MetricsToken is the Prometheus scrape bearer for /metrics (§7). run() sets it from
 	// LOOMARR_METRICS_TOKEN[_FILE]; empty ⇒ the endpoint refuses (fail closed).
 	MetricsToken string

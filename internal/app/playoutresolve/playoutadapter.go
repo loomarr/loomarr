@@ -133,8 +133,9 @@ type Resolver struct {
 
 	// pods assembles the channel's commercial break (§10). The SAME assembler the API and
 	// the reconciler use, so the ad that plays is the one the channel page previewed — §10's
-	// one-assembler rule. Nil ⇒ breaks fall back to the offline card.
-	pods PodPreviewer
+	// one-assembler rule. Unset ⇒ breaks fall back to the offline card. Atomic because it is the
+	// one dependency attached after New (SetPods), while the resolver may already be reading.
+	pods atomic.Pointer[PodPreviewer]
 	// fillerDir resolves a clip's relative id to a file on disk. It is immutable for the
 	// generation: catalog paths, scan and playout must never interpret one row under different
 	// roots while a saved layout change is waiting on restart.
@@ -160,6 +161,8 @@ type Resolver struct {
 	// measurer records first-play stream facts and queues background analysis (keyframes, loudness,
 	// break candidates) per source revision. Nil ⇒ playout probes each time and stores nothing.
 	measurer sourceMeasurer
+	// measureJob is the same measurer as the background job RunMeasurer runs.
+	measureJob *measure.Measurer
 	// analyses reads what the measurer stored: the keyframe index a still seeks with, the scene
 	// fades mid-roll placement uses (§10), and the active picture the channel watermark anchors to.
 	// Nil ⇒ ffmpeg's container seek, no mid-roll breaks (every programme airs whole), and the bug
@@ -303,14 +306,36 @@ type Config struct {
 	ProcessDiagnostics *diagnostics.ProcessManager
 	// Log is the structured logger; nil logs nothing.
 	Log *slog.Logger
+
+	// Analyses is where the source measurer writes, and what the resolver reads back for keyframes,
+	// scene fades and the active picture. Nil measures and stores nothing; with it set the resolver
+	// builds the measurer from MeasureTools, and the owner runs it (RunMeasurer).
+	Analyses     inventory.AnalysisStore
+	MeasureTools measure.Tools
+	// OnTonemap receives the capacity probe's tone-map self-check.
+	OnTonemap func(playout.TonemapCheck)
+	// Subtitles and SubtitleCues are the Library's subtitle tracks and the reader of their cues.
+	// Without them every subtitle window is empty.
+	Subtitles    LibrarySubtitleReader
+	SubtitleCues SubtitleCues
+	// SubtitleBurns burns image subtitles in, reading each programme's tracks through Subtitles.
+	// Nil burns nothing in.
+	SubtitleBurns *SubtitleBurns
+	// InitialMaxChannels and InitialMeasuredCosts publish a capacity before any encoder trial or
+	// class probe runs. A test sets them to have a capacity without ffmpeg.
+	InitialMaxChannels   int
+	InitialMeasuredCosts *playout.MeasuredCosts
 }
 
-// New returns a Resolver wired from cfg, with its arranged-cycle cache. The pod assembler, the
-// source measurer and the tone-map observer are attached afterwards (SetPods, SetMeasurer,
-// SetTonemapObserver) because the objects they come from are built later.
+// New returns a Resolver wired from cfg, with its arranged-cycle cache. The pod assembler alone is
+// attached afterwards (SetPods).
 func New(cfg Config) *Resolver {
-	return &Resolver{
-		engine: cfg.Engine, now: cfg.Now,
+	r := &Resolver{
+		onTonemap:        cfg.OnTonemap,
+		librarySubtitles: cfg.Subtitles,
+		subtitleCues:     cfg.SubtitleCues,
+		burns:            cfg.SubtitleBurns,
+		engine:           cfg.Engine, now: cfg.Now,
 		metrics:            cfg.Metrics,
 		goDetect:           cfg.GoDetect,
 		titles:             cfg.Titles,
@@ -338,21 +363,38 @@ func New(cfg Config) *Resolver {
 		processDiagnostics: cfg.ProcessDiagnostics,
 		log:                cfg.Log,
 	}
+	if cfg.Analyses != nil {
+		r.analyses = cfg.Analyses
+		r.measureJob = r.newMeasurer(cfg.MeasureTools, cfg.Analyses)
+		r.measurer = r.measureJob
+	}
+	r.maxChannels.Store(int64(cfg.InitialMaxChannels))
+	r.measuredCosts.Store(cfg.InitialMeasuredCosts)
+	return r
+}
+
+// RunMeasurer measures queued sources until ctx ends. Without Config.Analyses there is nothing to
+// run and it returns at once.
+func (r *Resolver) RunMeasurer(ctx context.Context) {
+	if r.measureJob != nil {
+		r.measureJob.Run(ctx)
+	}
 }
 
 // SetPods attaches the assembler a break airs its commercials from. Until it is set, breaks fall
 // back to the offline card.
-func (r *Resolver) SetPods(pods PodPreviewer) { r.pods = pods }
+//
+// It is the one late attachment, because the two need each other: the filler subsystem that builds
+// the assembler is itself built over this resolver.
+func (r *Resolver) SetPods(pods PodPreviewer) { r.pods.Store(&pods) }
 
-// SetMeasurer attaches the source measurer (NewMeasurer) and the analysis store it writes, which
-// the resolver reads back for keyframes, scene fades and the active picture.
-func (r *Resolver) SetMeasurer(measurer *measure.Measurer, analyses inventory.AnalysisReader) {
-	r.measurer = measurer
-	r.analyses = analyses
+// podPreviewer is the attached assembler, or nil.
+func (r *Resolver) podPreviewer() PodPreviewer {
+	if p := r.pods.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
-
-// SetTonemapObserver receives the capacity probe's tone-map self-check.
-func (r *Resolver) SetTonemapObserver(observe func(playout.TonemapCheck)) { r.onTonemap = observe }
 
 // FillerDir is the clip root this resolver reads, fixed for the generation.
 func (r *Resolver) FillerDir() string { return r.fillerDir }
@@ -362,14 +404,6 @@ func (r *Resolver) MaxChannels() int { return int(r.maxChannels.Load()) }
 
 // DetectReady reports whether encoder detection has published its result.
 func (r *Resolver) DetectReady() bool { return r.detectReady.Load() }
-
-// SetMaxChannels publishes a measured capacity without running the encoder trial that would. It
-// is the seam for tests that need a capacity without ffmpeg.
-func (r *Resolver) SetMaxChannels(n int) { r.maxChannels.Store(int64(n)) }
-
-// SetMeasuredCosts publishes a class-cost table without running the probe that would. It is the
-// seam for tests that need measured costs without ffmpeg.
-func (r *Resolver) SetMeasuredCosts(costs *playout.MeasuredCosts) { r.measuredCosts.Store(costs) }
 
 // MissingLadderInputs names the settings readers the output ladder calls unguarded that this
 // Resolver was built without; a viewer tuning in would panic on any of them.
@@ -639,7 +673,8 @@ func (r *Resolver) airingCycle(ctx context.Context, ch channelstore.Channel, at 
 func (r *Resolver) airingFiller(
 	ctx context.Context, channelID string, gap timeline.Airing, now time.Time,
 ) (timeline.Airing, string, error) {
-	if r.pods == nil || r.fillerDir == "" {
+	pods := r.podPreviewer()
+	if pods == nil || r.fillerDir == "" {
 		// Filler unconfigured: the break becomes a bounded break card rather than an error. Keep
 		// the gap itself so the handler knows this is scheduled airtime and where it ends.
 		return gap, "", nil
@@ -651,7 +686,7 @@ func (r *Resolver) airingFiller(
 	//
 	// gap.Offset is how far into the break we are, so the break began that long ago, and a break is
 	// assembled to its own slot, never past it (a placeholder to the configured break length).
-	pod, err := r.pods.PreviewAt(ctx, channelID, pod.BreakSlot{
+	pod, err := pods.PreviewAt(ctx, channelID, pod.BreakSlot{
 		Start: time.UnixMilli(now.Add(-gap.Offset).UnixMilli()), Length: gap.BreakLength(),
 	})
 	if err != nil || len(pod.Entries) == 0 {

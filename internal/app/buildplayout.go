@@ -74,6 +74,9 @@ type playoutDeps struct {
 	// tone-map self-check.
 	capacityProbe bool
 	startup       *diagnostics.Startup
+	// initialMaxChannels and initialMeasuredCosts are Overrides' capacity without ffmpeg.
+	initialMaxChannels   int
+	initialMeasuredCosts *playout.MeasuredCosts
 	// watermarks draws the channel's bug on programme items (#1512).
 	watermarks *channelWatermarks
 	// subtitleDecoder decodes the image subtitle tracks a channel burns in (#2088 step 8); nil
@@ -173,8 +176,42 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 				"dir", legacyPrepared, "err", err)
 		}
 	})
+	ffmpegBin := settings.PlayoutFFmpegPath.Get(set)
+	// Soft subtitles (#2088 decision 5): each text track is read once, at background priority, and
+	// kept under the playout state directory so a restart doesn't read it again.
+	subtitleReader := subtitles.NewExtractor(ffmpegBin, filepath.Join(stateDir, "subtitles"), log)
+	// Image subtitles a channel burns in (#2088 step 8), gated by the bug's GPU overlay self-check
+	// and blended by its kernel. The image worker decodes the track (docs/design/images.md); without
+	// a decoder nothing is looked up and programmes air without their image tracks. The preparer is
+	// generation-owned, so Shutdown joins a preparation in flight.
+	var burns *playoutresolve.SubtitleBurns
+	if burnDir, err := filepath.Abs(filepath.Join(stateDir, "subtitle-burn")); err == nil && deps.watermarks != nil {
+		decoder := deps.subtitleDecoder
+		burns = playoutresolve.NewSubtitleBurns(playoutresolve.SubtitleBurnsConfig{
+			Dir: burnDir, Prepare: playout.FFmpegBurnInWith(ffmpegBin, deps.processDiagnostics, decoder),
+			Decodes: playout.SubtitleDecoderAvailable(decoder),
+			Works:   deps.watermarks.OverlayWorks, Kernel: deps.watermarks.BlendKernel,
+			Go: owner.goOnDemand, Log: log,
+		})
+	}
 	playoutRes = playoutresolve.New(playoutresolve.Config{
-		Engine: channelEngine, Now: time.Now,
+		// Loomarr measures each source itself, once per revision, so playout never asks the media
+		// server or re-probes a file at airtime (beta.8 G7). Sources are read directly through the
+		// path map, never through Emby.
+		Analyses:     st,
+		MeasureTools: measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)),
+		// The capacity probe's tone-map self-check reports to Current Health.
+		OnTonemap: func(check playout.TonemapCheck) {
+			if obs, ok := playoutresolve.TonemapObservation(check); ok {
+				deps.startup.Observe(diagnostics.StartupCheckPlayoutTonemap, obs)
+			}
+		},
+		Subtitles:            st,
+		SubtitleCues:         subtitleReader,
+		SubtitleBurns:        burns,
+		InitialMaxChannels:   deps.initialMaxChannels,
+		InitialMeasuredCosts: deps.initialMeasuredCosts,
+		Engine:               channelEngine, Now: time.Now,
 		Metrics:  deps.metrics,
 		GoDetect: owner.goOnDemand,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
@@ -206,7 +243,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		ToneCurve: func() string { return settings.PlayoutToneCurve.Get(set) },
 		// FillerDir belongs to the immutable generation layout. Changing storage roots
 		// is applied only after the generation drains and rebuilds (§10); the pod assembler
-		// is attached (SetPods) after the pod adapter is built further down.
+		// is attached (SetPods) once the filler subsystem has built it over this resolver.
 		FillerDir: fillerLayout.ClipDir(),
 		// The capability probe runs lazily on the first program that needs it, when
 		// playout.encoder is unset — so a box with a working GPU uses it instead of
@@ -237,32 +274,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// Each committed reconcile of an internal-playout channel stores its next two days from the
 	// guide's own walk, so a title's next airing is one indexed read (#4476).
 	channelEngine.WithUpcomingIndex(upcomingIndex{guide: playoutRes, store: st, log: log})
-	// Loomarr measures each source itself, once per revision, so playout never asks the media
-	// server or re-probes a file at airtime (beta.8 G7). One worker, background priority, tied to
-	// the app's lifetime; sources are read directly through the path map, never through Emby.
-	ffmpegBin := settings.PlayoutFFmpegPath.Get(set)
-	measurer := playoutRes.NewMeasurer(
-		measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
-	playoutRes.SetMeasurer(measurer, st)
-	owner.goRun(measurer.Run)
-	// Soft subtitles (#2088 decision 5): each text track is read once, at background priority, and
-	// kept under the playout state directory so a restart doesn't read it again.
-	subtitleReader := subtitles.NewExtractor(ffmpegBin, filepath.Join(stateDir, "subtitles"), log)
-	playoutRes.SetSubtitles(st, subtitleReader)
+	// One measurement worker, tied to the app's lifetime.
+	owner.goRun(playoutRes.RunMeasurer)
 	owner.goRun(subtitleReader.Run)
-	// Image subtitles a channel burns in (#2088 step 8), gated by the bug's GPU overlay self-check
-	// and blended by its kernel. The image worker decodes the track (docs/design/images.md); without
-	// a decoder nothing is looked up and programmes air without their image tracks. The preparer is
-	// generation-owned, so Shutdown joins a preparation in flight.
-	if burnDir, err := filepath.Abs(filepath.Join(stateDir, "subtitle-burn")); err == nil && deps.watermarks != nil {
-		decoder := deps.subtitleDecoder
-		burns := playoutresolve.NewSubtitleBurns(playoutresolve.SubtitleBurnsConfig{
-			Dir: burnDir, Prepare: playout.FFmpegBurnInWith(ffmpegBin, deps.processDiagnostics, decoder),
-			Decodes: playout.SubtitleDecoderAvailable(decoder),
-			Works:   deps.watermarks.OverlayWorks, Kernel: deps.watermarks.BlendKernel,
-			Go: owner.goOnDemand, Log: log,
-		})
-		playoutRes.SetSubtitleBurns(burns)
+	if burns != nil {
 		owner.goRun(burns.Run)
 	}
 	playoutResolverSvc = playoutRes
@@ -308,11 +323,6 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// The capacity probe (#1512 G5/G11) runs at boot, off the critical path: until it publishes, the
 	// budget keeps the whole-stream measurement. Its tone-map self-check reports to Current Health.
 	if deps.capacityProbe {
-		playoutRes.SetTonemapObserver(func(check playout.TonemapCheck) {
-			if obs, ok := playoutresolve.TonemapObservation(check); ok {
-				deps.startup.Observe(diagnostics.StartupCheckPlayoutTonemap, obs)
-			}
-		})
 		deps.startup.Complete(diagnostics.StartupCheckPlayoutTonemap, diagnostics.StartupSkipped,
 			"checked by Current Health once the capacity probe finishes", "/settings/system/playback", "")
 		// Background work: the probe yields to a viewer the moment a live transcode is admitted.

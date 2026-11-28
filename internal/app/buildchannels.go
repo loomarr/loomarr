@@ -292,9 +292,12 @@ func buildChannels(
 			storageGovernor:    storageGovernor,
 			metrics:            metricRecorder,
 			capacityProbe:      ov.CapacityProbe,
-			startup:            ov.Startup,
-			watermarks:         watermarks,
-			subtitleDecoder:    subtitleDecoder,
+
+			initialMaxChannels:   ov.PlayoutMaxChannels,
+			initialMeasuredCosts: ov.PlayoutMeasuredCosts,
+			startup:              ov.Startup,
+			watermarks:           watermarks,
+			subtitleDecoder:      subtitleDecoder,
 		})
 		if err != nil {
 			return channelBuild{}, err
