@@ -223,6 +223,8 @@ const textTones = {
   decadeTint1980: "decadeTint1980",
   decadeTint1990: "decadeTint1990",
   decadeTint2000: "decadeTint2000",
+  decadeTint2010: "decadeTint2010",
+  decadeTint2020: "decadeTint2020",
   decadeTintNeutral: "decadeTintNeutral",
   danger: "stateDanger",
   info: "stateInfo",

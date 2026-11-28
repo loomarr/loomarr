@@ -49,7 +49,7 @@ const OrderCard = ({
     <Surface gap="control" padding="section">
       <Line alignItems="flex-start" columnGap="section" flexWrap={wide ? "nowrap" : "wrap"} rowGap="control">
         <Stack flexShrink={0} width={wide ? 144 : 112}>
-          <LibraryPoster art={need.poster} big id={need.id} name={need.name} />
+          <LibraryPoster art={need.poster} kind="series" name={need.name} year={need.year} />
         </Stack>
         <Stack flexBasis={240} flexGrow={1} flexShrink={1} gap="control" minWidth={0}>
           {done ? (

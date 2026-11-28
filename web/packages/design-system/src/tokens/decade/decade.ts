@@ -30,8 +30,8 @@ const decadeFillColor = (decade: number | undefined): string | undefined => {
 };
 
 // The Cross's decade tints (frontend-design §2.1), for the watched channel's numeral and the By
-// decade headings. The server sends any decade from 1900 to 2090, or none; only six have a tint, and
-// everything else is neutral.
+// decade headings, and on a Library title's drawn cover. The server sends any decade from 1900 to
+// 2090, or none; only 1950 to 2020 have a tint, and everything else is neutral.
 
 type TintDecade = Exclude<keyof typeof semanticColors.decadeTint, "neutral">;
 type DecadeTint = `decadeTint${TintDecade | "Neutral"}`;
@@ -52,5 +52,11 @@ const decadeTint = (decade: number | undefined): DecadeTint =>
 const decadeTintColor = (decade: number | undefined): string =>
   semanticColors.decadeTint[tintDecadeOf(decade) ?? "neutral"];
 
-export type { DecadeFill, DecadeTint };
-export { decadeFill, decadeFillColor, decadeTint, decadeTintColor };
+type CoverWash = `coverWash${TintDecade | "Neutral"}`;
+
+/** The theme colour a Library title's drawn cover is washed with, for the year it came out. */
+const coverWash = (year: number | undefined): CoverWash =>
+  `coverWash${tintDecadeOf(year && Math.floor(year / 10) * 10) ?? "Neutral"}`;
+
+export type { CoverWash, DecadeFill, DecadeTint };
+export { coverWash, decadeFill, decadeFillColor, decadeTint, decadeTintColor };

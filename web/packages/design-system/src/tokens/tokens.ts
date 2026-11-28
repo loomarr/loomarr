@@ -3,6 +3,20 @@ import brandContract from "./brand-contract.json";
 
 const brandChroma = brandContract.chroma as [string, string, string, string, string, string, string];
 
+// The grounds of a Library title's drawn cover (frontend-design §2.1): each decade tint washed over
+// dark. A cover stands in for artwork, so both themes take the same set.
+const coverWash = {
+  "1950": "#353330",
+  "1960": "#362D32",
+  "1970": "#30352B",
+  "1980": "#2E2C3C",
+  "1990": "#292E3C",
+  "2000": "#273335",
+  "2010": "#362E2E",
+  "2020": "#332E39",
+  neutral: "#26292F",
+} as const;
+
 const semanticThemes = {
   dark: {
     surface: {
@@ -109,8 +123,11 @@ const semanticThemes = {
       "1980": "#B9A6F2",
       "1990": "#9DB4F5",
       "2000": "#8FD3C8",
+      "2010": "#EDB29E",
+      "2020": "#D8B0E4",
       neutral: "#8B93A3",
     },
+    coverWash,
   },
   light: {
     surface: {
@@ -207,8 +224,11 @@ const semanticThemes = {
       "1980": "#7851CA",
       "1990": "#4561C7",
       "2000": "#4A706B",
+      "2010": "#96533C",
+      "2020": "#84508F",
       neutral: "#515866",
     },
+    coverWash,
   },
 } as const;
 
@@ -430,6 +450,9 @@ const typography = {
     // at every density, the one place it is drawn.
     subtitle: { size: 24, lineHeight: 31, weight: "500" },
     subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
+    // The title on a Library title's drawn cover, and on a phone's small tiles.
+    coverTitle: { size: 17, lineHeight: 20, weight: "600" },
+    coverTitleSmall: { size: 13, lineHeight: 16, weight: "600" },
     // Display type the app draws once each, kept at the size it already had (#2147), so none of it
     // moves a pixel. Pointer carries the measured sizes; touch and TV scale them as their neighbours
     // (channelNumber, code, metadata) do. Mono throughout, but `stationName`.
@@ -486,6 +509,9 @@ const typography = {
     guideCell: { size: 13, lineHeight: 18, weight: "500" },
     subtitle: { size: 15, lineHeight: 20, weight: "500" },
     subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
+    // The title on a Library title's drawn cover, and on a phone's small tiles.
+    coverTitle: { size: 17, lineHeight: 20, weight: "600" },
+    coverTitleSmall: { size: 13, lineHeight: 16, weight: "600" },
     monogram: { size: 32, lineHeight: 38, weight: "600" },
     numeral: { size: 32, lineHeight: 32, weight: "400" },
     pairCode: { size: 36, lineHeight: 48, weight: "400" },
@@ -529,6 +555,9 @@ const typography = {
     guideCell: { size: 16, lineHeight: 22, weight: "400" },
     subtitle: { size: 18, lineHeight: 23, weight: "500" },
     subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
+    // The title on a Library title's drawn cover, and on a phone's small tiles.
+    coverTitle: { size: 17, lineHeight: 20, weight: "600" },
+    coverTitleSmall: { size: 13, lineHeight: 16, weight: "600" },
     monogram: { size: 40, lineHeight: 48, weight: "600" },
     numeral: { size: 40, lineHeight: 40, weight: "400" },
     pairCode: { size: 44, lineHeight: 59, weight: "400" },
