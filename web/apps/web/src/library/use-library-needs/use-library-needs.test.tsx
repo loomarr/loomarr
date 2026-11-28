@@ -95,7 +95,13 @@ describe("useLibraryNeeds", () => {
         orders: [],
         problems: [
           {
-            item: { ...need("90000013", []).item, name: "Charlie", files: 3, extraCopies: 2, brokenCopies: 1 },
+            item: {
+              ...need("90000013", []).item,
+              name: "Charlie",
+              files: 3,
+              extraCopies: 2,
+              brokenCopies: 1,
+            },
             extraBytes: 4096,
           },
         ],
