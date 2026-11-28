@@ -160,11 +160,13 @@ split_paths() {
 # Every split job as `lane<TAB>mode<TAB>import-path<TAB>slice`, where slice is `k/n` for a race job
 # and `-` for the plain job. Both phases come from the race policy, as they do for every other lane.
 split_jobs() {
-  local rows name path slices plain k
+  local rows name path slices race plain k
   rows="$(split_rows)" || return
   [[ -n "$rows" ]] || return 0
   while IFS=$'\t' read -r name path slices; do
-    if [[ -n "$(printf '%s\n' "$path" | "$RACE_POLICY" --race)" ]]; then
+    # Assigned first: a failure inside a condition would silently drop the race jobs.
+    race="$(printf '%s\n' "$path" | "$RACE_POLICY" --race)" || return
+    if [[ -n "$race" ]]; then
       for ((k = 1; k <= slices; k++)); do
         printf '%s-race-%s/%s\trace\t%s\t%s/%s\n' "$name" "$k" "$slices" "$path" "$k" "$slices"
       done
