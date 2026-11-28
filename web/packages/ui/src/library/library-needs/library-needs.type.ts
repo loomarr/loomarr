@@ -63,6 +63,8 @@ interface LibraryProblem {
   extraCopies: number;
   /** What its extra copies take, in bytes; 0 for none. */
   extraBytes: number;
+  /** How many of those extra copies can't be played; absent where that isn't known. */
+  brokenCopies?: number;
 }
 
 /** What kind of order one of TMDB's other episode orders is. */

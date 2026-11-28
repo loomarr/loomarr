@@ -21,18 +21,33 @@ const reasonsFor = (p: LibraryProblem): ProblemReason[] => {
         : "The files may be damaged. Loomarr skips them until they're fixed.",
     });
   }
-  if (p.extraCopies > 0) {
-    const one = p.extraCopies === 1;
-    const size = formatBytes(p.extraBytes);
-    out.push({
-      key: "extra",
-      headline: `${p.name} has ${one ? "an extra copy" : `${p.extraCopies} extra copies`}`,
-      reason: one
-        ? `The extra copy is taking ${size} and never plays. Removing it gets the space back.`
-        : `${p.extraCopies} extra copies are taking ${size} and never play. Removing them gets the space back.`,
-    });
-  }
+  if (p.extraCopies > 0) out.push(extraReason(p));
   return out;
+};
+
+const copies = (n: number) => (n === 1 ? "copy" : "copies");
+
+// The extra copies, with the broken ones among them counted apart.
+const extraReason = (p: LibraryProblem): ProblemReason => {
+  const one = p.extraCopies === 1;
+  const size = formatBytes(p.extraBytes);
+  const broken = Math.min(p.brokenCopies ?? 0, p.extraCopies);
+  const sound = p.extraCopies - broken;
+  const counted =
+    broken === 0
+      ? `${p.extraCopies} extra ${copies(p.extraCopies)}`
+      : sound === 0
+        ? `${broken} broken ${copies(broken)}`
+        : `${broken} broken and ${sound} extra ${copies(sound)}`;
+  // A lone sound extra is "the extra copy"; any broken one is counted.
+  const subject = one && broken === 0 ? "The extra copy" : counted;
+  return {
+    key: "extra",
+    headline: `${p.name} has ${one && broken === 0 ? "an extra copy" : counted}`,
+    reason: one
+      ? `${subject} is taking ${size} and never plays. Removing it gets the space back.`
+      : `${subject} are taking ${size} and never play. Removing them gets the space back.`,
+  };
 };
 
 // One entry per title, in the order given; a title with nothing wrong has none.

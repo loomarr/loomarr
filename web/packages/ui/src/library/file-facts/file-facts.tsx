@@ -228,7 +228,7 @@ const MoreFacts = ({ file }: { file: LibraryTitleFile }) => {
   );
 };
 
-// `label` names what the file is to the title ("File", "Extra copy", "Part 1 of 2").
+// `label` names what the file is to the title ("File", "Plays", "Part 1 of 2 · Extra").
 const FileFacts = ({
   file,
   label = "File",

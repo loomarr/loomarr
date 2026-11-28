@@ -613,6 +613,36 @@ const BrokenExtraCopy: Story = {
   ),
 };
 
+// Two copies that read alike by quality and size, so each row also says the end of its file name.
+// The playing file is named for 720p and probed as 4K.
+const CopiesAlike: Story = {
+  render: () => (
+    <LibraryTitle
+      fix={titleFixes}
+      onBack={() => {}}
+      title={{
+        kind: "movie",
+        name: "Coral Meridian",
+        year: 2022,
+        genres: [],
+        files: ["Coral Meridian (2022) - 720p.mp4", "Coral Meridian (2022).mp4"].map((name, i) => ({
+          path: `/media/movies/Coral Meridian (2022)/${name}`,
+          size: 55_500_000,
+          ready: true,
+          picture: { width: 3840, height: 2160, hdr: false },
+          subtitles: [],
+          state: i === 0 ? ("plays" as const) : ("extra" as const),
+        })),
+        unplayable: 0,
+        seasons: [],
+        match: { by: "search" },
+        detailsFrom: {},
+        channels: [],
+      }}
+    />
+  ),
+};
+
 // A member's movie (#4476): the server leaves out its files and match, and the page offers no fix.
 const MemberMovie: Story = {
   render: () => (
@@ -1225,6 +1255,7 @@ export {
   CollectionEditorInUse,
   Collections,
   CollectionsNoneYet,
+  CopiesAlike,
   EpisodeMore,
   ExtraCopyRemoved,
   ExtraCopyUndoRefused,

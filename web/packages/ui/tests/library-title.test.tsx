@@ -233,7 +233,7 @@ describe("LibraryTitle", () => {
       "Couldn't remove it. Loomarr may not be allowed to change this folder.",
     );
     act(() => button("Technical details").click());
-    expect(host.textContent).toContain("Extra copy");
+    expect(host.textContent).toContain("Extra");
     cleanup();
   });
 

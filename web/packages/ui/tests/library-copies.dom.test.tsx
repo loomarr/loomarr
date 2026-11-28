@@ -98,17 +98,51 @@ describe("a movie's Copies card", () => {
     cleanup();
   });
 
-  it("tells two extras of one quality and size apart by their place", () => {
-    const { removes, cleanup } = render(
+  it("tells two rows of one quality and size apart by the end of their file names", () => {
+    // A playing file named for 720p that probed as 4K, beside an extra with the plain name.
+    const { rows, removes, cleanup } = render(
       movie([
-        file("a", "plays", { picture: UHD }),
-        file("b", "extra", { picture: HD }),
-        file("c", "extra", { picture: HD }),
+        file("Coral Meridian (2022) - 720p", "plays", { picture: UHD }),
+        file("Coral Meridian (2022)", "extra", { picture: UHD }),
       ]),
     );
+    expect(rows()[0]).toContain("…- 720p.mkv");
+    expect(rows()[1]).toContain("…(2022).mkv");
+    expect(removes().map((n) => n.getAttribute("aria-label"))).toEqual(["Remove the 4K copy …(2022).mkv"]);
+    cleanup();
+  });
+
+  it("shows no file name where quality or size already sets the rows apart", () => {
+    const { rows, cleanup } = render(
+      movie([
+        file("Coral Meridian", "plays", { picture: UHD }),
+        file("Coral Meridian 2", "extra", { picture: HD }),
+      ]),
+    );
+    expect(rows().join(" ")).not.toContain("Coral Meridian");
+    cleanup();
+  });
+
+  it("names the folder where two rows that read alike have one file name", () => {
+    const twin = (folder: string) =>
+      file("Kites", "extra", { picture: HD, path: `/media/movies/${folder}/Kites.mkv` });
+    const { removes, cleanup } = render(
+      movie([file("a", "plays", { picture: UHD }), twin("One"), twin("Two")]),
+    );
     expect(removes().map((n) => n.getAttribute("aria-label"))).toEqual([
-      "Remove the 1080p copy, 3.7 GB, copy 1 of 2",
-      "Remove the 1080p copy, 3.7 GB, copy 2 of 2",
+      "Remove the 1080p copy Kites.mkv in One",
+      "Remove the 1080p copy Kites.mkv in Two",
+    ]);
+    cleanup();
+  });
+
+  it("numbers two broken extras of one size by their place", () => {
+    const { removes, cleanup } = render(
+      movie([file("a", "plays", { picture: UHD }), file("b", "extra"), file("c", "extra")]),
+    );
+    expect(removes().map((n) => n.getAttribute("aria-label"))).toEqual([
+      "Remove the broken copy, 3.7 GB, copy 1 of 2",
+      "Remove the broken copy, 3.7 GB, copy 2 of 2",
     ]);
     cleanup();
   });
@@ -140,7 +174,7 @@ describe("a movie's Copies card", () => {
     const { host, rows, removes, cleanup } = render(
       movie([file("a", "plays", { picture: HD }), file("b", "extra")], 0),
     );
-    expect(rows()[1]).toContain("Can't be played");
+    expect(rows()[1]).toContain("Extra · can't be played");
     expect(removes().map((n) => n.textContent)).toEqual(["Remove the broken copy"]);
     expect(host.textContent).not.toContain("This movie can't be played");
     expect(host.textContent).not.toContain("Check files again");
