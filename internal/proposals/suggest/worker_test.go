@@ -162,10 +162,9 @@ func TestWorker_UndurableFailureWriteLogsAtErrorAndStaleAtInfo(t *testing.T) {
 			}
 			go svc.Run(ctx)
 
-			deadline := time.Now().Add(10 * time.Second)
-			for !strings.Contains(logs.String(), "Proposal Job failure") && time.Now().Before(deadline) {
-				time.Sleep(10 * time.Millisecond)
-			}
+			testkit.Eventually(t, 10*time.Second, "the Proposal Job failure log", func() bool {
+				return strings.Contains(logs.String(), "Proposal Job failure")
+			})
 			var line string
 			for l := range strings.Lines(logs.String()) {
 				if strings.Contains(l, "Proposal Job failure") {
@@ -432,18 +431,10 @@ func TestWorker_RunsJobAndPersistsProposal(t *testing.T) {
 	go svc.Run(ctx)
 
 	// Wait for the job to complete (poll the store — the source of truth).
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
+	testkit.Eventually(t, 5*time.Second, "the job to complete", func() bool {
 		j, _ := st.GetJob(context.Background(), jobID)
-		if j.Status == "done" {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	j, _ := st.GetJob(context.Background(), jobID)
-	if j.Status != "done" {
-		t.Fatalf("job did not complete: status=%s err=%s", j.Status, j.LastError)
-	}
+		return j.Status == "done"
+	})
 	// The proposal is in the approval queue.
 	queue, _ := st.ListProposalsByStatus(context.Background(), "submitted")
 	if len(queue) != 1 {
@@ -712,32 +703,28 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	defer cancel()
 	go svc.Run(ctx)
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
+	testkit.Eventually(t, 5*time.Second, "the job to reach the failed state", func() bool {
 		job, _ := st.GetJob(context.Background(), jobID)
-		if job.Status == "failed" {
-			if job.FailureCode != suggest.FailureCodeNoGroundedTitles {
-				t.Fatalf("failure code = %q, want %q", job.FailureCode, suggest.FailureCodeNoGroundedTitles)
-			}
-			if job.FailureTraceJSON == "" || !strings.Contains(job.FailureTraceJSON, `"selection_empty"`) {
-				t.Fatalf("failure trace = %q", job.FailureTraceJSON)
-			}
-			attempts, listErr := st.ListProposalJobAttempts(context.Background(), jobID)
-			if listErr != nil || len(attempts) != 1 || attempts[0].FailureCode != suggest.FailureCodeNoGroundedTitles {
-				t.Fatalf("failed Attempt history = %+v, %v", attempts, listErr)
-			}
-			journey, inspectErr := flow.Inspect(context.Background(), workflow.Viewer{UserID: "alice"}, jobID)
-			if inspectErr != nil {
-				t.Fatalf("Inspect failed Journey: %v", inspectErr)
-			}
-			if journey.Milestone != workflow.MilestoneFailed || journey.Failure == nil || journey.Failure.Code != workflow.FailureNoGroundedTitles || journey.Failure.Trace.Terminal != suggest.FailureSelectionEmpty {
-				t.Fatalf("failed Journey = %+v", journey)
-			}
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+		return job.Status == "failed"
+	})
+	job, _ := st.GetJob(context.Background(), jobID)
+	if job.FailureCode != suggest.FailureCodeNoGroundedTitles {
+		t.Fatalf("failure code = %q, want %q", job.FailureCode, suggest.FailureCodeNoGroundedTitles)
 	}
-	t.Fatal("job did not reach failed state")
+	if job.FailureTraceJSON == "" || !strings.Contains(job.FailureTraceJSON, `"selection_empty"`) {
+		t.Fatalf("failure trace = %q", job.FailureTraceJSON)
+	}
+	attempts, listErr := st.ListProposalJobAttempts(context.Background(), jobID)
+	if listErr != nil || len(attempts) != 1 || attempts[0].FailureCode != suggest.FailureCodeNoGroundedTitles {
+		t.Fatalf("failed Attempt history = %+v, %v", attempts, listErr)
+	}
+	journey, inspectErr := flow.Inspect(context.Background(), workflow.Viewer{UserID: "alice"}, jobID)
+	if inspectErr != nil {
+		t.Fatalf("Inspect failed Journey: %v", inspectErr)
+	}
+	if journey.Milestone != workflow.MilestoneFailed || journey.Failure == nil || journey.Failure.Code != workflow.FailureNoGroundedTitles || journey.Failure.Trace.Terminal != suggest.FailureSelectionEmpty {
+		t.Fatalf("failed Journey = %+v", journey)
+	}
 }
 
 // panickingLLM stands in for any bug deep in one suggestion run.
@@ -761,18 +748,13 @@ func TestWorker_PanicFailsTheJobAndKeepsTheWorkerAlive(t *testing.T) {
 	defer cancel()
 	go svc.Run(ctx)
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
+	testkit.Eventually(t, 5*time.Second, "the panicking job to reach the failed state", func() bool {
 		job, _ := st.GetJob(context.Background(), jobID)
-		if job.Status == "failed" {
-			if !strings.Contains(job.LastError, "panicked") {
-				t.Fatalf("last_error = %q, want the panic named", job.LastError)
-			}
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+		return job.Status == "failed"
+	})
+	if job, _ := st.GetJob(context.Background(), jobID); !strings.Contains(job.LastError, "panicked") {
+		t.Fatalf("last_error = %q, want the panic named", job.LastError)
 	}
-	t.Fatal("panicking job did not reach failed state")
 }
 
 // slowUnwindLLM is a provider mid-request when the pool stops: it says when it is called, then
@@ -1009,28 +991,23 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go svc.Run(runCtx)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
+	testkit.Eventually(t, 5*time.Second, "the durable recurate to finish", func() bool {
 		job, getErr := st.GetJob(ctx, jobID)
 		if getErr != nil {
 			t.Fatal(getErr)
 		}
-		if job.Status == "done" {
-			proposals, listErr := st.ListProposalsByStatus(ctx, "submitted")
-			if listErr != nil || len(proposals) != 1 {
-				t.Fatalf("submitted proposals = %+v, %v", proposals, listErr)
-			}
-			if scopes := feedback.Scopes(); len(scopes) != 1 || scopes[0] != "channel-a" {
-				t.Fatalf("feedback scopes = %v, want [channel-a]", scopes)
-			}
-			return
-		}
-		if job.Status == "failed" {
-			t.Fatalf("durable recurate failed without restored channel feedback: %s", job.LastError)
-		}
-		time.Sleep(20 * time.Millisecond)
+		return job.Status == "done" || job.Status == "failed"
+	})
+	if job, _ := st.GetJob(ctx, jobID); job.Status == "failed" {
+		t.Fatalf("durable recurate failed without restored channel feedback: %s", job.LastError)
 	}
-	t.Fatal("durable recurate did not finish")
+	proposals, listErr := st.ListProposalsByStatus(ctx, "submitted")
+	if listErr != nil || len(proposals) != 1 {
+		t.Fatalf("submitted proposals = %+v, %v", proposals, listErr)
+	}
+	if scopes := feedback.Scopes(); len(scopes) != 1 || scopes[0] != "channel-a" {
+		t.Fatalf("feedback scopes = %v, want [channel-a]", scopes)
+	}
 }
 
 func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
@@ -1756,14 +1733,10 @@ func TestWorker_AutoApprovePlanFailureLeavesProposalSubmitted(t *testing.T) {
 	defer cancel()
 	go svc.Run(runCtx)
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
+	testkit.Eventually(t, 5*time.Second, "the job to finish", func() bool {
 		j, _ := st.GetJob(ctx, jobID)
-		if j.Status == "done" || j.Status == "failed" {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+		return j.Status == "done" || j.Status == "failed"
+	})
 	j, _ := st.GetJob(ctx, jobID)
 	if j.Status != "done" {
 		t.Fatalf("a failed auto-approval must leave the proposal for review, not fail generation: status=%s err=%s", j.Status, j.LastError)
