@@ -1,4 +1,9 @@
-export type { ChannelListDetail, ChannelListLayout, ChannelListProps } from "./src/channel-list";
+export type {
+  ChannelListDetail,
+  ChannelListHandle,
+  ChannelListLayout,
+  ChannelListProps,
+} from "./src/channel-list";
 export { ChannelList } from "./src/channel-list";
 export type {
   ChannelAudioOption,
