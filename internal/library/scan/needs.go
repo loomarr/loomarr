@@ -115,6 +115,19 @@ func (l *Library) Ignore(ctx context.Context, itemID string) error {
 	return l.answer(ctx, itemID, librarystore.LibraryAnswer{Ignored: true})
 }
 
+// Keep answers a title that needs the maintainer and has no guess: it is their own, a home video.
+// Its files are written again, which gives it the Home videos genre.
+func (l *Library) Keep(ctx context.Context, itemID string) error {
+	if _, _, err := l.origin(ctx, itemID); err != nil {
+		return err
+	}
+	kept, err := l.NeedStore.KeepLibraryNeed(ctx, itemID, l.now())
+	if err != nil {
+		return err
+	}
+	return l.rewrite(ctx, kept.ID, kept.Origin)
+}
+
 // Unanswer takes a title's answer back. A title nothing else grounds needs the maintainer again.
 func (l *Library) Unanswer(ctx context.Context, itemID string) error {
 	_, origin, err := l.origin(ctx, itemID)

@@ -64,6 +64,7 @@ type LibraryRootService interface {
 	Unanswer(ctx context.Context, itemID string) error
 	IgnoreAll(ctx context.Context, itemIDs []string) error
 	RestoreAll(ctx context.Context, itemIDs []string) error
+	Keep(ctx context.Context, itemID string) error
 	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)
 	// Episode orders (#2151 decision 53).
 	OrderNeeds(ctx context.Context) ([]scan.OrderNeed, error)
