@@ -442,6 +442,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	var named told
 	if id.kind == mp.KindMovie {
 		named = b.movieTold(ctx, snapshot.Origin, file)
+		named.groups = movieGroups(b.root, file)
 	}
 	res := b.resolveNamed(ctx, snapshot.Origin, in, named)
 	if id.kind == mp.KindEpisode && res.record == nil && !res.waiting {
@@ -508,6 +509,9 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		Managed: len(id.managed.records) > 0, Edition: fileEdition(records), Part: file.Part, Trickplay: file.trickplay(),
 		External: file.externalTracks(), Markers: readEDL(file.edl()),
 	})
+	if res.kept {
+		further = nil
+	}
 	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)
 	// Every part of a movie in parts names its set, so the parts are one title from the first
 	// pass, before any catalog names it.
@@ -642,17 +646,18 @@ func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in pr
 
 // resolveNamed is resolve for a movie or a series whose names say what it is (named).
 func (b *builder) resolveNamed(ctx context.Context, origin inventory.OriginKey, in precedence.Input, named told) resolution {
+	// A home video takes nothing from a sidecar, an app or a catalog: only what its files are. It is
+	// named by its file or folder (nameHomeVideo) and sits under its own genre.
+	if b.im.keptHome(ctx, in.Kind, origin, named.groups) {
+		out := resolution{resolved: b.im.Resolver.Resolve(filesOnly(in)), kept: true}
+		out.resolved.Title, out.resolved.Year = precedence.Picked[string]{}, precedence.Picked[int]{}
+		out.resolved.Genres.Value = []string{HomeVideoGenre}
+		return out
+	}
 	if rec, ok := b.im.linkRecord(ctx, in.Kind, origin); ok {
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
 	}
 	out := resolution{resolved: b.im.Resolver.Resolve(in)}
-	// A home video is named by its file or folder (nameHomeVideo) and sits under its own genre,
-	// whatever its files say.
-	if b.im.keptHome(ctx, in.Kind, origin) {
-		out.kept = true
-		out.resolved.Title, out.resolved.Year = precedence.Picked[string]{}, precedence.Picked[int]{}
-		out.resolved.Genres.Value = []string{HomeVideoGenre}
-	}
 	// The catalog record below adds details, never identity: what decides is known now.
 	if in.Kind == mp.KindMovie || in.Kind == mp.KindSeries {
 		out.match = match(out.resolved, in.Records)

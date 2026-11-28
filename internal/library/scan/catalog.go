@@ -6,6 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -19,6 +20,7 @@ type CatalogStore interface {
 // AnswerStore is the maintainer's Needs you answers the walk reads (#2151 step 11).
 type AnswerStore interface {
 	LibraryAnswerFor(ctx context.Context, origin librarystore.LibraryOrigin) (librarystore.LibraryAnswer, bool, error)
+	KeptLibraryTitle(ctx context.Context, kind string, origin librarystore.LibraryOrigin, groups []librarystore.LibraryID) (bool, error)
 	// LibraryEpisodeOrderFor is which order a show's files follow, by its catalog row (decision 53).
 	LibraryEpisodeOrderFor(ctx context.Context, series librarystore.LibraryCatalogKey) (librarystore.LibraryEpisodeOrder, bool, error)
 }
@@ -59,18 +61,42 @@ func nameHomeVideo(facts *inventory.ItemFacts) {
 	}
 }
 
-// keptHome reports whether the maintainer kept this movie or series as a home video. An answer
-// that cannot be read says nothing.
-func (im *Importer) keptHome(ctx context.Context, kind mp.Kind, origin inventory.OriginKey) bool {
+// movieGroups are the ids a movie file shares with its title's other files before any catalog
+// names it: its set of parts, and its copies in the film's own folder.
+func movieGroups(root string, file File) []librarystore.LibraryID {
+	var out []librarystore.LibraryID
+	if file.Part > 0 && file.PartSet != "" {
+		out = append(out, librarystore.LibraryID{Namespace: partsNamespace, Value: partsID(file.PartSet)})
+	}
+	if key := filmCopyID(root, file.Rel, "", 0); key != "" {
+		out = append(out, librarystore.LibraryID{Namespace: filmCopiesNamespace, Value: key})
+	}
+	return out
+}
+
+// filesOnly is in without anything a sidecar, an app or a catalog says of the title: what its
+// files are, and no id, name or detail.
+func filesOnly(in precedence.Input) precedence.Input {
+	out := precedence.Input{Kind: in.Kind}
+	for _, r := range in.Records {
+		out.Records = append(out.Records, mp.Record{Source: r.Source, Kind: r.Kind, Files: r.Files, Numbering: r.Numbering})
+	}
+	return out
+}
+
+// keptHome reports whether this movie or series belongs to a title the maintainer kept as a home
+// video: the answer is the title's, so it covers every file of it, by the file's own origin or by
+// the group it joins its title by. An answer that cannot be read says nothing.
+func (im *Importer) keptHome(ctx context.Context, kind mp.Kind, origin inventory.OriginKey, groups []librarystore.LibraryID) bool {
 	if im.Answers == nil || (kind != mp.KindMovie && kind != mp.KindSeries) {
 		return false
 	}
-	answer, ok, err := im.Answers.LibraryAnswerFor(ctx, libraryOrigin(origin))
+	kept, err := im.Answers.KeptLibraryTitle(ctx, string(kind), libraryOrigin(origin), groups)
 	if err != nil {
 		im.log().Warn("library scan: answer not read", "err", err)
 		return false
 	}
-	return ok && answer.Kept && answer.Kind == string(kind)
+	return kept
 }
 
 // libraryID is id as the store keeps it; externalID, the store's id back.

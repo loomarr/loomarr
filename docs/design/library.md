@@ -758,7 +758,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `library_answers` as `kept`; an answer is exactly one of a link, ignored or kept. `DELETE
   …/answer` takes it back, and the title waits in Needs you again; "Wrong title?" replaces it with
   a link. A kept title is answered, so no scan or Matcher pass matches it or returns it to Needs
-  you. It keeps the name its file or folder gives it, with the year when the name has one, and a
+  you. The answer covers the whole title: a changed file, a new part and a new copy in the film's
+  folder are kept too, and nothing a sidecar, an app or a catalog says is read for it. It keeps the name its file or folder gives it, with the year when the name has one, and a
   multi-part folder is one title with parts. Its genre is "Home videos", so the genre filter and
   search find it. Members read it like any other title, a show's episodes included. The list and
   detail reads mark it `homeVideo`. The list read also marks `unidentified` a title that is waiting

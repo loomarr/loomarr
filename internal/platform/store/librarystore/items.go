@@ -421,7 +421,7 @@ var (
 		` + itemImage("poster") + `, ` + itemImage("backdrop") + `, ` + itemImage("logo") + `,
 		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`) + `,
 		(SELECT COUNT(*) FROM ` + extraCopies + `), COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0),
-		(` + titleKept("i") + `), (` + needWhere + `)`
+		(` + titleKept("i") + `), (` + needWhere + ` AND NOT ` + titleKept("i") + `)`
 	// itemProblems keeps a title that needs a look: a file that cannot play, or a movie's extra copy.
 	itemProblems = `(` + countFiles(` AND f.header = 'failed'`) + ` > 0
 		OR (i.kind = 'movie' AND EXISTS (SELECT 1 FROM ` + extraCopies + `)))`
@@ -446,8 +446,11 @@ var memberReads = `(` + titleIdentified("i") + ` OR (i.kind = 'episode' AND i.un
 
 // titleKept is the condition on the movie or series t that the maintainer kept it as a home video.
 func titleKept(t string) string {
-	return `EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = ` + t + `.origin_authority
-		AND a.origin_key = ` + t + `.origin_key AND a.kept = TRUE)`
+	// The answer names one of the title's origins; the row's own origin may be another file's.
+	return `EXISTS (SELECT 1 FROM library_answers a WHERE a.kept = TRUE
+		AND ((a.origin_authority = ` + t + `.origin_authority AND a.origin_key = ` + t + `.origin_key)
+			OR EXISTS (SELECT 1 FROM inventory_item_origins o WHERE o.item_id = ` + t + `.id
+				AND o.authority_id = a.origin_authority AND o.external_item_id = a.origin_key)))`
 }
 
 // titleIdentified is memberReads for the movie or series t. Identified is read from the match

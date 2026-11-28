@@ -97,6 +97,8 @@ type LibraryNeedsStore interface {
 	// KeepLibraryNeed answers a title that needs the maintainer and has no candidate as a home
 	// video: ErrNotKeepable, and nothing saved, otherwise.
 	KeepLibraryNeed(ctx context.Context, itemID string, at time.Time) (LibraryAnswered, error)
+	// KeptLibraryTitle reports whether a file belongs to a title kept as a home video.
+	KeptLibraryTitle(ctx context.Context, kind string, origin LibraryOrigin, groups []LibraryID) (bool, error)
 	// RestoreLibraryIgnored takes back the ignore of titles, all in one transaction:
 	// ErrNotIgnored, and nothing removed, if any is not ignored.
 	RestoreLibraryIgnored(ctx context.Context, itemIDs []string) ([]LibraryAnswered, error)
@@ -194,7 +196,7 @@ const needWhere = `i.kind IN ('movie', 'series') AND i.grounded = FALSE AND i.or
 
 func (s *Store) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, i.origin_authority, i.origin_key, i.searched
-		FROM library_items i WHERE `+needWhere+` AND `+itemListed+` ORDER BY i.sort_name, i.id`))
+		FROM library_items i WHERE `+needWhere+` AND NOT `+titleKept("i")+` AND `+itemListed+` ORDER BY i.sort_name, i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("library needs: %w", err)
 	}
