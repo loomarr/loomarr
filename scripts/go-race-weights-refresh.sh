@@ -85,6 +85,7 @@ if [[ "$jobs_seen" -eq 0 || ! -s "$samples" ]]; then
 fi
 
 if [[ -n "$only" ]]; then
+  # shellcheck disable=SC2016 # an awk condition: $1 is awk's field, not a shell variable
   of_package='$1 == only || index($1, only "@") == 1'
   if ! awk -F '\t' -v only="$only" "($of_package) { found = 1 } END { exit !found }" "$samples"; then
     echo "go-race-weights-refresh: no timings for $only in runs: $*" >&2

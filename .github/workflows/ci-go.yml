@@ -35,8 +35,8 @@ jobs:
     # 35472062915 showed the former three-way alphabetical split at 1430/657/583 package-seconds and
     # a 31m10s critical path. The weights in scripts/go-race-weights.tsv are measured seconds
     # regenerated from hosted runs (`make go-race-weights`); longest-processing-time assignment
-    # models the current tree at 1136/1136 aggregate package-seconds per ordinary lane and
-    # 339/284-second worker makespans (#1570, #4538). The sharder emits that measured order and the
+    # models the current tree at 801/801 aggregate package-seconds per ordinary lane and
+    # 201/201-second worker makespans (#1570, #4538). The sharder emits that measured order and the
     # race-policy filter preserves it; restoring lexical order made heavy packages start more than
     # six minutes late in merge-group run 35510845578. `make go-shard-verify` rejects coverage,
     # bounded-worker latency, or balance drift and proves the seven lanes remain an exact partition.
