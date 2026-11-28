@@ -1,7 +1,6 @@
 import { getChannelPlayUrlUrl, getListChannelsUrl } from "@loomarr/api/endpoints/channels";
 import type { PlayURLOutputBody } from "@loomarr/api/models/playURLOutputBody";
 import { readBody } from "@loomarr/api/mutator";
-import { ChannelPlayUrlResponse, ListChannelsResponse } from "@loomarr/api/zod/channels";
 import type { PlayerChannel, PlayerSourcePort } from "../player-source";
 import {
   GENERIC_START_FAILURE,
@@ -21,19 +20,6 @@ interface PlayUrlSourceOptions {
 interface ChannelCatalogPort {
   list: (signal: AbortSignal) => Promise<readonly PlayerChannel[]>;
 }
-
-// An older server sends no clock reading and no still address, so those are optional here. The
-// expiry is any string: one that is not a date leaves the source with no lifetime, not unplayable.
-const PlayUrlBody = ChannelPlayUrlResponse.pick({ relativeUrl: true, url: true }).extend({
-  ...ChannelPlayUrlResponse.pick({ relativeStillUrl: true, serverTimeMs: true, stillUrl: true }).partial()
-    .shape,
-  expiresAt: ChannelPlayUrlResponse.shape.url,
-});
-const CatalogBody = ListChannelsResponse.pick({ channels: true }).extend({
-  channels: ListChannelsResponse.shape.channels.element
-    .pick({ id: true, inAppPlayable: true, name: true, number: true })
-    .array(),
-});
 
 const trimLeadingSlashes = (value: string) => {
   let start = 0;
@@ -86,6 +72,7 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
     );
     if (!response.ok) throw new Error(`Couldn't mint a play URL (${response.status}).`);
 
+    const { PlayUrlBody } = await import("./response-bodies");
     const body = await readBody(response, PlayUrlBody);
     const expiry = Date.parse(body.expiresAt);
     const headerServerTime = Date.parse(response.headers.get("Date") ?? "");
@@ -154,6 +141,7 @@ const createChannelCatalogPort = (request: typeof globalThis.fetch): ChannelCata
   list: async (signal) => {
     const response = await request(getListChannelsUrl(), { method: "GET", signal });
     if (!response.ok) throw new Error(`Couldn't load channels (${response.status}).`);
+    const { CatalogBody } = await import("./response-bodies");
     return (await readBody(response, CatalogBody)).channels;
   },
 });
