@@ -312,7 +312,7 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 }
 
 // housekeepingTimeout is the ceiling for one pass. ⚠ It MUST be declared: a job with no Timeout
-// runs under River's inherited one-minute JobTimeout, which killed the nightly pass at 08:31 on
+// runs under River's inherited one-minute JobTimeout, which killed the nightly pass at 08:31,
 // night after night ("delete diagnostic event ...: context deadline exceeded") before it could
 // drain a 2.7M-row diagnostic_events table (#1411). The pass now works in short batches that
 // yield the database connection, so a generous ceiling cannot starve anything else; it exists
