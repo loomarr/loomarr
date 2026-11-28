@@ -32,7 +32,8 @@ interface StripBlockProps {
   layout: "row" | "strip";
   left: Length;
   onBlur: () => void;
-  onFocus: () => void;
+  /** `fromKeys` is false when a pointer gave the focus. */
+  onFocus: (fromKeys: boolean) => void;
   onHoverIn: () => void;
   onHoverOut: () => void;
   onPress: () => void;
@@ -91,8 +92,9 @@ const StripBlock = ({
   const { focused, ...focusHandlers } = useFocusLook({
     onBlur: () => onBlur(),
     onFocus: (event: unknown) => {
-      setKeyboard(fromKeyboard(event));
-      onFocus();
+      const fromKeys = fromKeyboard(event);
+      setKeyboard(fromKeys);
+      onFocus(fromKeys);
     },
   });
   const ring = focused && keyboard ? "actionFocus" : hovered ? "contentPrimary" : "transparent";

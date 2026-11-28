@@ -147,7 +147,7 @@ const FilmStrip = ({
     const at = strip.placed.find((p) => p.item.id === id);
     if (isRow || !at || viewWidth === 0) return;
     const least = Math.max(0, at.left + at.width + FADE - viewWidth);
-    scroller.current?.scrollTo({ animated: false, x: Math.min(Math.max(scrolled, least), at.left) });
+    scroller.current?.scrollTo?.({ animated: false, x: Math.min(Math.max(scrolled, least), at.left) });
   };
 
   const onKeyDown = (event: {
@@ -232,11 +232,12 @@ const FilmStrip = ({
                 focusedLook.current = undefined;
                 onLook?.(undefined);
               }}
-              onFocus={() => {
+              onFocus={(fromKeys) => {
                 setStopId(item.id);
                 focusedLook.current = look;
                 onLook?.(look);
-                reveal(item.id);
+                // A click must land on what was under the pointer, so only the keys scroll.
+                if (fromKeys) reveal(item.id);
               }}
               onHoverIn={() => onLook?.(look)}
               onHoverOut={() => onLook?.(focusedLook.current)}

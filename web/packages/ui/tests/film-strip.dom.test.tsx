@@ -259,6 +259,36 @@ describe("FilmStrip's edges", () => {
   it("gives a strip that is one single run its title and no count", () => {
     renderUi(view([airing(0, 30, { series: "Diner" }), airing(30, 60, { series: "Diner", title: "Two" })]));
     expect(labels()).toEqual(["Now · until T60 Diner"]);
+    // The drawn words carry the same: the time line, the title, and no episode count.
+    expect(screen.getByRole("button").textContent?.replace(/\s+/g, " ").trim()).toBe("Now · until T60 Diner");
+  });
+
+  it("scrolls a block into view when the keyboard focuses it, never when a pointer does", () => {
+    // jsdom has no layout and no scrolling: the view's width is handed to react-native-web's layout
+    // handler, and `scroll` is what its ScrollView calls.
+    const scroll = vi.fn();
+    Object.assign(HTMLElement.prototype, { scroll });
+    renderUi(view([airing(0, 30), airing(30, 60), airing(60, 90)]));
+    const group = screen.getByRole("group", { name: "Schedule" }) as HTMLElement & {
+      __reactLayoutHandler?: (event: unknown) => void;
+    };
+    act(() => group.__reactLayoutHandler?.({ nativeEvent: { layout: { width: 200 } } }));
+    const [, middle, last] = screen.getAllByRole("button") as [HTMLElement, HTMLElement, HTMLElement];
+    const focusFrom = (button: HTMLElement, keys: boolean) => {
+      const matches = button.matches.bind(button);
+      vi.spyOn(button, "matches").mockImplementation((selector: string) =>
+        selector === ":focus-visible" ? keys : matches(selector),
+      );
+      act(() => button.focus());
+    };
+
+    focusFrom(last, false);
+    expect(scroll).not.toHaveBeenCalled();
+    focusFrom(middle, true);
+    expect(scroll).toHaveBeenCalledTimes(1);
+
+    vi.restoreAllMocks();
+    delete (HTMLElement.prototype as { scroll?: unknown }).scroll;
   });
 
   it("moves the Tab stop to what is on now, or else the first, when the focused airing leaves", () => {
