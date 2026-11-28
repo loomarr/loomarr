@@ -3,7 +3,7 @@ import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimel
 import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
 import { formatGuideTime, layoutGuide } from "@loomarr/core/guide";
 import { SegmentedControl } from "@loomarr/design-system";
-import { GuideNowNext, GuidePhoneHeader } from "@loomarr/ui";
+import { GuideNowNext, GuidePhoneHeader } from "@loomarr/ui/guide";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 

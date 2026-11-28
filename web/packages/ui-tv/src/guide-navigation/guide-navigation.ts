@@ -4,7 +4,7 @@ import {
   type GuideNavigationDirection,
   moveGuideSelection,
 } from "@loomarr/core/guide";
-import type { GuideFocusTarget } from "@loomarr/ui";
+import type { GuideFocusTarget } from "@loomarr/ui/guide";
 
 import type { TvFocusRegistry } from "../focus-registry";
 import type {

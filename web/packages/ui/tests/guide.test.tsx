@@ -4,7 +4,7 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { GuideExperience, GuideSurface } from "../index";
+import { GuideExperience, GuideSurface } from "../guide";
 
 const layout = {
   channels: [

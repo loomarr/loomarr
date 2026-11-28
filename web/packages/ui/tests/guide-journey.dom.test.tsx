@@ -6,7 +6,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GuideJourney } from "../index";
+import { GuideJourney } from "../guide";
 
 const doc = document;
 
