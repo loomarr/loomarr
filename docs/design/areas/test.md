@@ -18,7 +18,7 @@ One area of the [package map](../package-map.md#start-here).
   One TMDB v3 stand-in: an in-memory catalogue served over the endpoints internal/library/tmdb calls.
 - **`platform/store/storetest`** · → `testkit/postgresimage`
   Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.
-- **`testkit`** · 2 importers · → `channels/schedule`, `demolibrary`, `filler/acquisition`, `filler/records`, `library/provision`, `library/tmdb/tmdbstandin`, `media/images/rustgen`, `people/access`, `people/notifications`, `platform/llm`, `platform/store`, `platform/store/channelstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout`, `playout/admission`, `playout/subtitles`, `proposals/quality`, `proposals/webreference`, `testkit/execfixture`, `testkit/postgresimage`
+- **`testkit`** · 2 importers · → `channels/schedule`, `demolibrary`, `filler/acquisition`, `filler/records`, `library/provision`, `library/tmdb/tmdbstandin`, `media/images/rustgen`, `people/access`, `people/notifications`, `platform/llm`, `platform/store`, `platform/store/channelstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout`, `playout/admission`, `playout/subtitles`, `proposals/quality`, `proposals/webreference`, `testkit/execfixture`, `testkit/postgresimage`, `testkit/waitfor`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/catalogfixture`** · → `library/mediaserver`, `library/provision`, `library/titlesearch`
   Shared no-network adapters for catalog tests.
@@ -46,5 +46,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns the single image reference used by Postgres testcontainers and the Make pre-pull that runs before those tests.
 - **`testkit/recordfixture`**
   A shared generic call recorder for isolated tests without depending on application packages.
+- **`testkit/waitfor`** · 1 importer
+  Testkit.Eventually as a leaf: it imports nothing of Loomarr, so the internal tests of a package that testkit itself imports (playout and what it builds on) can use it.
 
 **Tests only:** `integration`
