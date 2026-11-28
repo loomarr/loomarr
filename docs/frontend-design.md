@@ -621,6 +621,28 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   the cards have the whole width. Five cards on desktop and television, three on a phone.
 - **Station ID.** After a settled tune with the controls hidden, the band is replaced by the ident card
   on the programme's backdrop, heavily dimmed, and clears after five seconds.
+- **The film strip of The Cross (target, not shipped yet; #4730).** The band's strip above ships
+  unchanged. The new parts, `FilmStrip` and `ProgrammeFacts` in `@loomarr/ui`, are built beside it and
+  no screen draws them yet. The strip is one part in two places: under the picture in a desktop window,
+  and as the tuned channel's row in the Guide on every device. There is no strip over the picture and
+  none opened by tapping a row on a phone.
+  - **Time-true.** The caller names the window, and a block is as wide as its share of it.
+  - **What is on now** carries its artwork with the aired part dimmed and a white playhead. Behind live,
+    the live mark stands at now and the playhead where the viewer is.
+  - **A run of one series** is one block that names the series and how many episodes. Adjacent
+    airings of one series are a run, with or without a break between them; one episode split by a
+    break counts once. The count is derived in the client from those airings.
+  - **A later programme** shows its start time. **A programme that has ended** is dimmed and carries
+    no time. **A break** is a thin tick, never a block, including a break inside a run.
+  - **With artwork** the time and name sit under each still (or inside it, on ink, where the strip is a
+    Guide row). **A library with no artwork** draws flat tones with the words inside each block.
+  - **Rings.** A pointer over a block draws a plain ring; the amber ring is for keyboard and remote
+    focus alone. Every block is reachable by keyboard and is named with its title and time.
+  - **A later programme's facts**, pointed at or focused, are type: title, episode, rating, genres, a
+    synopsis of a few lines, and `Starts` or `Until` with the time. Over the picture they stand on a
+    solid ink plate; on an upright phone they show under the Guide.
+  - **A message** shows when it is raised, as a short line on an ink plate: OK on a later programme on a
+    television says when it starts.
 
 ### 9.3 The control cluster and Leave
 
