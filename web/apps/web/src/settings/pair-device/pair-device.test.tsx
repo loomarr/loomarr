@@ -1,6 +1,6 @@
 import { getDevicePairApproveMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
@@ -231,10 +231,14 @@ describe("PairDevice", () => {
     await userEvent.type(field, "   ");
     const form = field.closest("form");
     if (!form) throw new Error("the code field is not in a form");
-    fireEvent.submit(form);
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(approvals).toBe(0);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fireEvent.submit(form);
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(approvals).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps a rejected code for correction and clears an approved one", async () => {

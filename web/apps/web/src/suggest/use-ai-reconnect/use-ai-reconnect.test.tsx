@@ -2,7 +2,7 @@ import { getSettingsListMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { server } from "@/test/msw/server";
@@ -34,9 +34,12 @@ const stubFeatures = (initial: boolean) => {
 const settingsSaved = () => act(() => FakeEventSource.broadcast("settings", {}));
 
 // Lets any read a frame started land, so a test can say none did.
-const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+const settle = () => act(() => vi.advanceTimersByTimeAsync(1_000));
 
 describe("useAiReconnect", () => {
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => vi.useRealTimers());
+
   it("turns true when a settings write turns AI on, then lets the read go", async () => {
     const features = stubFeatures(false);
     const { result } = renderHook(() => useAiReconnect(true), { wrapper: makeWrapper() });
@@ -90,16 +93,11 @@ describe("useAiReconnect", () => {
   });
 
   it("does not poll between writes", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      const features = stubFeatures(false);
-      renderHook(() => useAiReconnect(true), { wrapper: makeWrapper() });
-      await waitFor(() => expect(features.reads).toBe(1));
+    const features = stubFeatures(false);
+    renderHook(() => useAiReconnect(true), { wrapper: makeWrapper() });
+    await waitFor(() => expect(features.reads).toBe(1));
 
-      await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
-      expect(features.reads).toBe(1);
-    } finally {
-      vi.useRealTimers();
-    }
+    await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
+    expect(features.reads).toBe(1);
   });
 });

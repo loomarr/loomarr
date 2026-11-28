@@ -1,8 +1,8 @@
 import { getAddFillerSourceMockHandler, getListFillerProvidersMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fillerProviders } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -74,9 +74,14 @@ describe("LocalSourceForm", () => {
         providers: fillerProviders.map((provider) => ({ ...provider, addable: false })),
       }),
     );
-    renderForm();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.queryByRole("button", { name: /^Kind of source to add/ })).not.toBeInTheDocument();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderForm();
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(screen.queryByRole("button", { name: /^Kind of source to add/ })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sends the trimmed address with the chosen kind and clears the field", async () => {
