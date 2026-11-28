@@ -44,6 +44,8 @@ interface StripBlockProps {
   width: Length;
   /** Where the words start across the block, clear of the playhead. */
   wordsFrom: Length;
+  /** Further room in points before the words, for the Live word. */
+  wordsInset: number;
 }
 
 // The browser's own test of keyboard focus, so a click never draws the amber ring. A native view has
@@ -82,6 +84,7 @@ const StripBlock = ({
   tabStop,
   width,
   wordsFrom,
+  wordsInset,
 }: StripBlockProps) => {
   const [hovered, setHovered] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
@@ -167,7 +170,9 @@ const StripBlock = ({
           overflow="hidden"
           // The picture, the dim and the words are placed against this box.
           position="relative"
-          testID={ringed && !wideRing ? `film-strip-ring-${ring}` : undefined}
+          testID={
+            ringed && !wideRing ? `film-strip-ring-${ring}` : receded ? "film-strip-receded" : undefined
+          }
         >
           {artworkUri ? (
             <PlaybarStill
@@ -208,6 +213,7 @@ const StripBlock = ({
               style={{
                 bottom: 0,
                 left: wordsFrom,
+                paddingLeft: wordsInset,
                 position: "absolute",
                 right: 0,
                 ...(artworkUri ? {} : { top: 0 }),

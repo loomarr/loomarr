@@ -1,5 +1,5 @@
 import { Surface, Text, ThemeScope } from "@loomarr/design-system";
-import { useRef, useState } from "react";
+import { type ComponentRef, useRef, useState } from "react";
 import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -107,6 +107,7 @@ const FilmStrip = ({
   const [stopId, setStopId] = useState<string | undefined>(undefined);
   const [viewWidth, setViewWidth] = useState(0);
   const [scrolled, setScrolled] = useState(0);
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
 
   const isRow = layout === "row";
   const items = groupSeriesRuns(airings).filter(
@@ -140,6 +141,15 @@ const FilmStrip = ({
     programmes.find((i) => stateOf(i, nowMs) === "now") ??
     programmes[0];
 
+  // The browser brings a focused block only as far as the edge, which the fade covers; scroll on
+  // until it stands clear. The track ends with the fade's width of padding, so the last block can too.
+  const reveal = (id: string) => {
+    const at = strip.placed.find((p) => p.item.id === id);
+    if (isRow || !at || viewWidth === 0) return;
+    const least = Math.max(0, at.left + at.width + FADE - viewWidth);
+    scroller.current?.scrollTo({ animated: false, x: Math.min(Math.max(scrolled, least), at.left) });
+  };
+
   const onKeyDown = (event: {
     altKey: boolean;
     ctrlKey: boolean;
@@ -170,7 +180,7 @@ const FilmStrip = ({
     <View
       // react-native-web hands a View's key events to the DOM; native moves focus by itself.
       {...(Platform.OS === "web" ? ({ onKeyDown } as object) : {})}
-      style={{ height, width: isRow ? "100%" : strip.width }}
+      style={{ height, width: isRow ? "100%" : strip.width + FADE }}
     >
       <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: HEAD_ROOM }}>
         {strip.placed.map(({ fromMs, item, left, width }) => {
@@ -202,6 +212,8 @@ const FilmStrip = ({
           const shownTo = isRow ? Math.min(item.stopMs, window.stopMs) : item.stopMs;
           const aired = state === "now" ? clamp((nowMs - shownFrom) / (shownTo - shownFrom)) : 0;
           const roomy = isRow && item.stopMs - nowMs >= ROOMY_MS;
+          // Behind live, the Live word stands just after the aired part, where the words would start.
+          const pastLive = roomy && aired > 0 && behind && !liveLeads;
           return (
             <StripBlock
               aired={aired}
@@ -224,6 +236,7 @@ const FilmStrip = ({
                 setStopId(item.id);
                 focusedLook.current = look;
                 onLook?.(look);
+                reveal(item.id);
               }}
               onHoverIn={() => onLook?.(look)}
               onHoverOut={() => onLook?.(focusedLook.current)}
@@ -234,6 +247,7 @@ const FilmStrip = ({
               tabStop={item.id === stop?.id}
               width={isRow ? `${(ratio(item.stopMs) - ratio(item.startMs)) * 100}%` : width}
               wordsFrom={roomy && aired > 0 ? `${aired * 100}%` : 0}
+              wordsInset={pastLive ? LIVE_ROOM : 0}
             />
           );
         })}
@@ -302,6 +316,7 @@ const FilmStrip = ({
         // A scroller, so focus past the trailing edge brings its block into view.
         <ScrollView
           horizontal
+          ref={scroller}
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) =>
             setScrolled(e.nativeEvent.contentOffset.x)
           }

@@ -216,6 +216,92 @@ describe("FilmStrip's order and marks", () => {
   });
 });
 
+describe("FilmStrip's edges", () => {
+  const view = (list: StripAiring[], nowMs = at(15)) => (
+    <FilmStrip
+      airings={list}
+      formatTime={formatTime}
+      nowMs={nowMs}
+      window={{ startMs: at(0), stopMs: at(120) }}
+    />
+  );
+  const labels = () => screen.queryAllByRole("button").map((b) => b.getAttribute("aria-label"));
+  const stops = () =>
+    screen
+      .queryAllByRole("button")
+      .filter((b) => b.tabIndex === 0)
+      .map((b) => b.getAttribute("aria-label"));
+
+  it("is an empty Schedule group with no blocks when there are no airings", () => {
+    renderUi(view([]));
+    expect(screen.getByRole("group", { name: "Schedule" })).toBeTruthy();
+    expect(labels()).toEqual([]);
+    expect(screen.queryAllByRole("img")).toEqual([]);
+  });
+
+  it("is a Schedule group of one Tab-stop block for one airing", () => {
+    renderUi(view([airing(0, 30)]));
+    expect(screen.getByRole("group", { name: "Schedule" })).toBeTruthy();
+    expect(labels()).toEqual(["Now · until T30 Film 0"]);
+    expect(stops()).toEqual(labels());
+  });
+
+  it("is a Schedule group of named break ticks and no blocks when there are only breaks", () => {
+    renderUi(view([airing(0, 30, { kind: "filler" }), airing(30, 60, { kind: "flex" })]));
+    expect(screen.getByRole("group", { name: "Schedule" })).toBeTruthy();
+    expect(labels()).toEqual([]);
+    expect(screen.getAllByRole("img").map((i) => i.getAttribute("aria-label"))).toEqual([
+      "Break at T0",
+      "Break at T30",
+    ]);
+  });
+
+  it("gives a strip that is one single run its title and no count", () => {
+    renderUi(view([airing(0, 30, { series: "Diner" }), airing(30, 60, { series: "Diner", title: "Two" })]));
+    expect(labels()).toEqual(["Now · until T60 Diner"]);
+  });
+
+  it("moves the Tab stop to what is on now, or else the first, when the focused airing leaves", () => {
+    const [first, now, later] = [airing(0, 30), airing(30, 60), airing(60, 90)];
+    const { rerender } = renderUi(view([first, now, later], at(45)));
+    act(() => screen.getByRole("button", { name: /Film 60/ }).focus());
+    expect(stops()).toEqual(["T60 Film 60"]);
+
+    rerender(view([first, now], at(45)));
+    expect(stops()).toEqual(["Now · until T60 Film 30"]);
+
+    // Nothing on now: the first block holds the stop.
+    rerender(view([first, airing(90, 120)], at(45)));
+    expect(stops()).toEqual(["Film 0, ended T30"]);
+  });
+
+  it("puts the playhead halfway along a block drawn at the minimum width, under the picture", () => {
+    renderUi(view([airing(0, 10)], at(5)));
+    expect(style(screen.getByRole("button")).width).toBe("150px");
+    expect(style(screen.getByTestId("film-strip-playhead")).left).toBe("75px");
+  });
+
+  it("starts a Guide row's words after the Live word when behind live", () => {
+    const row = {
+      airings: [airing(0, 120)],
+      layout: "row" as const,
+      nowMs: at(60),
+      window: { startMs: at(0), stopMs: at(120) },
+    };
+    const words = () => style(screen.getByTestId("film-strip-words"));
+    strip(row);
+    expect(words().paddingLeft).toBe("0px");
+    cleanup();
+    strip({ ...row, playheadMs: at(50) });
+    expect(words().left).toBe("50%");
+    expect(words().paddingLeft).toBe("48px");
+    cleanup();
+    // Too little left to move the words at all.
+    strip({ ...row, nowMs: at(110), playheadMs: at(100) });
+    expect(words().paddingLeft).toBe("0px");
+  });
+});
+
 describe("ProgrammeFacts", () => {
   const later = airing(90, 120, {
     description: "A long night.",

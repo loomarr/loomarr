@@ -9,7 +9,7 @@ import {
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 // The film strip of The Cross (frontend-design §9.2, target). Genre words only: the repo is public,
 // so no real titles. The clock is fixed, and stills are `data:` stand-ins, never remote images.
@@ -106,10 +106,34 @@ const light = { theme: "light" } as const;
 const Day: Story = {};
 const DayLight: Story = { globals: light };
 const DayNoArtwork: Story = { args: { airings: bare } };
-const DayNoArtworkLight: Story = { args: { airings: bare }, globals: light };
+// An ended block with no artwork recedes into the page: the light theme's canvas and decorative edge.
+const DayNoArtworkLight: Story = {
+  args: { airings: bare },
+  globals: light,
+  play: async ({ canvasElement }) => {
+    const ended = within(canvasElement).getByTestId("film-strip-receded");
+    await waitFor(() => expect(getComputedStyle(ended).backgroundColor).toBe("rgb(247, 248, 250)"));
+    await expect(getComputedStyle(ended).borderTopColor).toBe("rgb(210, 214, 222)");
+  },
+};
 
 // More day than room: the strip runs off its trailing edge with a fade.
-const RunsOff: Story = { args: { minBlockWidth: 330 } };
+const RunsOff: Story = {
+  args: { minBlockWidth: 330 },
+  play: async ({ canvasElement }) => {
+    const schedule = within(canvasElement).getByRole("group", { name: "Schedule" });
+    await waitFor(() => expect(schedule.style.maskImage).toContain("linear-gradient"));
+    await userEvent.tab();
+    await userEvent.keyboard("{End}");
+    // The last block, focused by keyboard, stands wholly clear of the 90px fade.
+    await waitFor(() => {
+      const ring = within(canvasElement).getByTestId("film-strip-ring-actionFocus").getBoundingClientRect();
+      const view = schedule.getBoundingClientRect();
+      expect(ring.left).toBeGreaterThanOrEqual(view.left);
+      expect(ring.right).toBeLessThanOrEqual(view.right - 90 + 0.5);
+    });
+  },
+};
 
 const GuideRow: Story = { args: { layout: "row" } };
 const GuideRowLight: Story = { args: { layout: "row" }, globals: light };
