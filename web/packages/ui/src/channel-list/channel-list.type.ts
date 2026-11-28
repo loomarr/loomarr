@@ -25,6 +25,11 @@ interface ChannelListProps<C extends LineupChannel> {
    * is measured from below; it takes the place of `restOffset`.
    */
   restFromBottom?: number | undefined;
+  /**
+   * How far below the top of the whole list, its tabs and find included, the pinned channel rests,
+   * for a list whose crossing is set by something beside it; it takes the place of `restOffset`.
+   */
+  restFromListTop?: number | undefined;
   detail?: ((channel: C) => ChannelListDetail) | undefined;
   layout?: ChannelListLayout | undefined;
   /** Takes focus onto the cursor and draws its ring from the start, as a list opened from a key does. */

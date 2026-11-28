@@ -82,6 +82,7 @@ const ChannelList = <C extends LineupChannel>({
   renderPinned,
   restOffset: restFromTop = 0,
   restFromBottom,
+  restFromListTop,
   detail,
   layout = "pointer",
   autoFocus = false,
@@ -95,10 +96,16 @@ const ChannelList = <C extends LineupChannel>({
   const headingHeight = wholeRows ? ROW_HEIGHT : HEADING_HEIGHT;
 
   const [viewport, setViewport] = useState(0);
+  // How far below the top of the whole list its rows' box starts: under the tabs and find.
+  const [rowsTop, setRowsTop] = useState(0);
   const [pinnedHeight, setPinnedHeight] = useState(ROW_HEIGHT * 2);
   const [nativeScroll, setNativeScroll] = useState(0);
   const restOffset =
-    restFromBottom === undefined ? restFromTop : Math.max(0, viewport - pinnedHeight - restFromBottom);
+    restFromListTop !== undefined
+      ? Math.max(0, restFromListTop - rowsTop)
+      : restFromBottom === undefined
+        ? restFromTop
+        : Math.max(0, viewport - pinnedHeight - restFromBottom);
   // The row drawn as under a pointer.
   const [hovered, setHovered] = useState<string | undefined>(undefined);
 
@@ -446,7 +453,10 @@ const ChannelList = <C extends LineupChannel>({
       <Bare
         flex={1}
         minHeight={0}
-        onLayout={(event: LayoutChangeEvent) => setViewport(event.nativeEvent.layout.height)}
+        onLayout={(event: LayoutChangeEvent) => {
+          setViewport(event.nativeEvent.layout.height);
+          setRowsTop(event.nativeEvent.layout.y);
+        }}
       >
         <Bare height={viewport ? rest.height : "100%"}>
           <ScrollView

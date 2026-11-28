@@ -114,7 +114,9 @@ const faceOf = (
 };
 
 const keysFor = ({ behindLive, device, paused }: QuietRowProps): readonly QuietRowKey[] =>
-  (device === "tv" || device === "window") && behindLive && !paused ? ["live", ...KEYS[device]] : KEYS[device];
+  (device === "tv" || device === "window") && behindLive && !paused
+    ? ["live", ...KEYS[device]]
+    : KEYS[device];
 
 /**
  * The quiet row of The Cross (frontend-design §9.3, target): one toolbar of controls. It is one Tab

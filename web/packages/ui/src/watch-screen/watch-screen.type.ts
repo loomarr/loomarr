@@ -4,14 +4,35 @@ import type { WatchMenuName } from "@loomarr/core/watch-screen";
 import type { ReactNode } from "react";
 
 import type { ChannelListDetail } from "../channel-list";
+import type { StripAiring } from "../film-strip";
 import type { LowerThirdState } from "../lower-third";
 import type { WatchScreenModel } from "../use-watch-screen";
 
 /**
- * The layouts this part draws: a desktop at full screen, the list over the picture. A window, a
- * television and a phone are their own arrangements, to come.
+ * The layouts this part draws: a desktop at full screen, the list over the picture, and a desktop
+ * window, the list beside the picture and the film strip under it. A television and a phone are
+ * their own arrangements, to come.
  */
-type WatchScreenLayout = "full";
+type WatchScreenLayout = "full" | "window";
+
+/** The named control that leaves the screen. */
+interface WatchBack {
+  label: string;
+  onPress: () => void;
+}
+
+/** What a window's film strip and facts are drawn from. */
+interface WatchSchedule<C extends LineupChannel> {
+  /**
+   * A channel's airings for its day, from before what is on now to past what the strip draws, so a
+   * series run at either edge of the strip keeps its episode count.
+   */
+  airings: (channel: C) => readonly StripAiring[];
+  /** A clock time. For a programme after midnight the caller's formatter adds the day. */
+  formatTime: (ms: number) => string;
+  /** Live, now. */
+  nowMs: number;
+}
 
 /** What an open menu's slot is handed. */
 interface WatchMenuSlot<C extends LineupChannel> {
@@ -47,6 +68,13 @@ interface WatchScreenProps<C extends LineupChannel> {
   reducedMotion?: boolean | undefined;
   /** For story baselines only: draws the static without its flicker. */
   holdSnow?: boolean | undefined;
+  /**
+   * The named back control. Over the picture it stands at the top leading corner; in a window it
+   * leads the list's header, before the Guide control.
+   */
+  back?: WatchBack | undefined;
+  /** A window's film strip and facts; left out, a window draws neither. */
+  schedule?: WatchSchedule<C> | undefined;
 }
 
-export type { WatchMenuSlot, WatchProgramme, WatchScreenLayout, WatchScreenProps };
+export type { WatchBack, WatchMenuSlot, WatchProgramme, WatchSchedule, WatchScreenLayout, WatchScreenProps };

@@ -144,7 +144,7 @@ const FilmStrip = ({
   useImperativeHandle(ref, () => ({
     focusFromNow: (by) => {
       const now = programmes.findIndex((i) => stateOf(i, nowMs) === "now");
-      const next = programmes[clamp((now < 0 ? 0 : now) + by, 0, programmes.length - 1)];
+      const next = programmes[clamp(Math.max(now, 0) + by, 0, programmes.length - 1)];
       if (next) blocks.current.get(next.id)?.focus();
     },
   }));

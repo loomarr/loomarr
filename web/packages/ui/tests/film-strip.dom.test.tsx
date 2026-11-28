@@ -3,7 +3,14 @@
 import { act, cleanup, fireEvent, renderUi, screen, userEvent } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FilmStrip, type FilmStripHandle, type FilmStripProps, ProgrammeFacts, type StripAiring, StripMessage } from "../index";
+import {
+  FilmStrip,
+  type FilmStripHandle,
+  type FilmStripProps,
+  ProgrammeFacts,
+  type StripAiring,
+  StripMessage,
+} from "../index";
 
 afterEach(cleanup);
 
