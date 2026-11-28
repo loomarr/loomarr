@@ -1,7 +1,7 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { PlayerFailureCause, PlayerTuneReport } from "@loomarr/player";
 import { useBrowserPlayer } from "@loomarr/player/browser";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { channelSourcePort } from "../channel-play-url";
 import { beginTune, markTunePhase, type TuneAttempt } from "../tuner-timing";
