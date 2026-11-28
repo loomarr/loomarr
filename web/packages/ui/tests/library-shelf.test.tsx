@@ -129,13 +129,16 @@ const render = (overrides: Partial<LibraryShelfProps>) => {
   const host = doc.createElement("div");
   doc.body.append(host);
   const root = createRoot(host);
-  act(() =>
-    root.render(
-      <LoomarrProvider theme="dark">
-        <LibraryShelf {...props} />
-      </LoomarrProvider>,
-    ),
-  );
+  // Called again after the window's width changes, so the wall draws at the new one.
+  const draw = () =>
+    act(() =>
+      root.render(
+        <LoomarrProvider theme="dark">
+          <LibraryShelf {...props} />
+        </LoomarrProvider>,
+      ),
+    );
+  draw();
   const buttons = () => Array.from(host.querySelectorAll('[role="button"], [role="tab"], button, a'));
   const find = (name: string) =>
     buttons().find((n) => n.textContent?.trim() === name || n.getAttribute("aria-label") === name);
@@ -154,7 +157,7 @@ const render = (overrides: Partial<LibraryShelfProps>) => {
     act(() => root.unmount());
     host.remove();
   };
-  return { host, props, button, find, tile, cleanup };
+  return { host, props, button, find, tile, draw, cleanup };
 };
 
 // Chooses an option in a native <select> the way a person does: its value, then a change event.
@@ -267,9 +270,7 @@ describe("LibraryShelf", () => {
     const { host, button, cleanup } = render({ admin: admin({ needsYou: 2 }), genres: [] });
     const style = (node: unknown) => (node as { style: { minHeight: string } }).style;
     expect(style(host.querySelector("input")).minHeight).toBe("48px");
-    await act(async () => button("Filters").click());
-    expect(style(doc.querySelector('[role="dialog"] select')).minHeight).toBe("48px");
-    const all = doc.querySelector('[role="dialog"] [role="tab"]');
+    const all = host.querySelector('[role="tab"]');
     expect(all?.textContent?.trim()).toBe("All");
     // The width is on the box inside the tab's padding, set by a stylesheet class.
     const box = (all as unknown as { firstElementChild: { firstElementChild: unknown } }).firstElementChild
@@ -278,6 +279,8 @@ describe("LibraryShelf", () => {
       .getComputedStyle;
     expect(computed(box).minWidth).toBe("48px");
     expect(button("Review").getAttribute("href")).toBeNull();
+    await act(async () => button("Filters").click());
+    expect(style(doc.querySelector('[role="dialog"] select')).minHeight).toBe("48px");
     screen.width = 1440;
     cleanup();
   });
@@ -405,7 +408,7 @@ describe("LibraryShelf", () => {
     counting.cleanup();
   });
 
-  it("on a phone, says in the sheet how many titles the filters leave, and counts none on Collections", async () => {
+  it("on a phone, says in the sheet how many titles the filters leave, and offers no sheet on Collections", async () => {
     screen.width = 390;
     try {
       const filtering = {
@@ -420,25 +423,40 @@ describe("LibraryShelf", () => {
       const sheet = doc.querySelector('[role="dialog"]');
       expect(sheet?.querySelector('[role="status"]')?.textContent).toBe("37 titles");
       expect(sheet?.textContent).toContain("Filters");
+      expect(sheet?.textContent).toContain("Show 37 titles");
       cleanup();
 
+      // The tabs are on the page; Collections has nothing to search or filter.
       const collections = render({ filter: "collections", genres: [], filtering });
-      expect(collections.button("Filters").textContent?.trim()).toBe("Filters");
+      expect(collections.find("Filters")).toBeUndefined();
+      expect(collections.find("Filters (1)")).toBeUndefined();
+      expect(collections.host.querySelector("input")).toBeNull();
+      expect(collections.button("Movies").getAttribute("role")).toBe("tab");
       collections.cleanup();
     } finally {
       screen.width = 1440;
     }
   });
 
-  it("on a phone, folds the tabs and filters into a sheet that applies and gives focus back", async () => {
+  it("on a phone, keeps Movies and Shows on the page and the rest in a sheet that gives focus back", async () => {
     screen.width = 390;
     try {
       const { host, props, button, find, cleanup } = render({ filter: "movie", genres: [] });
-      // One line on the page: the search, and Filters with how many are on.
-      expect(host.querySelector('[role="tab"]')).toBeNull();
+      // On the page: the search and Filters, with the tabs after them. Movies is not a filter to count.
       expect(host.querySelector("select")).toBeNull();
-      expect(host.querySelector("input")).not.toBeNull();
-      const opener = button("Filters (1)") as El & { focus(): void; style: { minHeight: string } };
+      const search = host.querySelector("input") as unknown as {
+        compareDocumentPosition(n: unknown): number;
+      };
+      expect(search.compareDocumentPosition(button("Shows")) & 4).toBe(4);
+      expect(Array.from(host.querySelectorAll('[role="tab"]'), (n) => n.textContent?.trim())).toEqual([
+        "All",
+        "Movies",
+        "Shows",
+        "Collections",
+      ]);
+      act(() => button("Shows").click());
+      expect(props.onFilterChange).toHaveBeenCalledWith("series");
+      const opener = button("Filters") as El & { focus(): void; style: { minHeight: string } };
       expect(opener.style.minHeight).toBe("48px");
       // Settings is the gear alone, named for what it opens, and a finger's size each way.
       const settings = find("Library settings") as El & { style: { minHeight: string; width: string } };
@@ -451,24 +469,84 @@ describe("LibraryShelf", () => {
       });
       const sheet = () => doc.querySelector('[role="dialog"]');
       const inSheet = (selector: string) => Array.from(sheet()?.querySelectorAll(selector) ?? []);
-      // The sheet is outside the page, with the count of the tab and no counts in the tabs.
-      expect(sheet()?.textContent).toContain("2,180 titles");
-      expect(sheet()?.textContent).not.toContain("3,412");
-      const shows = inSheet('[role="tab"]').find((n) => n.textContent?.trim() === "Shows");
-      act(() => shows?.click());
-      expect(props.onFilterChange).toHaveBeenCalledWith("series");
-      const [order] = inSheet("select");
+      expect(inSheet('[role="tab"]')).toHaveLength(0);
+      // Each select is under the words that name it.
+      const [order, genre] = inSheet("select");
+      for (const [select, words] of [
+        [order, "Sort"],
+        [genre, "Genre"],
+      ] as const) {
+        expect(select?.getAttribute("aria-label")).toBe(words);
+        const label = (select as unknown as { previousElementSibling: El | null }).previousElementSibling;
+        expect(label?.textContent).toBe(words);
+      }
       choose(order as El, "recent");
       expect(props.onSortChange).toHaveBeenCalledWith("recent");
 
       await act(async () => {
         inSheet("button, [role='button']")
-          .find((n) => n.textContent?.trim() === "Done")
+          .find((n) => n.textContent?.trim() === "Show 2,180 titles")
           ?.click();
       });
       await vi.waitFor(() => expect(sheet()).toBeNull());
       await vi.waitFor(() => expect(doc.activeElement).toBe(opener));
+      expect(find("Filters")).toBeDefined();
       cleanup();
+    } finally {
+      screen.width = 1440;
+    }
+  });
+
+  it("on a phone, says Show 1 title for one, and plain Done while the count loads", async () => {
+    screen.width = 390;
+    try {
+      for (const [counts, words] of [
+        [{ all: 1, movie: 1, series: 0 }, "Show 1 title"],
+        [undefined, "Done"],
+      ] as const) {
+        const { button, cleanup } = render({ counts, genres: [] });
+        await act(async () => button("Filters").click());
+        const buttons = Array.from(doc.querySelector('[role="dialog"]')?.querySelectorAll("button") ?? []);
+        expect(buttons.map((n) => n.textContent?.trim())).toContain(words);
+        cleanup();
+      }
+    } finally {
+      screen.width = 1440;
+    }
+  });
+
+  it("closes the phone's sheet when the window grows past it, and moves focus to the desktop's control", async () => {
+    const filtering = {
+      filters: {},
+      onChange: vi.fn(),
+      onClear: vi.fn(),
+      personSearch: { value: "", onChange: vi.fn(), options: [], loading: false, failed: false },
+      total: 37,
+    };
+    try {
+      for (const [extra, target] of [
+        [{ filtering }, "More filters"],
+        [{}, "search"],
+      ] as const) {
+        screen.width = 390;
+        const { host, button, draw, cleanup } = render({ genres: [], ...extra });
+        await act(async () => button("Filters").click());
+        expect(doc.querySelector('[role="dialog"]')).not.toBeNull();
+
+        screen.width = 1440;
+        await act(async () => draw());
+        const expected = () => (target === "search" ? host.querySelector("input") : button(target));
+        await vi.waitFor(() => expect(doc.querySelector('[role="dialog"]')).toBeNull());
+        // Past any focus the closing dialog hands back late.
+        await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+        expect(doc.activeElement).toBe(expected());
+
+        // A phone again: the sheet stays closed.
+        screen.width = 390;
+        await act(async () => draw());
+        expect(doc.querySelector('[role="dialog"]')).toBeNull();
+        cleanup();
+      }
     } finally {
       screen.width = 1440;
     }

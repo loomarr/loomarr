@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { ModalOverlay } from "../../../overlay";
 import { Line } from "../../library-poster";
+import { usePhoneDensity } from "../../phone-density";
 import type { LibrarySettingsProps } from "../library-settings.type";
 
 // Check files again and Update details for the whole library (Emby and Jellyfin's Scan library and
@@ -14,11 +15,13 @@ const ScanActions = ({
   onRefreshEverything,
 }: Pick<LibrarySettingsProps, "scan" | "onRescan" | "onRefreshEverything">) => {
   const [asking, setAsking] = useState(false);
+  const density = usePhoneDensity();
   // Looking up details runs on its own clock and never holds up a scan.
   const scanning = scan.step === "walking" || scan.step === "reading";
   return (
     <Line gap="control">
       <ModalOverlay
+        density={density}
         actions={[
           { label: "Not now", onPress: () => setAsking(false), preferredFocus: true, tone: "secondary" },
           {
@@ -35,10 +38,10 @@ const ScanActions = ({
         title="Update every title's details?"
         visible={asking}
       />
-      <Action disabled={!scan.enabled || scanning} onPress={onRescan} variant="outline">
+      <Action density={density} disabled={!scan.enabled || scanning} onPress={onRescan} variant="outline">
         {scanning ? "Checking…" : "Check files again"}
       </Action>
-      <Action disabled={!scan.enabled} onPress={() => setAsking(true)} variant="ghost">
+      <Action density={density} disabled={!scan.enabled} onPress={() => setAsking(true)} variant="ghost">
         Update details
       </Action>
     </Line>

@@ -2,6 +2,7 @@ import { Action, Icon, icons, PressableRow, StatusLabel, Surface, Text } from "@
 
 import { Line, Stack } from "../../library-poster";
 import { folderName, folderSummary } from "../../library-words";
+import { usePhoneDensity } from "../../phone-density";
 import type {
   LibraryBrowseFolder,
   LibraryBrowseListing,
@@ -92,6 +93,7 @@ const FolderBrowser = ({
   onCancel: () => void;
 }) => {
   const { listing, opening, error, onOpen } = browser;
+  const density = usePhoneDensity();
   // While a folder opens, the header names it and the last folder's rows wait under "Opening…";
   // Up and "Use this folder" wait for it to be listed. One that can't be opened leaves Up to go
   // back to the folder it was picked from.
@@ -104,7 +106,13 @@ const FolderBrowser = ({
     <Stack gap="control">
       <Line alignItems="center" flexWrap="nowrap" gap="control">
         {path !== "" ? (
-          <Action disabled={waiting && !error} icon="goBack" onPress={() => onOpen(upTo)} variant="ghost">
+          <Action
+            density={density}
+            disabled={waiting && !error}
+            icon="goBack"
+            onPress={() => onOpen(upTo)}
+            variant="ghost"
+          >
             Up
           </Action>
         ) : null}
@@ -160,16 +168,17 @@ const FolderBrowser = ({
       ) : null}
       <Line gap="control">
         <Action
+          density={density}
           disabled={choice.disabled || saving}
           onPress={() => onUse(path, choice.replace === true)}
           tone="primary"
         >
           {saving ? "Adding…" : choice.label}
         </Action>
-        <Action onPress={onTypePath} variant="ghost">
+        <Action density={density} onPress={onTypePath} variant="ghost">
           Type a path instead
         </Action>
-        <Action onPress={onCancel} variant="ghost">
+        <Action density={density} onPress={onCancel} variant="ghost">
           Cancel
         </Action>
       </Line>

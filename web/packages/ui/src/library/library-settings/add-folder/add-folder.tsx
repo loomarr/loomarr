@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { useUiForm } from "../../../form-kit";
 import { Line, Stack } from "../../library-poster";
+import { usePhoneDensity } from "../../phone-density";
 import { FolderBrowser } from "../folder-browser";
 import type { LibrarySettingsProps } from "../library-settings.type";
 
@@ -12,6 +13,7 @@ const AddFolder = ({
   folderBrowser,
 }: Pick<LibrarySettingsProps, "onAddFolder" | "folderBrowser">) => {
   const [adding, setAdding] = useState(false);
+  const density = usePhoneDensity();
   // With a browser, a folder is picked by opening folders; "Type a path instead" turns to the field.
   const [typing, setTyping] = useState(false);
   // The server's refusal (a path it cannot open) is not the form's own validation: it stays under the
@@ -41,6 +43,7 @@ const AddFolder = ({
     return (
       <Line>
         <Action
+          density={density}
           icon="plus"
           onPress={() => {
             setAdding(true);
@@ -88,6 +91,7 @@ const AddFolder = ({
         <form.AppField listeners={{ onChange: () => setError(undefined) }} name="path">
           {(field) => (
             <field.TextField
+              density={density}
               error={error}
               label="Where is the folder?"
               onSubmitEditing={submit}
@@ -96,10 +100,10 @@ const AddFolder = ({
           )}
         </form.AppField>
       </Stack>
-      <Action disabled={path.trim() === "" || saving} onPress={submit} tone="primary">
+      <Action density={density} disabled={path.trim() === "" || saving} onPress={submit} tone="primary">
         Add folder
       </Action>
-      <Action onPress={close} variant="ghost">
+      <Action density={density} onPress={close} variant="ghost">
         Cancel
       </Action>
     </Line>

@@ -3,6 +3,7 @@ import { Action, Icon, icons, StatusDot, Surface, Text } from "@loomarr/design-s
 
 import { Line, Stack } from "../../library-poster";
 import { folderName, joinNames } from "../../library-words";
+import { usePhoneDensity } from "../../phone-density";
 import { AUTHORITY_NAMES } from "../authority-names";
 import type { LibraryFolder } from "../library-settings.type";
 import { MOUNT_HINT } from "../mount-hint";
@@ -14,19 +15,41 @@ const foundThrough = (folder: LibraryFolder) => {
   return names.length > 0 ? `Found through ${joinNames(names)}` : "No app names this folder any more";
 };
 
+type FolderActionsProps = {
+  folder: LibraryFolder;
+  checking: boolean;
+  onCheckAgain: () => void;
+  onUseFolder: (path: string, inUse: boolean) => void;
+};
+
+const FolderActions = ({ folder, checking, onCheckAgain, onUseFolder }: FolderActionsProps) => {
+  const density = usePhoneDensity();
+  return (
+    <Line gap="control">
+      {/* Once the drive is back, Check again clears the warning without waiting for the next pass. */}
+      {folder.readable && !folder.empty ? null : (
+        <Action density={density} disabled={checking} onPress={onCheckAgain} variant="outline">
+          Check again
+        </Action>
+      )}
+      {folder.inUse ? (
+        <StopUsing folder={folder} onConfirm={() => onUseFolder(folder.path, false)} />
+      ) : folder.readable ? (
+        <Action density={density} onPress={() => onUseFolder(folder.path, true)} variant="outline">
+          Use this folder
+        </Action>
+      ) : null}
+    </Line>
+  );
+};
+
 const LibraryFolderCard = ({
   folder,
   now,
   checking,
   onCheckAgain,
   onUseFolder,
-}: {
-  folder: LibraryFolder;
-  now?: number;
-  checking: boolean;
-  onCheckAgain: () => void;
-  onUseFolder: (path: string, inUse: boolean) => void;
-}) => (
+}: FolderActionsProps & { now?: number }) => (
   <Surface
     aria-label={folderName(folder.path)}
     borderColor={folder.readable && !folder.empty ? "borderDecorative" : "stateWarning"}
@@ -84,21 +107,12 @@ const LibraryFolderCard = ({
         {MOUNT_HINT}
       </Text>
     )}
-    <Line gap="control">
-      {/* Once the drive is back, Check again clears the warning without waiting for the next pass. */}
-      {folder.readable && !folder.empty ? null : (
-        <Action disabled={checking} onPress={onCheckAgain} variant="outline">
-          Check again
-        </Action>
-      )}
-      {folder.inUse ? (
-        <StopUsing folder={folder} onConfirm={() => onUseFolder(folder.path, false)} />
-      ) : folder.readable ? (
-        <Action onPress={() => onUseFolder(folder.path, true)} variant="outline">
-          Use this folder
-        </Action>
-      ) : null}
-    </Line>
+    <FolderActions
+      checking={checking}
+      folder={folder}
+      onCheckAgain={onCheckAgain}
+      onUseFolder={onUseFolder}
+    />
   </Surface>
 );
 

@@ -3,6 +3,7 @@ import { useRef } from "react";
 
 import { useCommittedDraft } from "../../../use-committed-draft";
 import { Line, Stack } from "../../library-poster";
+import { usePhoneDensity } from "../../phone-density";
 import { AUTHORITY_NAMES } from "../authority-names";
 import type { LibraryPathMapping, LibrarySettingsProps } from "../library-settings.type";
 
@@ -21,6 +22,7 @@ const PathMapRow = ({
   // a save that failed can be sent again.
   const sent = useRef<string | null>(null);
   const name = AUTHORITY_NAMES[mapping.authority];
+  const density = usePhoneDensity();
   const commit = () => {
     const next = value.trim();
     if (next !== mapping.localPath && next !== sent.current) {
@@ -48,6 +50,7 @@ const PathMapRow = ({
       <Stack flexBasis={160} flexGrow={1} flexShrink={1}>
         <Field
           accessibilityLabel={`${name} ${mapping.authorityPath} maps to`}
+          density={density}
           onBlur={commit}
           onChangeText={type}
           onSubmitEditing={commit}
