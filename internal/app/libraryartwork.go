@@ -14,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -24,7 +23,8 @@ const artFileMax = 32 << 20
 
 // artRefs is the image-ref half of the store (library_item_images): which image a library item owns in each role.
 type artRefs interface {
-	PutImageRef(ctx context.Context, ref clipstore.ImageRef) error
+	SetLibraryItemImage(ctx context.Context, itemID, role, imageHash string) error
+	ClearLibraryPoster(ctx context.Context, itemID string) error
 	DeleteImageRefsByRole(ctx context.Context, ownerKind, ownerID, role string) error
 }
 
@@ -70,6 +70,11 @@ func (p libraryArtwork) Art(ctx context.Context, itemID, kind, ref string) error
 		return fmt.Errorf("library artwork: %q is not an imported kind", kind)
 	}
 	if ref == "" {
+		// A kept title has no artwork of its own, so every write of it arrives here: the store
+		// keeps the frame of an unchanged file.
+		if role == images.RolePoster {
+			return p.refs.ClearLibraryPoster(ctx, itemID)
+		}
 		return p.refs.DeleteImageRefsByRole(ctx, librarystore.LibraryItemImageOwner, itemID, string(role))
 	}
 	var (
@@ -89,12 +94,7 @@ func (p libraryArtwork) Art(ctx context.Context, itemID, kind, ref string) error
 	if err != nil {
 		return err
 	}
-	if err := p.refs.DeleteImageRefsByRole(ctx, librarystore.LibraryItemImageOwner, itemID, string(role)); err != nil {
-		return err
-	}
-	return p.refs.PutImageRef(ctx, clipstore.ImageRef{
-		ImageHash: rec.Hash, OwnerKind: librarystore.LibraryItemImageOwner, OwnerID: itemID, Role: string(role),
-	})
+	return p.refs.SetLibraryItemImage(ctx, itemID, string(role), rec.Hash)
 }
 
 // importFile reads an artwork file beside the media. It opens only a regular file, never through

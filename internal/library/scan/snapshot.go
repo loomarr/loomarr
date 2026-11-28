@@ -282,7 +282,8 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 			}
 			f := o.Observation.Facts
 			src := librarystore.LibrarySource{Path: o.Locator.Path, Container: f.Container, SizeBytes: f.SizeBytes,
-				Bitrate: f.Bitrate, DurationMs: f.DurationMillis, Edition: exts[o.Key].Edition, Part: exts[o.Key].Part}
+				Bitrate: f.Bitrate, DurationMs: f.DurationMillis, Edition: exts[o.Key].Edition, Part: exts[o.Key].Part,
+				Revision: s.Revision}
 			for _, ref := range exts[o.Key].Trickplay {
 				src.Trickplay = append(src.Trickplay, librarystore.LibraryTrickplay{Ref: ref, Format: "bif"})
 			}

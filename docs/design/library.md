@@ -780,10 +780,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   renditions. The frame is landscape; the 2:3 poster box shows its centre and crops the sides. A
   low-priority job, apart from the scan, checks every two minutes for kept titles with no poster
   and extracts at most ten frames, one at a time, and none while someone is watching. A file whose
-  length is not read yet waits for its header. The scanner owns the poster role: writing a kept
-  title clears it, which a changed file does (the job then takes a new frame) and taking the answer
-  back does. A failed frame is tried again after five minutes, doubling to a day; the wait is held
-  in memory, so a restart tries again.
+  length is not read yet waits for its header. The frame is saved only while the title is still
+  kept, has no poster and plays that file, checked and written in one transaction. The scanner owns
+  the poster role: writing a kept title keeps the frame while the title plays the same file (same
+  path and inventory revision), and clears it when that file changes (the job then takes a new
+  frame) or the answer is taken back. A failed frame is tried again after five minutes, doubling to
+  a day; the wait belongs to that file, so another one is tried at once, and it is held in memory,
+  so a restart tries again.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left

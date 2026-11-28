@@ -99,6 +99,14 @@ type LibraryNeedsStore interface {
 	KeepLibraryNeed(ctx context.Context, itemID string, at time.Time) (LibraryAnswered, error)
 	// HomeVideosWithoutPoster returns the kept titles that have no poster, each with its main file.
 	HomeVideosWithoutPoster(ctx context.Context) ([]LibraryHomeVideoFrame, error)
+	// PutHomeVideoPoster gives a title the frame extracted from frame's file, only while the title
+	// is still kept, has no poster and plays that file: false, and nothing saved, otherwise.
+	PutHomeVideoPoster(ctx context.Context, frame LibraryHomeVideoFrame, imageHash string) (bool, error)
+	// SetLibraryItemImage makes imageHash the title's only image in role.
+	SetLibraryItemImage(ctx context.Context, itemID, role, imageHash string) error
+	// ClearLibraryPoster removes a title's posters, except a frame of the file a kept title still
+	// plays.
+	ClearLibraryPoster(ctx context.Context, itemID string) error
 	// KeptLibraryTitle reports whether a file belongs to a title kept as a home video.
 	KeptLibraryTitle(ctx context.Context, kind string, origin LibraryOrigin, groups []LibraryID) (bool, error)
 	// RestoreLibraryIgnored takes back the ignore of titles, all in one transaction:

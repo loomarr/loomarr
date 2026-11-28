@@ -14,8 +14,8 @@ import (
 
 // A home video has no catalog artwork, so its poster is a frame of its main file, about a tenth of
 // the way in (#4476, library.md "A home video's picture"). The title having no poster is the whole
-// record of the work left: the scanner owns the poster role and clears it whenever it writes a kept
-// title, which a changed file and a taken-back answer both do.
+// record of the work left: the scanner owns the poster role, and writing a kept title keeps the
+// frame only while the title is kept and plays the file the frame came from.
 
 const (
 	// homePosterEvery is how often the kept titles are checked, and homePosterBatch the most
@@ -29,7 +29,11 @@ const (
 
 type homePosterStore interface {
 	HomeVideosWithoutPoster(ctx context.Context) ([]librarystore.LibraryHomeVideoFrame, error)
+	PutHomeVideoPoster(ctx context.Context, frame librarystore.LibraryHomeVideoFrame, imageHash string) (bool, error)
 }
+
+// homePosterFile is the title and the file a failure belongs to.
+type homePosterFile struct{ itemID, path, revision string }
 
 type homePosterFailure struct {
 	count int
@@ -46,7 +50,7 @@ type homePosters struct {
 	now  func() time.Time
 	// failed is keyed by the title and its file, so another file is tried at once. It is held in
 	// memory: a restart tries each failed title again.
-	failed map[librarystore.LibraryHomeVideoFrame]homePosterFailure
+	failed map[homePosterFile]homePosterFailure
 }
 
 // Run checks every homePosterEvery until ctx ends.
@@ -72,9 +76,10 @@ func (p *homePosters) pass(ctx context.Context) error {
 		return err
 	}
 	tried := 0
-	failed := make(map[librarystore.LibraryHomeVideoFrame]homePosterFailure)
+	failed := make(map[homePosterFile]homePosterFailure)
 	for _, w := range wanted {
-		f, before := p.failed[w]
+		key := homePosterFile{w.ItemID, w.Path, w.Revision}
+		f, before := p.failed[key]
 		if tried < homePosterBatch && ctx.Err() == nil && !p.now().Before(f.until) && (p.busy == nil || !p.busy()) {
 			tried++
 			err := p.extract(ctx, w)
@@ -87,7 +92,7 @@ func (p *homePosters) pass(ctx context.Context) error {
 			p.log.Warn("home video posters: no frame", "item", w.ItemID, "retry_in", wait, "err", err)
 		}
 		if before {
-			failed[w] = f
+			failed[key] = f
 		}
 	}
 	// Only the titles still wanted are remembered.
@@ -105,21 +110,16 @@ func (p *homePosters) extract(ctx context.Context, w librarystore.LibraryHomeVid
 	if len(frame) == 0 {
 		return fmt.Errorf("ffmpeg wrote no frame")
 	}
-	// The answer can be taken back, or the file replaced, while ffmpeg runs.
-	now, err := p.store.HomeVideosWithoutPoster(ctx)
+	// Extracted, not upload: losing the image directory loses nothing, the video is still there.
+	rec, err := p.images.Ingest(ctx, bytes.NewReader(frame), images.IngestRequest{
+		Role: images.RolePoster, Visibility: images.VisibilityMember, Origin: images.OriginExtracted,
+	})
 	if err != nil {
 		return err
 	}
-	for _, still := range now {
-		if still != w {
-			continue
-		}
-		// Extracted, not upload: losing the image directory loses nothing, the video is still there.
-		_, err := p.images.Ingest(ctx, bytes.NewReader(frame), images.IngestRequest{
-			Role: images.RolePoster, Visibility: images.VisibilityMember, Origin: images.OriginExtracted,
-			OwnerKind: librarystore.LibraryItemImageOwner, OwnerID: w.ItemID,
-		})
-		return err
-	}
-	return nil
+	// The answer can be taken back, the file replaced or another poster written while ffmpeg and
+	// the image service run, so the store checks and writes the ref as one step. An image it
+	// refuses has no owner, and the image sweep takes it.
+	_, err = p.store.PutHomeVideoPoster(ctx, w, rec.Hash)
+	return err
 }
