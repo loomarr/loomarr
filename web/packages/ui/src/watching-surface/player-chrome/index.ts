@@ -39,5 +39,6 @@ export type { PlayerOption, PlayerOptionsProps } from "./player-options";
 export { PlayerOptions } from "./player-options";
 export { PlayerSheet } from "./player-sheet";
 export { PlayerVolume } from "./player-volume";
+export { UnmutePill } from "./unmute-pill";
 export type { PlayerWatermark, WatermarkPolicyLike } from "./watermark-clearance";
 export { clearOfWatermark, pictureIn, watermarkOf } from "./watermark-clearance";

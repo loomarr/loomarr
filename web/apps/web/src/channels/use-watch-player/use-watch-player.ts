@@ -24,9 +24,17 @@ const NO_CHANNELS: ChannelDTO[] = [];
 const CANT_PLAY = "This channel can't be played in the app.";
 const REMEMBERED_ATTEMPTS = 8;
 
-const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPlayerOptions): WatchPlayer => {
+const useWatchPlayer = ({
+  channelId,
+  channels,
+  nowNext,
+  onNavigate,
+  onTune: onTuneReport,
+}: UseWatchPlayerOptions): WatchPlayer => {
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
+  const onTuneReportRef = useRef(onTuneReport);
+  onTuneReportRef.current = onTuneReport;
 
   // Timing marks follow the controller's attempts: one is begun as each tune is published and
   // completed as its phases arrive.
@@ -37,6 +45,7 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
     for (const stale of [...attempts.current.keys()].slice(0, -REMEMBERED_ATTEMPTS)) {
       attempts.current.delete(stale);
     }
+    onTuneReportRef.current?.({ attemptId: report.attemptId, channelId: report.channel.id, warm: report.warm });
     // The wash is up once the frame after this one has painted.
     if (typeof requestAnimationFrame !== "function") {
       markTunePhase(attempt, "osd");
@@ -168,6 +177,7 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
 
   return {
     attach: player.attach,
+    ...(snapshot.attemptId === undefined ? {} : { attemptId: snapshot.attemptId }),
     canSurf: snapshot.catalog.length > 1,
     catalog: snapshot.catalog,
     channel,

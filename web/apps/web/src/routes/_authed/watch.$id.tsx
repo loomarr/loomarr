@@ -3,11 +3,11 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { Surface, Text } from "@loomarr/design-system";
 import { WatchFrame } from "@loomarr/ui";
 import { createFileRoute, useCanGoBack, useRouter } from "@tanstack/react-router";
-import { type ReactNode, useCallback } from "react";
+import { type ReactNode, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelWatch } from "@/channels/channel-watch";
 import { useWatchChannels } from "@/channels/use-watch-channels";
-import { useWatchPlayer } from "@/channels/use-watch-player";
+import { useWatchPlayer, type WatchTuneReport } from "@/channels/use-watch-player";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -25,10 +25,11 @@ const Centered = ({ children }: { children: ReactNode }) => (
   </Surface>
 );
 
-// WATCH — play a channel live, full-bleed (#2088 step 1, `playback-clients.md` "Watch (web)"). Its
-// own route, outside the channel page: the authed layout drops the app shell here, so the picture
-// owns the window and the player's ✕ is the way out. A VIEWER surface: a member reaches it too.
-const WatchScreen = () => {
+// WATCH: play a channel live, full-bleed (#2088 step 1, `playback-clients.md` "Watch (web)"), on
+// The Cross's watching screen (#4731). Its own route, outside the channel page: the authed layout
+// drops the app shell here, so the picture owns the window and the named back control is the way
+// out. A VIEWER surface: a member reaches it too.
+const WatchRoute = () => {
   const { id } = Route.useParams();
   const navigate = Route.useNavigate();
   const router = useRouter();
@@ -47,20 +48,34 @@ const WatchScreen = () => {
     },
     [navigate],
   );
+  // The watching screen listens here for each tune the player begins.
+  const tuneReports = useRef<((report: WatchTuneReport) => void) | undefined>(undefined);
+  const onTune = useCallback((report: WatchTuneReport) => tuneReports.current?.(report), []);
+  const listed = unwrap(channels.data)?.channels;
   const player = useWatchPlayer({
     channelId: id,
-    channels: unwrap(channels.data)?.channels,
+    channels: listed,
     nowNext: unwrap(nowNext.data)?.channels ?? [],
     onNavigate: follow,
+    onTune,
   });
   const tunedChannel = player.channel ?? channel;
   // Leaving goes back where the viewer came from; a deep link with no history lands on the Guide.
-  const leave = useCallback(() => {
-    if (canGoBack) router.history.back();
-    else void navigate({ to: "/guide" });
-  }, [canGoBack, router, navigate]);
+  // The back control is named for where it goes.
+  const back = useMemo(
+    () => ({
+      label: canGoBack ? "Back" : "Guide",
+      onPress: () => {
+        if (canGoBack) router.history.back();
+        else void navigate({ to: "/guide" });
+      },
+    }),
+    [canGoBack, router, navigate],
+  );
+  // Until the Guide is a view of this screen, the Guide control and G open the Guide page.
+  const openGuide = useCallback(() => void navigate({ to: "/guide" }), [navigate]);
 
-  const around = useWatchChannels(tunedChannel?.id);
+  const around = useWatchChannels(listed);
 
   if (channelQuery.error && !tunedChannel) {
     return (
@@ -86,11 +101,13 @@ const WatchScreen = () => {
   return (
     <WatchFrame title={`Watch ${tunedChannel.name}`}>
       <ChannelWatch
+        back={back}
         channel={tunedChannel}
-        isAdmin={isAdmin}
-        onLeave={leave}
-        player={player}
         channels={around}
+        isAdmin={isAdmin}
+        onGuide={openGuide}
+        player={player}
+        tuneReports={tuneReports}
       />
     </WatchFrame>
   );
@@ -111,7 +128,7 @@ const Route = createFileRoute("/_authed/watch/$id")({
     if (listed) return;
     await detail;
   },
-  component: WatchScreen,
+  component: WatchRoute,
 });
 
 export { Route };

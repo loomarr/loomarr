@@ -1,4 +1,5 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { unwrap } from "@loomarr/api/unwrap";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
@@ -15,7 +16,7 @@ const probe = (tunedId: string) => {
   const timeline = channelsApi.useChannelTimeline(tunedId, undefined, {
     query: { refetchInterval: 30_000, retry: false },
   });
-  const around = useWatchChannels(tunedId);
+  const around = useWatchChannels(unwrap(channels.data)?.channels);
   return { around, channels, nowNext, timeline };
 };
 

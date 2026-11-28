@@ -23,6 +23,18 @@ interface UseWatchPlayerOptions {
   nowNext: ChannelNowNext[];
   /** The player tuned another channel (a step, a typed number, a pick): the URL follows it. */
   onNavigate: (channelId: string) => void;
+  /**
+   * A tune began: its attempt, its channel, and whether it reuses a warmed neighbour's source. Said
+   * as the tune starts, before the call that asked for it returns.
+   */
+  onTune?: (report: WatchTuneReport) => void;
+}
+
+/** A tune as it begins. `attemptId` is the one `WatchPlayer.attemptId` names while it plays. */
+interface WatchTuneReport {
+  attemptId: number;
+  channelId: string;
+  warm: boolean;
 }
 
 /** What the picture is doing: waiting for a first frame, showing one, or stopped for good. */
@@ -31,6 +43,8 @@ type WatchPlayerStatus = "loading" | "playing" | "error";
 interface WatchPlayer {
   /** Binds the player to the surface's <video>. Pass to the video surface's `attach`. */
   attach: (video: HTMLVideoElement) => () => void;
+  /** The tune attempt `status` is about; undefined before the first tune. */
+  attemptId?: number;
   canSurf: boolean;
   /** The channels Channel up and down step through, in that order. */
   catalog: PlayerSnapshot["catalog"];
@@ -59,4 +73,4 @@ interface WatchPlayer {
   tune: (channelId: string) => void;
 }
 
-export type { UseWatchPlayerOptions, WatchLiveTransport, WatchPlayer, WatchPlayerStatus };
+export type { UseWatchPlayerOptions, WatchLiveTransport, WatchPlayer, WatchPlayerStatus, WatchTuneReport };

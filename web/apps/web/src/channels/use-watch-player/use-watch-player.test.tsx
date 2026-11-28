@@ -251,6 +251,17 @@ describe("useWatchPlayer", () => {
       expect(result.current.canSurf).toBe(true);
     });
 
+    it("says each tune as it begins, with whether it was warm, and names the attempt it plays", () => {
+      browser.snapshot = snapshot("tuning", twenty);
+      const onTune = vi.fn();
+      const { result } = renderHook(() =>
+        useWatchPlayer({ channelId: "twenty", channels: lineup, nowNext: [], onNavigate: vi.fn(), onTune }),
+      );
+      browser.options?.onTune?.({ attemptId: 7, channel: twenty, reason: "step", warm: true });
+      expect(onTune).toHaveBeenCalledWith({ attemptId: 7, channelId: "twenty", warm: true });
+      expect(result.current.attemptId).toBe(1);
+    });
+
     it("cannot surf a lineup of one", () => {
       browser.snapshot = snapshot("playing", ten, { catalog: [ten] });
       const { result } = render({ channelId: "ten", channels: [ten] });
