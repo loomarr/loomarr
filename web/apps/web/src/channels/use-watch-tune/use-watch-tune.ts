@@ -8,30 +8,39 @@ import {
   tuneView,
 } from "@loomarr/core/tune";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { WatchTuneReport } from "../use-watch-player";
+
+/** The tune attempts whose flips are remembered, so a late outcome still finds its flip. */
+const REMEMBERED_FLIPS = 8;
 
 interface WatchTune {
   /** What to draw now. */
   view: TuneView;
   /**
-   * A tune began. `streaming` says the player had the channel warmed; `firstTune` that no picture
-   * has played on this page yet. Returns the flip's identity.
+   * The player's report that a tune began: pass it to `useWatchPlayer`'s `onTune`, so no report
+   * can come before its listener. A reconnect to the channel on screen is not a tune.
    */
-  flip: (flip: { streaming: boolean; firstTune: boolean }) => number;
-  /** The picture for `flip` arrived: a tune-in waiting on it is uncovered now. */
-  ready: (flip: number) => void;
-  /** `flip` will have no picture: the tune-in ends without one. */
-  abandon: (flip: number) => void;
+  onTune: (report: WatchTuneReport) => void;
+  /** What the player's current attempt came to: a picture, or none (a failure, off air). */
+  settle: (attemptId: number | undefined, outcome: "picture" | "none") => void;
+  /** The player is reconnecting to the channel on screen. */
+  reconnecting: boolean;
 }
 
 /**
  * The tune (`@loomarr/core/tune`) for the web's watching screen, driven by what the player really
- * does: the caller says when a tune begins and when its picture arrives or fails, and the view is
- * read again at the time it names, never earlier than that time.
+ * does. A tune that begins is a flip: a change when the player had the channel warmed, a tune-in
+ * for the page's first tune and for a channel that must start. Its picture, or its failure, ends
+ * it. The view is read again at the time it names, never earlier than that time.
  */
 const useWatchTune = (now: () => number = Date.now): WatchTune => {
   const state = useRef<TuneState>(idleTune);
   // A new object each time, so an event at the same millisecond still draws its state.
   const [read, setRead] = useState(() => ({ at: now() }));
+  const [reconnecting, setReconnecting] = useState(false);
+  const flips = useRef(new Map<number, number>());
+  const played = useRef(false);
+  const lastChannel = useRef<string | undefined>(undefined);
   const update = useCallback(
     (next: TuneState, at: number) => {
       state.current = next;
@@ -40,24 +49,35 @@ const useWatchTune = (now: () => number = Date.now): WatchTune => {
     [now],
   );
 
-  const flip = useCallback(
-    ({ firstTune, streaming }: { streaming: boolean; firstTune: boolean }) => {
+  const onTune = useCallback(
+    (report: WatchTuneReport) => {
+      const again = report.reason === "retry" && report.channelId === lastChannel.current;
+      lastChannel.current = report.channelId;
+      setReconnecting(again);
+      if (again) return;
       const at = now();
-      const next = tuneFlip(state.current, { at, firstTune, streaming });
+      const next = tuneFlip(state.current, { at, firstTune: !played.current, streaming: report.warm });
+      flips.current.set(report.attemptId, next.flips);
+      for (const stale of [...flips.current.keys()].slice(0, -REMEMBERED_FLIPS)) flips.current.delete(stale);
       update(next, at);
-      return next.flips;
     },
     [now, update],
   );
-  const ready = useCallback(
-    (which: number) => {
+
+  const settle = useCallback(
+    (attemptId: number | undefined, outcome: "picture" | "none") => {
+      if (outcome === "picture") {
+        played.current = true;
+        setReconnecting(false);
+      }
+      const flip = attemptId === undefined ? undefined : flips.current.get(attemptId);
+      if (flip === undefined) return;
       const at = now();
-      update(tunePictureReady(state.current, which, at), at);
+      update(
+        outcome === "picture" ? tunePictureReady(state.current, flip, at) : tuneAbandon(state.current, flip),
+        at,
+      );
     },
-    [now, update],
-  );
-  const abandon = useCallback(
-    (which: number) => update(tuneAbandon(state.current, which), now()),
     [now, update],
   );
 
@@ -69,7 +89,7 @@ const useWatchTune = (now: () => number = Date.now): WatchTune => {
     return () => clearTimeout(timer);
   }, [nextAt, now]);
 
-  return { abandon, flip, ready, view };
+  return { onTune, reconnecting, settle, view };
 };
 
 export type { WatchTune };

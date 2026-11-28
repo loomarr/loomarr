@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { ChannelListDetail } from "../channel-list";
 import type { LowerThirdState } from "../lower-third";
 import type { WatchScreenModel } from "../use-watch-screen";
+import type { PlayerWatermark } from "../watching-surface";
 
 /**
  * The layouts this part draws: a desktop at full screen, the list over the picture. A window, a
@@ -49,6 +50,13 @@ interface WatchScreenProps<C extends LineupChannel> {
    * the picture, resting with the rest of the chrome. Left out, there is none.
    */
   back?: { label: string; onPress: () => void } | undefined;
+  /** Whether the screen is in full screen, which names the full-screen control; left out, the layout says. */
+  fullScreen?: boolean | undefined;
+  /**
+   * The channel's logo, burned into a corner of the picture: the chrome in that corner steps clear
+   * of it, and the chrome in the other corners stays where it is.
+   */
+  watermark?: PlayerWatermark | undefined;
   reducedMotion?: boolean | undefined;
   /** For story baselines only: draws the static without its flicker. */
   holdSnow?: boolean | undefined;

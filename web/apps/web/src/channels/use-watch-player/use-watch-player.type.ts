@@ -1,6 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import type { ChannelNowNext } from "@loomarr/api/models/channelNowNext";
-import type { LivePlaybackState, PlayerFailureCause, PlayerSnapshot, TuneDirection } from "@loomarr/player";
+import type { LivePlaybackState, PlayerFailureCause, TuneReason } from "@loomarr/player";
 import type { LiveLadder, LiveQuality } from "@loomarr/player/browser";
 
 /**
@@ -20,12 +19,11 @@ interface UseWatchPlayerOptions {
   channelId: string;
   /** Every channel the server lists; undefined until it has been read. */
   channels: ChannelDTO[] | undefined;
-  nowNext: ChannelNowNext[];
   /** The player tuned another channel (a step, a typed number, a pick): the URL follows it. */
   onNavigate: (channelId: string) => void;
   /**
-   * A tune began: its attempt, its channel, and whether it reuses a warmed neighbour's source. Said
-   * as the tune starts, before the call that asked for it returns.
+   * A tune began: its attempt, its channel, why, and whether it reuses a warmed neighbour's source.
+   * Said as the tune starts, before the call that asked for it returns.
    */
   onTune?: (report: WatchTuneReport) => void;
 }
@@ -34,6 +32,8 @@ interface UseWatchPlayerOptions {
 interface WatchTuneReport {
   attemptId: number;
   channelId: string;
+  /** Why the player tuned: `retry` is a reconnect, by the player itself or the viewer's Retry. */
+  reason: TuneReason;
   warm: boolean;
 }
 
@@ -45,15 +45,8 @@ interface WatchPlayer {
   attach: (video: HTMLVideoElement) => () => void;
   /** The tune attempt `status` is about; undefined before the first tune. */
   attemptId?: number;
-  canSurf: boolean;
-  /** The channels Channel up and down step through, in that order. */
-  catalog: PlayerSnapshot["catalog"];
-  /** Changes with every Channel up or down (the channel the step tuned); undefined after any other tune. */
-  flipKey?: string;
   /** The channel being watched or tuned, from the lineup; undefined until the player has one. */
   channel?: ChannelDTO;
-  /** What is airing on `channel` now. */
-  currentTitle?: string;
   error?: string;
   /** With an `error` from the player: what stopped the picture. Absent for a channel the app can't play. */
   failureCause?: PlayerFailureCause;
@@ -61,15 +54,14 @@ interface WatchPlayer {
   ladder: LiveLadder;
   /** The viewer's live position and the controls that move it. */
   liveTransport: WatchLiveTransport;
+  /** The controller holds the picture paused, whoever asked (`status` reads a paused picture as playing). */
+  paused: boolean;
   playbackSessionId: string;
   /** The viewer's remembered quality: Auto, or a rung by height. */
   quality: LiveQuality;
   retry: () => void;
   setQuality: (quality: LiveQuality) => void;
   status: WatchPlayerStatus;
-  step: (direction: TuneDirection) => void;
-  /** The tuning channel's picture, once decoded, to show until its stream's first frame. */
-  stillURL?: string;
   tune: (channelId: string) => void;
 }
 

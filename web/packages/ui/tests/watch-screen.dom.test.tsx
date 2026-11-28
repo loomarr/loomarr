@@ -7,13 +7,20 @@ import { useEffect } from "react";
 import { Platform, Text } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useWatchScreen, WatchScreen } from "../index";
+import { type PlayerWatermark, useWatchScreen, WatchScreen } from "../index";
+
+// A desktop's window, for the logo's clearance.
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  return { ...actual, useWindowDimensions: () => ({ fontScale: 1, height: 720, scale: 1, width: 1280 }) };
+});
 
 const nativeMatches = Element.prototype.matches;
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
   Element.prototype.matches = nativeMatches;
+  Reflect.deleteProperty(document, "elementFromPoint");
 });
 
 // jsdom answers `:focus-visible` with false whatever gave the focus; a browser answers true for the
@@ -44,11 +51,15 @@ const focusOf: { current: string | undefined } = { current: undefined };
 const Harness = ({
   back,
   cover = false,
+  fullScreen,
   hintSeen = true,
+  watermark,
 }: {
   back?: { label: string; onPress: () => void };
   cover?: boolean;
+  fullScreen?: boolean;
   hintSeen?: boolean;
+  watermark?: PlayerWatermark;
 }) => {
   const model = useWatchScreen({ hintSeen, layout: "full", lineup, onRequest: requests, watchedId: "ch-1" });
   const { send } = model;
@@ -74,7 +85,9 @@ const Harness = ({
   return (
     <WatchScreen
       back={back}
+      fullScreen={fullScreen}
       layout="full"
+      watermark={watermark}
       model={model}
       cover={
         cover ? (
@@ -197,22 +210,35 @@ describe("WatchScreen and focus a pointer meets", () => {
     clickGoLiveFrom(() => screen.getByRole("button", { name: "Mute (M)" }));
   });
 
-  // The browser's answer for where the pointer is: over the lower third.
+  // The pointer moves onto the lower third and stays: the page's answer for what is at its place is
+  // the lower third, whenever the lower third is drawn.
   const pointerOnLowerThird = () => {
-    const matches = Element.prototype.matches;
-    Element.prototype.matches = new Proxy(matches, {
-      apply: (original, element: Element, args: [string]) =>
-        args[0] === ":hover"
-          ? Boolean(element.closest('[data-testid="watch-lower-third"]'))
-          : Reflect.apply(original, element, args),
+    fireEvent.pointerMove(screen.getByTestId("watch-screen"), { clientX: 120, clientY: 600 });
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: (x: number, y: number) =>
+        x === 120 && y === 600 ? (screen.queryByTestId("watch-lower-third")?.querySelector("span") ?? null) : null,
     });
   };
+
+  it("holds nothing when the lower third comes back and no pointer has moved", () => {
+    vi.useFakeTimers();
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => screen.queryByTestId("watch-lower-third")?.querySelector("span") ?? null,
+    });
+    renderUi(<Harness hintSeen={false} />);
+    key("/", document.body);
+    key("Escape", document.body);
+    key("Escape", document.body);
+    expect(restedAfter(6000)).toBe(true);
+  });
 
   it("holds awake when the lower third comes back under a pointer that is already on it", () => {
     vi.useFakeTimers();
     pointerFocus();
-    pointerOnLowerThird();
     renderUi(<Harness hintSeen={false} />);
+    pointerOnLowerThird();
     click(channelsControl());
     click(channelsControl());
     expect(listbox()).toBeNull();
@@ -226,8 +252,8 @@ describe("WatchScreen and focus a pointer meets", () => {
   it("holds awake under a still pointer when find opened the list and Esc closed it", () => {
     vi.useFakeTimers();
     pointerFocus();
-    pointerOnLowerThird();
     renderUi(<Harness hintSeen={false} />);
+    pointerOnLowerThird();
     key("/", document.body);
     expect(listbox()).not.toBeNull();
     key("Escape", document.body);
@@ -606,6 +632,39 @@ describe("WatchScreen's back control and what it says aloud", () => {
     click(mute());
     expect(document.activeElement).not.toBe(back);
     requests.mockClear();
+  });
+
+  it("names the full-screen control for the browser's real state", () => {
+    renderUi(<Harness fullScreen={false} />);
+    expect(screen.getByRole("button", { name: "Full screen (F)" })).toBeTruthy();
+    cleanup();
+    renderUi(<Harness fullScreen />);
+    expect(screen.getByRole("button", { name: "Leave full screen (F)" })).toBeTruthy();
+  });
+
+  // The window is 1280 × 720, all picture. A logo 20% tall, inset 5%, reaches (0.05 + 0.2) × 720 =
+  // 180 px in from its edges, over the chrome in its corner.
+  it.each([
+    ["top-left", "watch-back"],
+    ["bottom-left", "watch-lower-third"],
+    ["bottom-right", "watch-quiet-row"],
+  ] as const)("steps the chrome in the %s corner clear of the logo, and nothing else", (corner, moved) => {
+    const back = { label: "Back", onPress: () => undefined };
+    const at = () =>
+      Object.fromEntries(
+        ["watch-back", "watch-lower-third", "watch-quiet-row"].map((id) => [
+          id,
+          screen.getByTestId(id).style[id === "watch-back" ? "top" : "bottom"],
+        ]),
+      );
+    renderUi(<Harness back={back} />);
+    const plain = at();
+    cleanup();
+    renderUi(<Harness back={back} watermark={{ corner, margin: 0.05, size: 0.2 }} />);
+    const cleared = at();
+    // The chrome in the logo's corner starts past the logo, from the logo's own edge.
+    expect(Number.parseFloat(cleared[moved] ?? "0")).toBeGreaterThan(180);
+    for (const id of Object.keys(plain).filter((each) => each !== moved)) expect(cleared[id]).toBe(plain[id]);
   });
 
   it("gives the back control's place to the open list", () => {

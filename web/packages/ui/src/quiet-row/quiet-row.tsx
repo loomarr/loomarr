@@ -38,6 +38,11 @@ interface QuietRowProps {
   /** The channel list is open, so Channels shows as on. */
   listOpen?: boolean;
   muted?: boolean;
+  /**
+   * Whether the screen is in full screen, which names and draws the full-screen control. Left out,
+   * the device says: `full` is in full screen, every other device is not.
+   */
+  fullScreen?: boolean | undefined;
   /** The control whose menu is open. */
   openKey?: QuietRowKey;
   onPress: (key: QuietRowKey) => void;
@@ -88,7 +93,7 @@ type Face = { icon: IconName; name: string };
 
 const faceOf = (
   key: Exclude<QuietRowKey, "channels" | "guide" | "live">,
-  { device, muted, paused }: Pick<QuietRowProps, "device" | "muted" | "paused">,
+  { device, fullScreen, muted, paused }: Pick<QuietRowProps, "device" | "fullScreen" | "muted" | "paused">,
 ): Face => {
   switch (key) {
     case "pause":
@@ -96,7 +101,7 @@ const faceOf = (
     case "volume":
       return muted ? { icon: "volumeMuted", name: "Unmute" } : { icon: "volume", name: "Mute" };
     case "fullscreen":
-      return device === "full"
+      return (fullScreen ?? device === "full")
         ? { icon: "fullscreenExit", name: "Leave full screen" }
         : { icon: "fullscreen", name: "Full screen" };
     case "subtitles":

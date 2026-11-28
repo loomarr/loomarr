@@ -1,5 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import type { PlayerFailureCause, PlayerTuneReport, TuneDirection } from "@loomarr/player";
+import type { PlayerFailureCause, PlayerTuneReport } from "@loomarr/player";
 import { useBrowserPlayer } from "@loomarr/player/browser";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
@@ -27,7 +27,6 @@ const REMEMBERED_ATTEMPTS = 8;
 const useWatchPlayer = ({
   channelId,
   channels,
-  nowNext,
   onNavigate,
   onTune: onTuneReport,
 }: UseWatchPlayerOptions): WatchPlayer => {
@@ -48,6 +47,7 @@ const useWatchPlayer = ({
     onTuneReportRef.current?.({
       attemptId: report.attemptId,
       channelId: report.channel.id,
+      reason: report.reason,
       warm: report.warm,
     });
     // The wash is up once the frame after this one has painted.
@@ -78,7 +78,7 @@ const useWatchPlayer = ({
     source: channelSourcePort,
   });
   const { snapshot } = player;
-  const { goLive, pause, play, retry, seek, step, tuneChannel } = player.controls;
+  const { goLive, pause, play, retry, seek, tuneChannel } = player.controls;
 
   const lineupKnown = channels !== undefined;
   const requested = channels?.find((channel) => channel.id === channelId);
@@ -126,28 +126,6 @@ const useWatchPlayer = ({
     onNavigateRef.current(navigatedId);
   }, [navigatedId]);
 
-  // The tuning channel's picture, decoded off-screen first so a half-loaded image never flashes.
-  const stillUri = snapshot.status === "tuning" ? snapshot.stillUri : undefined;
-  const stillAttempt = snapshot.attemptId;
-  const [decodedStill, setDecodedStill] = useState<string>();
-  useEffect(() => {
-    if (!stillUri) {
-      setDecodedStill(undefined);
-      return;
-    }
-    let current = true;
-    const image = new Image();
-    image.onload = () => {
-      if (!current) return;
-      setDecodedStill(stillUri);
-      markTunePhase(stillAttempt === undefined ? undefined : attempts.current.get(stillAttempt), "still");
-    };
-    image.src = stillUri;
-    return () => {
-      current = false;
-    };
-  }, [stillUri, stillAttempt]);
-
   const fallbackLive = useRef(Date.now());
   const live = snapshot.livePlayback ?? {
     lagSeconds: 0,
@@ -161,9 +139,6 @@ const useWatchPlayer = ({
   );
 
   const channel = parked ? requested : channels?.find((candidate) => candidate.id === tunedId);
-  const currentTitle = channel
-    ? nowNext.find((entry) => entry.channelId === channel.id)?.now?.title
-    : undefined;
 
   let status: WatchPlayerStatus = "loading";
   let error: string | undefined;
@@ -182,22 +157,18 @@ const useWatchPlayer = ({
   return {
     attach: player.attach,
     ...(snapshot.attemptId === undefined ? {} : { attemptId: snapshot.attemptId }),
-    canSurf: snapshot.catalog.length > 1,
-    catalog: snapshot.catalog,
     channel,
-    currentTitle,
     error,
     failureCause,
-    ...(snapshot.tuneReason === "step" && tunedId ? { flipKey: tunedId } : {}),
     ladder: player.ladder,
     liveTransport,
+    // The controller's own pause, whoever asked for it (the screen, the media keys).
+    paused: snapshot.status === "paused",
     playbackSessionId: player.playbackSessionId,
     quality,
     retry: () => void retry(),
     setQuality,
     status,
-    step: (direction: TuneDirection) => void step(direction),
-    stillURL: decodedStill === stillUri ? stillUri : undefined,
     tune: (target: string) => {
       const known = channels?.find((candidate) => candidate.id === target);
       // A channel the app can't play is still a place to go: its Watch page says why it is off.
