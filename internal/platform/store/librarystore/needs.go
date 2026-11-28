@@ -97,6 +97,8 @@ type LibraryNeedsStore interface {
 	// KeepLibraryNeed answers a title that needs the maintainer and has no candidate as a home
 	// video: ErrNotKeepable, and nothing saved, otherwise.
 	KeepLibraryNeed(ctx context.Context, itemID string, at time.Time) (LibraryAnswered, error)
+	// HomeVideosWithoutPoster returns the kept titles that have no poster, each with its main file.
+	HomeVideosWithoutPoster(ctx context.Context) ([]LibraryHomeVideoFrame, error)
 	// KeptLibraryTitle reports whether a file belongs to a title kept as a home video.
 	KeptLibraryTitle(ctx context.Context, kind string, origin LibraryOrigin, groups []LibraryID) (bool, error)
 	// RestoreLibraryIgnored takes back the ignore of titles, all in one transaction:

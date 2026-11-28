@@ -62,6 +62,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LibraryNeeds", func(t *testing.T) { testLibraryNeeds(t, newStore) })
 		t.Run("LibraryNeedsBatch", func(t *testing.T) { testLibraryNeedsBatch(t, newStore) })
 		t.Run("LibraryHomeVideo", func(t *testing.T) { testLibraryHomeVideo(t, newStore) })
+		t.Run("LibraryHomeVideoPoster", func(t *testing.T) { testLibraryHomeVideoPoster(t, newStore) })
 		t.Run("LibraryMemberReads", func(t *testing.T) { testLibraryMemberReads(t, newStore) })
 		t.Run("LibraryFilters", func(t *testing.T) { testLibraryFilters(t, newStore) })
 		t.Run("LibraryWall", func(t *testing.T) { testLibraryWall(t, newStore) })
