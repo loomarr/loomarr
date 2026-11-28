@@ -4,22 +4,24 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
-// declaredStrings returns the values of every constant of one structure type, read from the syntax
-// tree so that a new constant cannot be added without appearing here.
+// declaredStrings returns the values of every explicitly typed constant of one structure type, read
+// from the package's syntax trees so that a new one has to appear in the tables below.
 func declaredStrings(t *testing.T, typeName string) []string {
 	t.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), "../structure/types.go", nil, 0)
+	paths, err := filepath.Glob("../structure/*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var values []string
-	ast.Inspect(file, func(node ast.Node) bool {
+	collect := func(node ast.Node) bool {
 		spec, ok := node.(*ast.ValueSpec)
 		if !ok {
 			return true
@@ -28,14 +30,28 @@ func declaredStrings(t *testing.T, typeName string) []string {
 			return true
 		}
 		for _, value := range spec.Values {
-			literal, err := strconv.Unquote(value.(*ast.BasicLit).Value)
+			basic, ok := value.(*ast.BasicLit)
+			if !ok {
+				continue
+			}
+			literal, err := strconv.Unquote(basic.Value)
 			if err != nil {
 				t.Fatal(err)
 			}
 			values = append(values, literal)
 		}
 		return true
-	})
+	}
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, collect)
+	}
 	return values
 }
 

@@ -10,14 +10,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/loomarr/loomarr/internal/filler/structure"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 const (
-	SchemaVersion   = 1
+	SchemaVersion  = 1
 	ContractVersion = "filler-source-structure-v1"
 )
 
