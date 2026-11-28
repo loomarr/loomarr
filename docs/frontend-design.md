@@ -627,7 +627,9 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
   the hint rest. Focus a pointer gave holds nothing. A key or pointer movement wakes the screen, and
   the key that wakes it also does its job. Nothing that holds keyboard focus, the pointer or an open
   layer goes quiet on a timer. Opening the list lets go of what the pointer and focus held on the
-  lower third, which the list takes the place of.
+  lower third, which the list takes the place of; a pointer resting on the quiet row holds on. A
+  list that a key closes gives focus back to the Channels control that opened it; a pointer that
+  closes it leaves focus alone.
 - **Digits tune direct.** Typed digits (as many as the longest channel number has) replace the
   numeral, commit on Enter or 1.6 seconds after the last, and Esc cancels them. A number with no
   channel says so and tunes nothing. Digits already due commit before any later event. Up or Down
@@ -635,8 +637,10 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
 - **Pause.** Space or a click on the picture pauses and resumes; resuming plays on behind live by the
   time paused, and Go live returns to live. Nothing pauses while tuning in or under a cover. Any tune
   returns to live: it ends a pause and the time behind. A double click on the picture is full screen
-  alone: whatever its two clicks did, the picture plays on afterwards and the clicks add nothing
-  behind live. With the list open, a click on the picture closes the list instead.
+  alone: it goes back to the playback before the first of its two clicks, however far apart they
+  were, so the picture plays on afterwards and the clicks add nothing behind live. The player really
+  was paused between the two clicks; that is under a second, and the screen counts it as nothing on
+  purpose. With the list open, a click on the picture closes the list instead.
 - **A press away from an open menu** closes it and does nothing else, unless the control opens a menu
   itself: then it switches to its own menu, or closes its own. A change of layout closes the list and
   any menu.
@@ -650,8 +654,9 @@ the picture) is built. A desktop window, a television and a phone come in #4732,
 - **Last channel** is the channel just left. When the lineup says it cannot be played, `L` tunes
   nothing and the screen says why.
 - **One amber ring** at any moment, on the quiet row, the lower third's Go live or the list's cursor;
-  the list's rows, tabs and buttons are `RingedPressable`, so a mouse click leaves no keyboard ring. With the list open,
-  the cursor's fill stays visible on the pinned channel.
+  the list's rows, tabs and buttons are `RingedPressable`, so a mouse click leaves no keyboard ring.
+  The quiet row's controls and Go live take no focus from a pointer, so a key pressed after a click
+  is the picture's key. With the list open, the cursor's fill stays visible on the pinned channel.
 - **Find** announces the result under its cursor through a polite live region: the search field has
   no `aria-activedescendant`, so the result cannot be carried by the field itself.
 - **The model asks; the caller does.** It emits requests (tune this channel, pause, resume, go live,

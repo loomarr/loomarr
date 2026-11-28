@@ -103,6 +103,8 @@ const faceOf = (
   }
 };
 
+const keepFocus = (event: { preventDefault: () => void }) => event.preventDefault();
+
 const keysFor = ({ behindLive, device, paused }: QuietRowProps): readonly QuietRowKey[] =>
   device === "tv" && behindLive && !paused ? ["live", ...KEYS.tv] : KEYS[device];
 
@@ -173,6 +175,9 @@ const QuietRow = (props: QuietRowProps) => {
         onFocusKey?.(undefined);
       }
     },
+    // A pointer never takes focus here, so a key pressed after a click is the picture's key and
+    // draws no ring on a control the viewer never moved to.
+    onMouseDown: keepFocus,
     onPress: () => onPress(key),
     ref: (node: RingedPressableHandle | null) => {
       if (node) controls.current.set(key, node);

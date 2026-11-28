@@ -93,7 +93,7 @@ const Screen = ({ bright = false, cover = false, onRequest, rest = false, setup,
   });
   const { send } = model;
   useEffect(() => {
-    if (!rest) send({ held: true, type: "pointerHold" });
+    if (!rest) send({ held: true, region: "quietRow", type: "pointerHold" });
     setup?.(send, clock);
     if (rest) {
       clock.t += 6000;

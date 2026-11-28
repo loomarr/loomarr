@@ -29,8 +29,6 @@ const WATCH_REST_MS = 5000;
 const WATCH_DIGITS_MS = 1600;
 /** How many channels left the screen remembers. */
 const LEFT_LIMIT = 20;
-/** Two clicks on the picture this close together are a double click's. */
-const WATCH_DOUBLE_CLICK_MS = 500;
 
 /** Only where the picture fills the screen does anything rest: nothing covers it elsewhere. */
 const RESTS: ReadonlySet<WatchLayout> = new Set(["full", "landscape", "tv"]);
@@ -57,7 +55,7 @@ const createWatchScreenState = ({
   paused: false,
   pausedAt: undefined,
   picture: "playing",
-  pointerHeld: false,
+  pointerOn: [],
   watchedId,
 });
 
@@ -66,7 +64,7 @@ const held = (state: WatchScreenState) =>
   state.list.open ||
   state.menu !== undefined ||
   state.focus !== undefined ||
-  state.pointerHeld ||
+  state.pointerOn.length > 0 ||
   state.paused ||
   state.digits !== undefined;
 
@@ -174,14 +172,14 @@ const watchScreenReduce = <C extends LineupChannel>(
       ? stay({ ...s, menu: undefined })
       : ask({ ...s, menu: { name } }, { name, type: "menu" });
 
-  // The list reported something, or a key was sent to it. Closing it hands focus back to Channels
-  // when Channels opened it.
-  const listStep = (s: WatchScreenState, listEvent: ChannelListEvent): WatchScreenStep => {
+  // The list reported something, or a key was sent to it. A key that closes it hands focus back to
+  // Channels when Channels opened it; a pointer that closes it leaves focus where it is.
+  const listStep = (s: WatchScreenState, listEvent: ChannelListEvent, fromKey = false): WatchScreenStep => {
     const step = channelListReduce(s.list, listEvent, lineup);
     const closed = s.list.open && !step.state.open;
     const next: WatchScreenState = {
       ...s,
-      handOff: closed && s.listFromControl ? handTo(s, "channels") : s.handOff,
+      handOff: closed && fromKey && s.listFromControl ? handTo(s, "channels") : s.handOff,
       list: step.state,
       listFromControl: closed ? false : s.listFromControl,
     };
@@ -189,9 +187,16 @@ const watchScreenReduce = <C extends LineupChannel>(
   };
 
   // The open list takes the lower third's place, which leaves with no pointer-leave or blur, so
-  // what the pointer and focus held there is let go here.
+  // what the pointer and focus held there is let go here. The quiet row stays, and so does a
+  // pointer resting on it.
   const opened = (s: WatchScreenState): WatchScreenState =>
-    s.list.open ? s : { ...s, focus: undefined, pointerHeld: false };
+    s.list.open
+      ? s
+      : {
+          ...s,
+          focus: s.focus === "live" ? undefined : s.focus,
+          pointerOn: s.pointerOn.filter((region) => region !== "lowerThird"),
+        };
 
   const openList = (s: WatchScreenState, fromControl: boolean): WatchScreenStep => ({
     requests: [],
@@ -250,7 +255,8 @@ const watchScreenReduce = <C extends LineupChannel>(
     if (s.menu?.page !== undefined) return stay({ ...s, menu: { name: s.menu.name } });
     if (s.menu) return stay({ ...s, menu: undefined });
     if (s.digits) return stay({ ...s, digits: undefined });
-    if (s.list.open) return listStep(s, { type: "back" });
+    // Back is a key or a remote's button.
+    if (s.list.open) return listStep(s, { type: "back" }, true);
     return s.layout === "full" ? ask(s, { on: false, type: "fullScreen" }) : stay(s);
   };
 
@@ -302,7 +308,7 @@ const watchScreenReduce = <C extends LineupChannel>(
     // The open list owns its keys; it took them already when focus was in it.
     const listEvent = s.list.open ? LIST_KEYS[pressed] : undefined;
     if (listEvent) {
-      const step = listStep(s, listEvent);
+      const step = listStep(s, listEvent, true);
       return step.state.list.open
         ? { ...step, state: { ...step.state, handOff: handTo(step.state, "list") } }
         : step;
@@ -339,22 +345,24 @@ const watchScreenReduce = <C extends LineupChannel>(
       return state.digits && at >= state.digits.commitAt ? commitDigits(state) : stay(state);
     case "pointerMove":
       return stay();
-    case "pointerHold":
-      return stay({ ...woken, pointerHeld: event.held });
+    case "pointerHold": {
+      const others = woken.pointerOn.filter((region) => region !== event.region);
+      return stay({ ...woken, pointerOn: event.held ? [...others, event.region] : others });
+    }
     case "focus":
       return stay({ ...woken, focus: event.control });
     case "press":
       return press(woken, event.control);
     case "pictureClick": {
-      // The playback before the first of a quick pair, which a double click goes back to.
-      const pair =
-        woken.clicked && at - woken.clicked.at <= WATCH_DOUBLE_CLICK_MS ? woken.clicked : undefined;
-      const before: WatchPlayback = pair?.before ?? {
+      // The playback before this click and before the one ahead of it: a double click that
+      // follows goes back to the earlier, however far apart the two clicks were.
+      const before: WatchPlayback = {
         behindMs: woken.behindMs,
         paused: woken.paused,
         pausedAt: woken.pausedAt,
       };
-      const s = { ...woken, clicked: { at, before, firstAt: pair?.firstAt ?? at } };
+      const previous = woken.clicked && { at: woken.clicked.at, before: woken.clicked.before };
+      const s = { ...woken, clicked: { at, before, previous } };
       // A click away from an open layer closes it and does nothing else.
       if (s.menu) return stay({ ...s, menu: undefined });
       if (s.list.open) return listStep(s, { type: "close" });
@@ -363,8 +371,9 @@ const watchScreenReduce = <C extends LineupChannel>(
     case "pictureDoubleClick": {
       // A double click is full screen alone: whatever its clicks did, the picture plays on, and
       // the moment they held it counts for nothing behind live.
-      const before = woken.clicked?.before;
-      const firstAt = woken.clicked?.firstAt ?? at;
+      const first = woken.clicked?.previous ?? woken.clicked;
+      const before = first?.before;
+      const firstAt = first?.at ?? at;
       const behindMs = before
         ? before.behindMs + (before.paused ? Math.max(0, firstAt - (before.pausedAt ?? firstAt)) : 0)
         : woken.behindMs;
@@ -373,7 +382,7 @@ const watchScreenReduce = <C extends LineupChannel>(
       return woken.paused ? { ...fill, requests: [...fill.requests, { type: "resume" }] } : fill;
     }
     case "list":
-      return listStep(woken, event.event);
+      return listStep(woken, event.event, event.fromKey ?? false);
     case "menuPage":
       return stay(woken.menu ? { ...woken, menu: { name: woken.menu.name, page: event.page } } : woken);
     case "closeMenu":
@@ -430,7 +439,6 @@ const watchScreenView = <C extends LineupChannel>(
 export {
   createWatchScreenState,
   WATCH_DIGITS_MS,
-  WATCH_DOUBLE_CLICK_MS,
   WATCH_REST_MS,
   watchKeyOf,
   watchScreenReduce,

@@ -54,6 +54,12 @@ interface WatchScreenModel<C extends LineupChannel> {
 /**
  * Runs `@loomarr/core/watch-screen` for a screen: it dates each event, hands the requests to
  * `onRequest`, and wakes itself at the view's `nextAt`.
+ *
+ * Keys reach it from the caller, in the bubbling phase and after every control: listen on the
+ * document's `keydown` without `capture`, and send `{ type: "key" }` only for what `watchKeyOf`
+ * passes, which leaves out a key a control or the open list already took. A caller must not handle
+ * the same keys in the capture phase: a key would then reach the screen before the control that
+ * holds focus, and Space would both press the control and pause.
  */
 const useWatchScreen = <C extends LineupChannel>({
   hintSeen,

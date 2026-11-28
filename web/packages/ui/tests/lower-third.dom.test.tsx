@@ -236,13 +236,15 @@ describe("LowerThird in a screen's arrangement", () => {
     const onGoLiveFocus = vi.fn();
     third({ onGoLiveFocus, state: behind });
     const goLive = screen.getByRole("button", { name: "Go live" });
+    // A pointer takes no focus, so a key after the click is not Go live's.
     await userEvent.click(goLive);
+    expect(document.activeElement).toBe(document.body);
+    await userEvent.keyboard("{ArrowDown}");
     expect(onGoLiveFocus).not.toHaveBeenCalled();
-    // A key on the clicked control brings its ring, and Tab takes it away.
+    await userEvent.tab();
+    expect(onGoLiveFocus.mock.calls).toEqual([[true]]);
     await userEvent.tab();
     expect(onGoLiveFocus.mock.calls).toEqual([[true], [false]]);
-    await userEvent.tab({ shift: true });
-    expect(onGoLiveFocus).toHaveBeenLastCalledWith(true);
   });
 
   it("names Go live's key, End, in its tooltip on a desktop", async () => {

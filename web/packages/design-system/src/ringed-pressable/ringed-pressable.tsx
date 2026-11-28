@@ -46,7 +46,8 @@ interface RingedPressableProps {
   onFocus?: () => void;
   /**
    * The keyboard or remote focus came (`true`) or went: the amber ring's coming and going. Focus a
-   * pointer gave never reports, and a pointer press on a control that holds it reports `false`.
+   * pointer gave never reports. On the web a pointer press on a control that holds it reports
+   * `false`; a native client has no pointer to press with.
    */
   onKeyboardFocus?: (focused: boolean) => void;
   /** The press, with where it came from: a pointer's carries a place, a key's does not. */

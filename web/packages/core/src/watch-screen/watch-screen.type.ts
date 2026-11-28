@@ -26,6 +26,9 @@ type WatchMenuName = "audio" | "more" | "shortcuts" | "subtitles";
 /** What the picture is doing: `playing` a picture, `tuning` in with nothing yet, `covered` by a cover. */
 type WatchPicture = "playing" | "tuning" | "covered";
 
+/** The parts of the screen the pointer can rest on: the open list takes the lower third's place. */
+type WatchPointerRegion = "lowerThird" | "quietRow";
+
 /** How far the picture is from live, as it was before a click on it. */
 interface WatchPlayback {
   paused: boolean;
@@ -63,8 +66,8 @@ interface WatchScreenState {
   menu: WatchMenu | undefined;
   /** The control holding focus. */
   focus: WatchControl | undefined;
-  /** The pointer rests on the controls. */
-  pointerHeld: boolean;
+  /** Where the pointer rests on the controls; anywhere here holds the screen awake. */
+  pointerOn: readonly WatchPointerRegion[];
   /** Digits typed and not yet committed, and when they commit by themselves. */
   digits: { typed: string; commitAt: number } | undefined;
   paused: boolean;
@@ -78,10 +81,12 @@ interface WatchScreenState {
   /** Only a playing picture pauses. */
   picture: WatchPicture;
   /**
-   * The last click on the picture, and the playback before the first of a quick pair of clicks, so
-   * a double click can leave the picture as it was.
+   * The playback before each of the last two clicks on the picture. A double click always follows
+   * exactly two clicks, so it goes back to the playback before the first of them, whatever the gap.
    */
-  clicked: { at: number; firstAt: number; before: WatchPlayback } | undefined;
+  clicked:
+    | { at: number; before: WatchPlayback; previous: { at: number; before: WatchPlayback } | undefined }
+    | undefined;
 }
 
 interface WatchScreenStateArgs {
@@ -99,7 +104,7 @@ type WatchScreenEvent =
   | { type: "key"; key: string; at: number }
   | { type: "pointerMove"; at: number }
   /** The pointer came to rest on the controls, or left them. */
-  | { type: "pointerHold"; held: boolean; at: number }
+  | { type: "pointerHold"; held: boolean; region: WatchPointerRegion; at: number }
   /**
    * A control took focus from the keyboard or a remote, or that focus left the controls. Focus a
    * pointer gave is not sent: it holds nothing awake.
@@ -110,7 +115,11 @@ type WatchScreenEvent =
   | { type: "pictureClick"; at: number }
   | { type: "pictureDoubleClick"; at: number }
   /** What the channel list reported. */
-  | { type: "list"; event: ChannelListEvent; at: number }
+  /**
+   * What the channel list reported. `fromKey` says a key caused it, so a list that a key closes
+   * gives focus back to the Channels control that opened it; a pointer's close leaves focus alone.
+   */
+  | { type: "list"; event: ChannelListEvent; fromKey?: boolean; at: number }
   /** An open menu moved to one of its inner pages, or back to its first (`undefined`). */
   | { type: "menuPage"; page: string | undefined; at: number }
   | { type: "closeMenu"; at: number }
@@ -183,6 +192,7 @@ export type {
   WatchMenuName,
   WatchPicture,
   WatchPlayback,
+  WatchPointerRegion,
   WatchRequest,
   WatchScreenEvent,
   WatchScreenState,

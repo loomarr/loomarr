@@ -136,16 +136,27 @@ describe("QuietRow", () => {
     expect(onFocusKey.mock.calls).toEqual([["channels"], [undefined], ["guide"], [undefined]]);
   });
 
-  it("says nothing of focus a click gave, and keeps the control said when moving left", async () => {
+  it("takes no focus from a click, so a key after it is not the row's", async () => {
+    const onFocusKey = vi.fn();
+    const onPress = vi.fn();
+    row({ onFocusKey, onPress });
+    await userEvent.click(screen.getByRole("button", { name: "Mute (M)" }));
+    expect(onPress).toHaveBeenCalledWith("volume");
+    expect(document.activeElement).toBe(document.body);
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(onFocusKey).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+  });
+
+  it("keeps the control said when the keyboard moves left along the row", async () => {
+    keyboardFocus();
     const onFocusKey = vi.fn();
     row({ onFocusKey });
-    await userEvent.click(screen.getByRole("button", { name: "Mute (M)" }));
-    expect(onFocusKey).not.toHaveBeenCalled();
-    keyboardFocus();
+    await userEvent.tab();
+    await userEvent.keyboard("{End}{ArrowLeft}");
+    expect(onFocusKey).toHaveBeenLastCalledWith("fullscreen");
     await userEvent.keyboard("{ArrowLeft}");
-    expect(onFocusKey).toHaveBeenLastCalledWith("audio");
-    await userEvent.keyboard("{ArrowLeft}");
-    expect(onFocusKey).toHaveBeenLastCalledWith("subtitles");
+    expect(onFocusKey).toHaveBeenLastCalledWith("volume");
   });
 
   it("names an icon in a tooltip with its key on a desktop", async () => {

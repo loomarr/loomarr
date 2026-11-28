@@ -168,7 +168,7 @@ describe("rule 3: only the bare picture goes quiet", () => {
     ["the list is open", { control: "channels", type: "press" }],
     ["a menu is open", { control: "subtitles", type: "press" }],
     ["a control holds focus", { control: "pause", type: "focus" }],
-    ["the pointer rests on the controls", { held: true, type: "pointerHold" }],
+    ["the pointer rests on the controls", { held: true, region: "quietRow", type: "pointerHold" }],
     ["the picture is paused", { key: " ", type: "key" }],
     ["digits are pending", { key: "1", type: "key" }],
   ] as const)("never rests while %s", (_, event) => {
@@ -186,9 +186,13 @@ describe("rule 3: only the bare picture goes quiet", () => {
 
   it("rests again five seconds after what held it lets go", () => {
     const s = screen();
-    s.send({ held: true, type: "pointerHold" });
+    s.send({ held: true, region: "quietRow", type: "pointerHold" });
+    s.send({ held: true, region: "lowerThird", type: "pointerHold" });
     s.wait(20_000);
-    s.send({ held: false, type: "pointerHold" });
+    s.send({ held: false, region: "quietRow", type: "pointerHold" });
+    // Still on the lower third.
+    expect(s.view().nextAt).toBeNull();
+    s.send({ held: false, region: "lowerThird", type: "pointerHold" });
     expect(s.view().nextAt).toBe(s.now + WATCH_REST_MS);
   });
 
@@ -621,6 +625,14 @@ describe("a double click is full screen and nothing else", () => {
     expect(s.requests.some((request) => request.type === "goLive")).toBe(false);
   });
 
+  it("goes back to the playback before its first click however long the system's interval is", () => {
+    const s = screen();
+    s.send({ type: "pictureClick" }, 0);
+    s.send({ type: "pictureClick" }, 600);
+    s.send({ type: "pictureDoubleClick" }, 600);
+    expect(s.state).toMatchObject({ behindMs: 0, paused: false });
+  });
+
   it("plays on from a pause, behind by the time it was paused before the clicks", () => {
     const s = screen();
     s.key(" ", 0);
@@ -694,15 +706,45 @@ describe("only a playing picture pauses", () => {
 describe("what holds the screen awake", () => {
   it("lets go of the pointer and focus on the lower third when the list takes its place", () => {
     const s = screen();
-    s.send({ held: true, type: "pointerHold" });
+    s.send({ held: true, region: "lowerThird", type: "pointerHold" });
     s.send({ control: "live", type: "focus" });
     s.key("/");
-    expect(s.state).toMatchObject({ focus: undefined, pointerHeld: false });
+    expect(s.state).toMatchObject({ focus: undefined, pointerOn: [] });
     s.key("Escape");
     s.key("Escape");
     expect(s.view().listOpen).toBe(false);
     s.wait(WATCH_REST_MS);
     expect(s.view().awake).toBe(false);
+  });
+
+  it("keeps the pointer's hold on the quiet row through the list opening and closing", () => {
+    const s = screen();
+    s.send({ held: true, region: "quietRow", type: "pointerHold" }, 0);
+    s.send({ control: "channels", type: "press" }, 0);
+    s.send({ control: "channels", type: "press" }, 2000);
+    expect(s.view().listOpen).toBe(false);
+    s.wait(60_000);
+    expect(s.view().awake).toBe(true);
+    // The keyboard's way round: "/", then Esc twice, under a still pointer.
+    s.key("/");
+    s.key("Escape");
+    s.key("Escape");
+    s.wait(60_000);
+    expect(s.view().awake).toBe(true);
+  });
+
+  it("gives focus back to Channels only when a key closes the list", () => {
+    const s = screen();
+    s.send({ control: "channels", type: "press" });
+    s.send({ type: "pictureClick" });
+    s.send({ control: "channels", type: "press" });
+    s.send({ event: { type: "close" }, type: "list" });
+    s.send({ control: "channels", type: "press" });
+    s.send({ control: "channels", type: "press" });
+    expect(s.state.handOff).toBeUndefined();
+    s.send({ control: "channels", type: "press" });
+    s.send({ event: { type: "back" }, fromKey: true, type: "list" });
+    expect(s.state.handOff).toEqual({ seq: 1, to: "channels" });
   });
 
   it("closes the list and any menu on a change of layout", () => {

@@ -91,13 +91,17 @@ const WatchScreen = <C extends LineupChannel>({
   const shown = useShown(view.awake, reducedMotion);
   const watched = lineup.channels.find((channel) => channel.id === state.watchedId);
 
-  // Focus goes where the model hands it: onto the list's cursor, or back to Channels.
   // The model refuses a pause while there is no picture to hold.
   const showing = cover ? "covered" : tune.cover === "cold" ? "tuning" : "playing";
   useEffect(() => {
     send({ picture: showing, type: "picture" });
   }, [send, showing]);
 
+  // Whether the last thing to happen inside the screen was a key, so the model knows a list that a
+  // key closed from one a pointer closed.
+  const byKey = useRef(false);
+
+  // Focus goes where the model hands it: onto the list's cursor, or back to Channels.
   const handOff = state.handOff;
   // biome-ignore lint/correctness/useExhaustiveDependencies: each hand-off moves focus once
   useEffect(() => {
@@ -149,10 +153,10 @@ const WatchScreen = <C extends LineupChannel>({
       : "No channel or programme matches";
 
   // The pointer resting on the controls holds the screen awake.
-  const holdOn = () =>
+  const holdOn = (region: "lowerThird" | "quietRow") =>
     web({
-      onPointerEnter: () => send({ held: true, type: "pointerHold" }),
-      onPointerLeave: () => send({ held: false, type: "pointerHold" }),
+      onPointerEnter: () => send({ held: true, region, type: "pointerHold" }),
+      onPointerLeave: () => send({ held: false, region, type: "pointerHold" }),
     });
   const onPointerMove = () => {
     const at = Date.now();
@@ -164,7 +168,19 @@ const WatchScreen = <C extends LineupChannel>({
     view.menu && QUIET_ROW_MENUS.has(view.menu.name) ? (view.menu.name as QuietRowKey) : undefined;
 
   return (
-    <Layer fill testID="watch-screen" {...web({ onPointerMove })}>
+    <Layer
+      fill
+      testID="watch-screen"
+      {...web({
+        onKeyDownCapture: () => {
+          byKey.current = true;
+        },
+        onPointerDownCapture: () => {
+          byKey.current = false;
+        },
+        onPointerMove,
+      })}
+    >
       <Layer fill>{picture}</Layer>
       <TuneStatic
         cover={tune.cover}
@@ -197,7 +213,13 @@ const WatchScreen = <C extends LineupChannel>({
         ) : null}
 
         {watched && !view.listOpen ? (
-          <Layer bottom={CROSSING} left={EDGE} opacity={shown} testID="watch-lower-third" {...holdOn()}>
+          <Layer
+            bottom={CROSSING}
+            left={EDGE}
+            opacity={shown}
+            testID="watch-lower-third"
+            {...holdOn("lowerThird")}
+          >
             {third(watched, true)}
           </Layer>
         ) : null}
@@ -208,7 +230,7 @@ const WatchScreen = <C extends LineupChannel>({
               autoFocus
               detail={detail}
               lineup={lineup}
-              onEvent={(event) => send({ event, type: "list" })}
+              onEvent={(event) => send({ event, fromKey: byKey.current, type: "list" })}
               ref={list}
               renderPinned={(channel) => third(channel, false)}
               restFromBottom={CROSSING - LIST_FOOT}
@@ -217,7 +239,13 @@ const WatchScreen = <C extends LineupChannel>({
           </Layer>
         ) : null}
 
-        <Layer bottom={ROW_FOOT} opacity={shown} right={EDGE} testID="watch-quiet-row" {...holdOn()}>
+        <Layer
+          bottom={ROW_FOOT}
+          opacity={shown}
+          right={EDGE}
+          testID="watch-quiet-row"
+          {...holdOn("quietRow")}
+        >
           <QuietRow
             device="full"
             group={GROUP_NAMES[state.list.group]}

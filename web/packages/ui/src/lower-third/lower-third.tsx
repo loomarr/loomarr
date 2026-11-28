@@ -209,6 +209,8 @@ const LowerThird = ({
                   goLiveFocused.current = true;
                 }}
                 {...(onGoLiveFocus ? { onKeyboardFocus: onGoLiveFocus } : {})}
+                // A pointer takes no focus, so a key after a click is the picture's.
+                onMouseDown={(event) => event.preventDefault()}
                 onPress={onGoLive}
                 size={touch ? 44 : 28}
                 // A desktop's key for it: the live edge is the end of what has aired.

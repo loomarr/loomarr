@@ -93,44 +93,75 @@ const pointerFocus = () => {
   });
 };
 
-// A click as a browser gives it: the pointer goes down, the control takes focus, the press lands.
-const clickWithFocus = (element: HTMLElement) => {
+// A click as a browser gives it: the pointer goes down, the control takes focus unless the
+// mousedown's default was prevented, and the press lands.
+const click = (element: HTMLElement) => {
   fireEvent.pointerDown(element, { pointerType: "mouse" });
-  act(() => element.focus());
+  if (fireEvent.mouseDown(element)) act(() => element.focus());
   fireEvent.click(element);
 };
 
+const restedAfter = (ms: number) => {
+  act(() => {
+    vi.advanceTimersByTime(ms);
+  });
+  return screen.queryByRole("note") === null;
+};
+
 describe("WatchScreen at rest", () => {
-  it("rests after a click on Mute and the pointer moving onto the picture", async () => {
+  it("rests after a click on Mute, the pointer moving onto the picture, and a key", () => {
     vi.useFakeTimers();
-    pointerFocus();
+    // Even were the browser to call any focus the keyboard's, a click gives none here.
+    keyboardFocus();
     renderUi(<Harness hintSeen={false} />);
-    clickWithFocus(screen.getByRole("button", { name: "Mute (M)" }));
-    expect(document.activeElement?.getAttribute("aria-label")).toBe("Mute (M)");
+    click(screen.getByRole("button", { name: "Mute (M)" }));
+    expect(document.activeElement).toBe(document.body);
     expect(requests).toHaveBeenLastCalledWith({ type: "mute" });
     fireEvent.pointerLeave(screen.getByTestId("watch-quiet-row"));
     fireEvent.pointerMove(screen.getByTestId("watch-picture"));
-    act(() => {
-      vi.advanceTimersByTime(6000);
-    });
-    expect(screen.queryByRole("note")).toBeNull();
+    key("ArrowDown");
+    expect(restedAfter(6000)).toBe(true);
+    expect(tunes()).toEqual(["ch-2"]);
+    expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
     requests.mockClear();
   });
 
-  it("rests after Channels opens the list and a click on the picture closes it", async () => {
+  it("rests after Channels opens the list, a click on the picture closes it, and a key", () => {
     vi.useFakeTimers();
     pointerFocus();
     renderUi(<Harness hintSeen={false} />);
-    clickWithFocus(channelsControl());
+    click(channelsControl());
     expect(listbox()).not.toBeNull();
     fireEvent.pointerLeave(screen.getByTestId("watch-quiet-row"));
-    fireEvent.click(screen.getByTestId("watch-picture").firstElementChild as Element);
+    click(screen.getByTestId("watch-picture").firstElementChild as HTMLElement);
+    expect(listbox()).toBeNull();
+    // A pointer closed it, so focus is left where it was, not handed to Channels.
+    expect(document.activeElement).not.toBe(channelsControl());
+    keyboardFocus();
+    key("ArrowDown");
+    expect(restedAfter(6000)).toBe(true);
+    expect(tunes()).toEqual(["ch-2"]);
+    expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+    requests.mockClear();
+  });
+
+  it("gives focus back to Channels when a key closes the list it opened", async () => {
+    keyboardFocus();
+    renderUi(<Harness />);
+    act(() => channelsControl().focus());
+    await userEvent.keyboard("{Enter}");
+    expect(listbox()).not.toBeNull();
+    await userEvent.keyboard("{Escape}");
     expect(listbox()).toBeNull();
     expect(document.activeElement).toBe(channelsControl());
-    act(() => {
-      vi.advanceTimersByTime(6000);
-    });
-    expect(screen.queryByRole("note")).toBeNull();
+  });
+
+  it("leaves Space to a control the keyboard holds: it presses it and does not also pause", async () => {
+    keyboardFocus();
+    renderUi(<Harness />);
+    act(() => screen.getByRole("button", { name: "Mute (M)" }).focus());
+    await userEvent.keyboard(" ");
+    expect(requests.mock.calls.map(([request]) => request.type)).toEqual(["mute"]);
     requests.mockClear();
   });
 

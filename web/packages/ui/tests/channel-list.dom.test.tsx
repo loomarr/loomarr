@@ -168,6 +168,17 @@ describe("ChannelList", () => {
       act(() => screen.getByRole("tab", { name: "All" }).focus());
       expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
       expect(screen.getByRole("tab", { name: "All", selected: true })).toBeTruthy();
+      cleanup();
+      // Find with no match: Close find and Show all channels.
+      keyboard = false;
+      renderUi(<Harness start={{ query: "zzz" }} />);
+      for (const name of ["Close find", "Show all channels"]) {
+        act(() => screen.getByRole("button", { name }).focus());
+        expect(screen.queryByTestId("ring-actionFocus")).toBeNull();
+      }
+      keyboard = true;
+      act(() => screen.getByRole("button", { name: "Close find" }).focus());
+      expect(screen.getAllByTestId("ring-actionFocus")).toHaveLength(1);
     } finally {
       Element.prototype.matches = native;
     }
