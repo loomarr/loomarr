@@ -63,21 +63,11 @@ func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	return out, nil
 }
 
-// NeedCount is everything Needs you holds, the titles to answer, the shows whose episode order to
-// say and the titles that need a look: the Needs you heading and the nav badge are one number.
+// NeedCount is how many titles Needs you holds: those to answer, the shows whose episode order to
+// say and those that need a look. A title in more than one of these counts once, as the Needs you
+// page counts it. The nav badge and the status line show this number.
 func (l *Library) NeedCount(ctx context.Context) (int, error) {
-	needs, err := l.NeedStore.LibraryNeeds(ctx)
-	if err != nil {
-		return 0, err
-	}
-	orders := 0
-	if l.Orders != nil {
-		if orders, err = l.Orders.LibraryOrderNeedCount(ctx); err != nil {
-			return 0, err
-		}
-	}
-	problems, err := l.ItemStore.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Problems: true})
-	return len(needs) + orders + problems.Total, err
+	return l.NeedStore.LibraryNeedsYouCount(ctx)
 }
 
 // ErrNotCatalogID is a link to an id the catalog does not fetch for the title's kind: the title
