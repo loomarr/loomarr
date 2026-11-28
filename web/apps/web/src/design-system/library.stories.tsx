@@ -686,7 +686,7 @@ const MemberSeries: Story = {
 };
 
 // On air now: the channel's row, with its logo, is the link to watching it.
-const MemberWatchingNow: Story = {
+const MemberOnNow: Story = {
   render: () => {
     const lateShow = {
       id: "90000972",
@@ -701,9 +701,7 @@ const MemberWatchingNow: Story = {
           ...memberSeries,
           backdrop: art("#3b4a63"),
           channels: [lateShow, { id: "90000973", name: "Sunday Stories", number: 12 }],
-          airings: [
-            { ...memberSeries.airings[0]!, channel: lateShow, when: "Watching now", forecast: false },
-          ],
+          airings: [{ ...memberSeries.airings[0]!, channel: lateShow, when: "On now", forecast: false }],
         }}
         // The row is drawn into the link in place of its children.
         watchLink={(id) => (id === lateShow.id ? <a href={`/watch/${id}`}>Watch</a> : undefined)}
@@ -1184,8 +1182,8 @@ export {
   MemberHomeVideo,
   MemberMovie,
   MemberNoMatch,
+  MemberOnNow,
   MemberSeries,
-  MemberWatchingNow,
   Movie,
   MovieFixOpen,
   NeedsCards,

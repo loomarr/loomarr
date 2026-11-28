@@ -120,7 +120,7 @@ describe("LibraryTitlePage", () => {
 
     const link = await screen.findByRole("link", { name: /Nightfall/ });
     expect(link).toHaveAttribute("href", "/watch/ch-1?");
-    expect(link).toHaveTextContent("Watching now");
+    expect(link).toHaveTextContent("On now");
     expect(container.querySelector('img[src="/logo.png"]')).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Daybreak/ })).not.toBeInTheDocument();
   });
@@ -247,7 +247,7 @@ describe("LibraryTitlePage", () => {
 
     const region = await screen.findByRole("region", { name: "On these channels" });
     expect(region).toHaveTextContent("Quiet Hours");
-    expect(region).toHaveTextContent("Watching now");
+    expect(region).toHaveTextContent("On now");
     expect(region).toHaveTextContent("Season 1, episode 3 · Dead Line");
     expect(region).toHaveTextContent("Expected time, it can still change");
     expect(region).toHaveTextContent("Late Show");
@@ -268,11 +268,11 @@ describe("LibraryTitlePage", () => {
     renderPage();
 
     const region = await screen.findByRole("region", { name: "On these channels" });
-    expect(region).not.toHaveTextContent("Watching now");
+    expect(region).not.toHaveTextContent("On now");
     expect(region).toHaveTextContent("Nothing scheduled soon");
   });
 
-  it("follows the clock: an airing turns to Watching now when it starts", async () => {
+  it("follows the clock: an airing turns to On now when it starts", async () => {
     const channel = { id: "90000971", name: "Quiet Hours", number: 21 };
     const airing = {
       channel,
@@ -285,7 +285,7 @@ describe("LibraryTitlePage", () => {
 
     const region = await screen.findByRole("region", { name: "On these channels" });
     expect(region).toHaveTextContent("Next ");
-    await waitFor(() => expect(region).toHaveTextContent("Watching now"), { timeout: 4000 });
+    await waitFor(() => expect(region).toHaveTextContent("On now"), { timeout: 4000 });
   });
 
   it("says when the title is on no channel", async () => {

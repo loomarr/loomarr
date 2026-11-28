@@ -1,5 +1,5 @@
-import { Action, Surface, Text, useWindowWidth, VisuallyHidden } from "@loomarr/design-system";
-import { cloneElement, type ReactNode, useState } from "react";
+import { Action, PressableRow, Surface, Text, useWindowWidth, VisuallyHidden } from "@loomarr/design-system";
+import type { ReactNode } from "react";
 import { ChannelIdentity } from "../../identity";
 import { Line, Stack } from "../library-poster";
 import type {
@@ -159,18 +159,12 @@ const Hero = ({ title, actions }: { title: LibraryTitleDetail; actions: ReactNod
 type ChannelRowData = LibraryTitleAiring | Pick<LibraryTitleAiring, "channel">;
 
 // One channel and when it shows the title. Where the app can name its player, the whole row is that
-// link: it keeps its own semantics and navigation and takes only the row's layout and focus. The
-// focus look is the row's amber border; forced colours turn the transparent outline visible.
+// link, drawn as the design system's bordered row: the same hairline card, with its hover fill and
+// amber focus border.
 const ChannelRow = ({ row, link }: { row: ChannelRowData; link: ReturnType<NonNullable<WatchLink>> }) => {
-  const [focused, setFocused] = useState(false);
   const { channel } = row;
-  const card = (
-    <Surface
-      borderColor={focused ? "actionFocus" : undefined}
-      borderWidth={link ? 2 : undefined}
-      gap="inline"
-      padding="control"
-    >
+  const content = (
+    <>
       <ChannelIdentity
         channel={{
           channelLogoState: channel.logo ? "ready" : "missing",
@@ -198,22 +192,19 @@ const ChannelRow = ({ row, link }: { row: ChannelRowData; link: ReturnType<NonNu
           Nothing scheduled soon
         </Text>
       )}
-    </Surface>
+    </>
   );
-  if (!link) return card;
-  return cloneElement(
-    link,
-    {
-      onBlur: () => setFocused(false),
-      onFocus: () => setFocused(true),
-      style: {
-        color: "inherit",
-        display: "block",
-        outline: focused ? "2px solid transparent" : "none",
-        textDecoration: "none",
-      },
-    },
-    card,
+  if (!link) {
+    return (
+      <Surface gap="inline" padding="control">
+        {content}
+      </Surface>
+    );
+  }
+  return (
+    <PressableRow bordered render={link}>
+      <Stack gap="inline">{content}</Stack>
+    </PressableRow>
   );
 };
 

@@ -87,7 +87,7 @@ interface LibraryTitleSeason {
 /** When a channel next shows the title, its time already worded in the household's clock. */
 interface LibraryTitleAiring {
   channel: LibraryTitleChannel;
-  /** "Next tonight at 9:00 PM", or "Watching now". */
+  /** "Next tonight at 9:00 PM", or "On now". */
   when: string;
   /** Past the window on air, so it can still change. */
   forecast: boolean;
