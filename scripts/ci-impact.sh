@@ -115,6 +115,13 @@ classify() {
       select_gate agent
       ;;
   esac
+  # The macOS agent job is the only run under bash 3.2 and BSD tools, so every script and Make
+  # module selects it (#4641). This adds the gate without claiming the path.
+  case "$path" in
+    scripts/*|mk/*)
+      select_gate agent
+      ;;
+  esac
   case "$path" in
     scripts/playout-bench-coverage*)
       # The hardware bench's coverage summary; releaseverify runs its contract test.
