@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { type ClientDestination, useClientDestination } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+afterEach(cleanup);
 
 // A hardware Back press as the platform delivers it: the newest listener that answers true wins.
 const fakeBackHandler = () => {
@@ -27,17 +26,13 @@ const mount = async (initial: ClientDestination, backHandler = fakeBackHandler()
     state = useClientDestination(initial, backHandler);
     return null;
   };
-  const container = (
-    globalThis as unknown as { document: { createElement: (tag: string) => never } }
-  ).document.createElement("div");
-  const root = createRoot(container);
-  await act(async () => root.render(<Probe />));
+  const { unmount } = renderUi(<Probe />);
   return {
     active: () => state[0],
     backHandler,
     go: (destination: ClientDestination) => act(async () => state[1](destination)),
     press: () => act(async () => void backHandler.press()),
-    unmount: () => act(async () => root.unmount()),
+    unmount: () => act(async () => unmount()),
   };
 };
 

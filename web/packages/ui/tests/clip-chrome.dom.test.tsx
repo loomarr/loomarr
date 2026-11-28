@@ -1,47 +1,18 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
-import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { act, cleanup, renderUi } from "@loomarr/test-support";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ClipChrome, type ClipChromeProps } from "../index";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const mount = (node: ReactNode) => renderUi(node).container;
+afterEach(cleanup);
 
-// The package compiles without the DOM lib (it is React Native first), so the test names the little
-// of the DOM it touches.
-type Node = { click(): void; getAttribute(n: string): string | null; textContent: string | null };
-type Host = Parameters<typeof createRoot>[0] & {
-  querySelector(s: string): Node | null;
-  querySelectorAll(s: string): ArrayLike<Node>;
-  remove(): void;
-  textContent: string | null;
-};
-const doc = (
-  globalThis as unknown as {
-    document: { body: { append(n: unknown): void }; createElement(t: string): Host };
-  }
-).document;
-
-const mounted: { host: Host; unmount: () => void }[] = [];
-const mount = (node: ReactNode) => {
-  const host = doc.createElement("div");
-  doc.body.append(host);
-  const root = createRoot(host);
-  act(() => root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>));
-  mounted.push({ host, unmount: () => act(() => root.unmount()) });
-  return host;
-};
-afterEach(() => {
-  for (const { host, unmount } of mounted.splice(0)) {
-    unmount();
-    host.remove();
-  }
-});
-
-const button = (host: Host, name: string) =>
-  Array.from(host.querySelectorAll('[role="button"]')).find((el) => el.getAttribute("aria-label") === name);
+const button = (host: ParentNode, name: string) =>
+  Array.from(host.querySelectorAll<HTMLElement>('[role="button"]')).find(
+    (el) => el.getAttribute("aria-label") === name,
+  );
 
 const props = (overrides: Partial<ClipChromeProps> = {}): ClipChromeProps => ({
   density: "pointer",
@@ -115,11 +86,11 @@ describe("ClipChrome", () => {
 
   // Hidden chrome stays mounted so it can fade, but it must be out of reach of assistive tech.
   it("hides from assistive tech while the player has hidden it", () => {
-    const underHidden = (host: Host, selector: string) =>
+    const underHidden = (host: ParentNode, selector: string) =>
       Array.from(host.querySelectorAll('[aria-hidden="true"]')).some((el) =>
-        Boolean((el as Node & { querySelector(s: string): Node | null }).querySelector(selector)),
+        Boolean(el.querySelector(selector)),
       );
-    const hiddenTitle = (host: Host) =>
+    const hiddenTitle = (host: ParentNode) =>
       Array.from(host.querySelectorAll('[aria-hidden="true"]')).some(
         (el) => el.textContent === "Tidepool Hour",
       );
