@@ -17,6 +17,8 @@ import (
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/proctree"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // The class probe measures what one stream of each cost class costs this host (#1512 G5). It never
@@ -59,7 +61,7 @@ const probeDeadlineReason = "probe window ended before a measurement"
 // deadlineKilled reports whether failures records class as killed by its own probe deadline
 // (probeDeadlineReason) rather than silence or an unrelated ffmpeg error. Used by tests that accept
 // a software host being too slow to clear a class inside probeWindow (#1800).
-func deadlineKilled(failures []string, class StreamClass) bool {
+func deadlineKilled(failures []string, class media.StreamClass) bool {
 	for _, f := range failures {
 		if strings.HasPrefix(f, string(class)+" at ") && strings.Contains(f, probeDeadlineReason) {
 			return true
@@ -89,7 +91,7 @@ func yielding[T any](ctx context.Context, fg Foreground, fn func(context.Context
 		}
 		bctx, cancel := fg.BackgroundContext(ctx)
 		v, err := fn(bctx)
-		yielded := errors.Is(context.Cause(bctx), ErrYielded)
+		yielded := errors.Is(context.Cause(bctx), admission.ErrYielded)
 		cancel()
 		if !yielded || ctx.Err() != nil {
 			return v, err
@@ -100,8 +102,8 @@ func yielding[T any](ctx context.Context, fg Foreground, fn func(context.Context
 // probeClip is one synthetic source. Temporal noise gives the clip a realistic bitrate (the 4K HDR
 // clip is ~30 Mbit/s): a clean test pattern compresses to almost nothing and under-costs decode.
 type probeClip struct {
-	class  StreamClass
-	format MediaFormat
+	class  media.StreamClass
+	format media.MediaFormat
 	filter string
 	encode []string
 }
@@ -113,23 +115,23 @@ var probeAudio = []string{"-c:a", "ac3", "-ac", "6", "-ar", "48000"}
 
 var probeClips = []probeClip{
 	{
-		class: ClassSDR,
-		format: MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080, FrameRate: 24000.0 / 1001,
+		class: media.ClassSDR,
+		format: media.MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080, FrameRate: 24000.0 / 1001,
 			PixelFormat: "yuv420p"},
 		filter: probeNoise + ",format=yuv420p",
 		encode: []string{"-c:v", "libx264", "-preset", "ultrafast", "-b:v", "10M", "-maxrate", "12M", "-bufsize", "12M"},
 	},
 	{
-		class: ClassHEVC10,
-		format: MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, FrameRate: 24000.0 / 1001,
+		class: media.ClassHEVC10,
+		format: media.MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, FrameRate: 24000.0 / 1001,
 			PixelFormat: "yuv420p10le"},
 		filter: probeNoise + ",format=yuv420p10le",
 		encode: []string{"-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error:bitrate=8000"},
 	},
 	{
 		// HDR10: PQ transfer, BT.2020 primaries and matrix, in the stream and the container.
-		class: ClassHDR4K,
-		format: MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24000.0 / 1001,
+		class: media.ClassHDR4K,
+		format: media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24000.0 / 1001,
 			PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084"},
 		filter: probeNoise + ",zscale=tin=bt709:min=bt709:pin=bt709:rin=tv:t=smpte2084:m=bt2020nc:p=bt2020:r=tv:npl=100,format=yuv420p10le",
 		encode: []string{"-c:v", "libx265", "-preset", "ultrafast", "-x265-params",
@@ -138,7 +140,7 @@ var probeClips = []probeClip{
 	},
 }
 
-func (c probeClip) source() MediaFormat {
+func (c probeClip) source() media.MediaFormat {
 	f := c.format
 	f.AudioCodec, f.AudioChannels, f.AudioSampleRate = "ac3", 6, 48000
 	f.Container, f.Duration = "matroska,webm", probeClipSeconds
@@ -172,13 +174,13 @@ type ClassProbeConfig struct {
 	Outputs []Profile
 	// Classes limits the run (nil = every transcode class). A restart that reuses a stored table
 	// re-runs only the HDR class: the tone-map self-check runs at every start.
-	Classes []StreamClass
+	Classes []media.StreamClass
 	Manager *diagnostics.ProcessManager
 	// Foreground makes the probe yield to live playout (the ResourceBudget); nil never yields.
 	Foreground Foreground
 	// Curve is the tone curve the live chain maps HDR with; the HDR cells are keyed by it. Empty =
 	// Hable.
-	Curve ToneCurve
+	Curve media.ToneCurve
 	// now times the progress samples; nil is time.Now (a test seam: a fixture's speed must not
 	// depend on how loaded the machine running the test is).
 	now func() time.Time
@@ -191,9 +193,9 @@ func (cfg ClassProbeConfig) clock() func() time.Time {
 	return cfg.now
 }
 
-func (cfg ClassProbeConfig) curve() ToneCurve {
+func (cfg ClassProbeConfig) curve() media.ToneCurve {
 	if cfg.Curve == "" {
-		return DefaultToneCurve
+		return media.DefaultToneCurve
 	}
 	return cfg.Curve
 }
@@ -215,7 +217,7 @@ type TonemapCheck struct {
 
 // ClassProbeResult is what one run measured. A class missing from Costs was not measurable here.
 type ClassProbeResult struct {
-	Costs   map[CostKey]ClassCost
+	Costs   map[admission.CostKey]admission.ClassCost
 	Tonemap TonemapCheck
 	// Failures names each (class, height) that could not be measured, with ffmpeg's reason.
 	Failures []string
@@ -224,7 +226,7 @@ type ClassProbeResult struct {
 // ProbeClassCosts generates any missing clip and measures each class at each rung, alone and in
 // sequence. It is bounded: probeWindow per measurement plus clip generation on first boot.
 func ProbeClassCosts(ctx context.Context, cfg ClassProbeConfig) ClassProbeResult {
-	res := ClassProbeResult{Costs: map[CostKey]ClassCost{}}
+	res := ClassProbeResult{Costs: map[admission.CostKey]admission.ClassCost{}}
 	for _, clip := range probeClips {
 		if !wantClass(cfg.Classes, clip.class) {
 			continue
@@ -258,24 +260,24 @@ func ProbeClassCosts(ctx context.Context, cfg ClassProbeConfig) ClassProbeResult
 				res.Tonemap.Ran, res.Tonemap.OK, res.Tonemap.Stage = true, err == nil, stage
 				if err != nil {
 					res.Tonemap.Detail = err.Error()
-				} else if cost.Speed < minStreamSpeed {
-					res.Tonemap.Detail = fmt.Sprintf("tone-mapping works but runs at %.2fx, below the %.1fx a live channel needs", cost.Speed, minStreamSpeed)
+				} else if cost.Speed < admission.MinStreamSpeed {
+					res.Tonemap.Detail = fmt.Sprintf("tone-mapping works but runs at %.2fx, below the %.1fx a live channel needs", cost.Speed, admission.MinStreamSpeed)
 				}
 			}
 			if err != nil {
 				res.Failures = append(res.Failures, fmt.Sprintf("%s at %dp: %v", clip.class, out.Height, err))
 				continue
 			}
-			res.Costs[HDRKey(clip.class, out.Height, cfg.curve())] = cost
+			res.Costs[admission.HDRKey(clip.class, out.Height, cfg.curve())] = cost
 		}
 	}
-	if wantClass(cfg.Classes, ClassPremium4K) && ctx.Err() == nil {
+	if wantClass(cfg.Classes, media.ClassPremium4K) && ctx.Err() == nil {
 		cost, ok, err := measurePremium(ctx, cfg)
 		switch {
 		case err != nil:
-			res.Failures = append(res.Failures, fmt.Sprintf("%s at %dp: %v", ClassPremium4K, premiumHeight, err))
+			res.Failures = append(res.Failures, fmt.Sprintf("%s at %dp: %v", media.ClassPremium4K, premiumHeight, err))
 		case ok:
-			res.Costs[CostKey{Class: ClassPremium4K, Height: premiumHeight}] = cost
+			res.Costs[admission.CostKey{Class: media.ClassPremium4K, Height: premiumHeight}] = cost
 		}
 	}
 	return res
@@ -286,9 +288,9 @@ func ProbeClassCosts(ctx context.Context, cfg ClassProbeConfig) ClassProbeResult
 // carries, and keeps the costlier figures. A premium lease is held for its channel's whole lineup, so
 // it is priced for the heaviest item: a PQ programme or an SDR one converted to HDR10. ok is false
 // when this host airs no premium (software, or no GPU graph).
-func measurePremium(ctx context.Context, cfg ClassProbeConfig) (ClassCost, bool, error) {
+func measurePremium(ctx context.Context, cfg ClassProbeConfig) (admission.ClassCost, bool, error) {
 	if len(cfg.Outputs) == 0 {
-		return ClassCost{}, false, nil
+		return admission.ClassCost{}, false, nil
 	}
 	host := encode.HostFor(cfg.Encoder, cfg.CPUTonemap, cfg.GPU)
 	var class FormatClass
@@ -299,10 +301,10 @@ func measurePremium(ctx context.Context, cfg ClassProbeConfig) (ClassCost, bool,
 		}
 	}
 	if class == "" {
-		return ClassCost{}, false, nil
+		return admission.ClassCost{}, false, nil
 	}
 	out, _ := FormatOutput(class, cfg.Outputs[0])
-	var worst ClassCost
+	var worst admission.ClassCost
 	for _, clip := range premiumProbeClips(cfg) {
 		src := clip.source()
 		if src.HDR() && !out.HDR {
@@ -310,17 +312,17 @@ func measurePremium(ctx context.Context, cfg ClassProbeConfig) (ClassCost, bool,
 		}
 		path, err := ensureProbeClip(ctx, cfg, clip)
 		if err != nil {
-			return ClassCost{}, false, err
+			return admission.ClassCost{}, false, err
 		}
 		pipe, err := BuildItem(host, src, out, nil)
 		if err != nil {
-			return ClassCost{}, false, fmt.Errorf("%s item: %w", clip.class, err)
+			return admission.ClassCost{}, false, fmt.Errorf("%s item: %w", clip.class, err)
 		}
-		cost, err := yielding(ctx, cfg.Foreground, func(ctx context.Context) (ClassCost, error) {
-			return measureCost(ctx, cfg, ClassPremium4K, path, pipe, out.Height)
+		cost, err := yielding(ctx, cfg.Foreground, func(ctx context.Context) (admission.ClassCost, error) {
+			return measureCost(ctx, cfg, media.ClassPremium4K, path, pipe, out.Height)
 		})
 		if err != nil {
-			return ClassCost{}, false, fmt.Errorf("%s item: %w", clip.class, err)
+			return admission.ClassCost{}, false, fmt.Errorf("%s item: %w", clip.class, err)
 		}
 		if worst.Speed == 0 || cost.Speed < worst.Speed {
 			worst.Speed = cost.Speed
@@ -354,7 +356,7 @@ func premiumProbeClips(cfg ClassProbeConfig) []probeClip {
 
 func measureClassEnvelope(
 	ctx context.Context, cfg ClassProbeConfig, clip probeClip, path string, out Profile, gpu *encode.GPUFilters,
-) (ClassCost, Pipeline, error) {
+) (admission.ClassCost, Pipeline, error) {
 	cost, pipe, err := measureWithDemotion(ctx, cfg, clip, path, out, gpu)
 	if err != nil {
 		return cost, pipe, err
@@ -362,7 +364,7 @@ func measureClassEnvelope(
 	if fallback, ok := fallbackProbeClip(cfg, clip); ok {
 		fallbackCost, _, err := measureWithDemotion(ctx, cfg, fallback, path, out, gpu)
 		if err != nil {
-			return ClassCost{}, pipe, fmt.Errorf("interlaced fallback: %w", err)
+			return admission.ClassCost{}, pipe, fmt.Errorf("interlaced fallback: %w", err)
 		}
 		cost.Speed = min(cost.Speed, fallbackCost.Speed)
 		cost.CPUCores = max(cost.CPUCores, fallbackCost.CPUCores)
@@ -371,7 +373,7 @@ func measureClassEnvelope(
 	return cost, pipe, nil
 }
 
-func wantClass(classes []StreamClass, c StreamClass) bool {
+func wantClass(classes []media.StreamClass, c media.StreamClass) bool {
 	if classes == nil {
 		return true
 	}
@@ -387,7 +389,7 @@ func wantClass(classes []StreamClass, c StreamClass) bool {
 // (GPUFilters.demote) so the self-check reports what a real HDR programme would get.
 func measureWithDemotion(
 	ctx context.Context, cfg ClassProbeConfig, clip probeClip, path string, out Profile, gpu *encode.GPUFilters,
-) (ClassCost, Pipeline, error) {
+) (admission.ClassCost, Pipeline, error) {
 	src := clip.source()
 	for {
 		host := encode.HostFor(cfg.Encoder, cfg.CPUTonemap, *gpu)
@@ -396,11 +398,11 @@ func measureWithDemotion(
 		output.ToneCurve = cfg.curve()
 		pipe, err := Build(host, src, output)
 		if err != nil {
-			return ClassCost{}, pipe, err
+			return admission.ClassCost{}, pipe, err
 		}
 		// Yielding sits inside the demotion walk: an interrupted measurement is rerun, never taken
 		// for a tone-mapper that failed.
-		cost, err := yielding(ctx, cfg.Foreground, func(ctx context.Context) (ClassCost, error) {
+		cost, err := yielding(ctx, cfg.Foreground, func(ctx context.Context) (admission.ClassCost, error) {
 			return measureCost(ctx, cfg, clip.class, path, pipe, out.Height)
 		})
 		if err == nil || ctx.Err() != nil || !src.HDR() || !demoteTonemapper(gpu, pipe.Tonemapper) {
@@ -549,7 +551,7 @@ type probeSample struct {
 // measureCost encodes the looping clip through pipe for probeWindow. Speed and CPU are steady-state:
 // taken between the first and last progress samples, so device and decoder start-up (a CUDA context
 // alone costs a few hundred ms of CPU) do not inflate a fast class's per-stream cost.
-func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, path string, pipe Pipeline, height int) (ClassCost, error) {
+func measureCost(ctx context.Context, cfg ClassProbeConfig, class media.StreamClass, path string, pipe Pipeline, height int) (admission.ClassCost, error) {
 	ctx, cancel := context.WithTimeout(ctx, probeWindow)
 	defer cancel()
 	args := []string{"-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-nostats",
@@ -563,7 +565,7 @@ func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, p
 	cmd := exec.CommandContext(ctx, cfg.FFmpeg, args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return ClassCost{}, err
+		return admission.ClassCost{}, err
 	}
 	var stderr strings.Builder
 	cmd.Stderr = &limitedWriter{w: &stderr, n: 16 << 10}
@@ -576,7 +578,7 @@ func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, p
 		if run != nil {
 			run.Finish(diagnostics.ProcessResult{Err: err})
 		}
-		return ClassCost{}, err
+		return admission.ClassCost{}, err
 	}
 	samples := readProbeSamples(stdout, func() time.Duration { return now().Sub(start) }, cmd.Process.Pid)
 	waitErr := cmd.Wait()
@@ -587,7 +589,7 @@ func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, p
 	cost, ok := costFromSamples(samples, cmd.ProcessState)
 	if !ok {
 		if windowEnded {
-			return ClassCost{}, fmt.Errorf("%s: no two samples in the %s window on %s", probeDeadlineReason, probeWindow, cfg.Encoder)
+			return admission.ClassCost{}, fmt.Errorf("%s: no two samples in the %s window on %s", probeDeadlineReason, probeWindow, cfg.Encoder)
 		}
 		msg := firstLine(strings.TrimSpace(stderr.String()))
 		if msg == "" && waitErr != nil {
@@ -596,7 +598,7 @@ func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, p
 		if msg == "" {
 			msg = "produced no media"
 		}
-		return ClassCost{}, errors.New(msg)
+		return admission.ClassCost{}, errors.New(msg)
 	}
 	return cost, nil
 }
@@ -621,7 +623,7 @@ func readProbeSamples(r io.Reader, elapsed func() time.Duration, pid int) []prob
 				continue
 			}
 			s := probeSample{wall: elapsed(), out: out}
-			s.cpu, s.hasC = processCPUTime(pid)
+			s.cpu, s.hasC = admission.ProcessCPUTime(pid)
 			samples = append(samples, s)
 		}
 	}
@@ -630,17 +632,17 @@ func readProbeSamples(r io.Reader, elapsed func() time.Duration, pid int) []prob
 
 // costFromSamples derives speed and CPU per stream at 1x. Without a per-sample CPU clock it falls
 // back to the whole process's CPU over all media, which overstates: the safe direction.
-func costFromSamples(samples []probeSample, state *os.ProcessState) (ClassCost, bool) {
+func costFromSamples(samples []probeSample, state *os.ProcessState) (admission.ClassCost, bool) {
 	if len(samples) < 2 {
-		return ClassCost{}, false
+		return admission.ClassCost{}, false
 	}
 	first, last := samples[0], samples[len(samples)-1]
 	media := last.out - first.out
 	wall := last.wall - first.wall
 	if media <= 0 || wall <= 0 {
-		return ClassCost{}, false
+		return admission.ClassCost{}, false
 	}
-	c := ClassCost{Speed: round2(media.Seconds() / wall.Seconds())}
+	c := admission.ClassCost{Speed: round2(media.Seconds() / wall.Seconds())}
 	switch {
 	case first.hasC && last.hasC && last.cpu >= first.cpu:
 		c.CPUCores = (last.cpu - first.cpu).Seconds() / media.Seconds()
@@ -747,7 +749,7 @@ func rampSessions(ctx context.Context, ffmpeg string, enc encode.Encoder, bound 
 		return 0, nil
 	}
 	tiny := Profile{Width: 320, Height: 180, Framerate: 25, AudioBitrate: 64, Encoder: enc}
-	pipe, err := Build(encode.HostFor(enc, false, encode.GPUFilters{}), MediaFormat{}, ChannelOutput(tiny))
+	pipe, err := Build(encode.HostFor(enc, false, encode.GPUFilters{}), media.MediaFormat{}, ChannelOutput(tiny))
 	if err != nil {
 		return 0, err
 	}

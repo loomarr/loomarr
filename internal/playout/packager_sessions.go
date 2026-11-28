@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 )
 
 // DVRHorizon is the one server-side time-shift contract shared by the packager's playlist window,
@@ -93,9 +94,9 @@ func (m *PackagerHLS) Capacity() int {
 
 // Budget snapshots the admission ledger for the status endpoint (#1520): capacity terms, per-class
 // costs and what the running packagers hold.
-func (m *PackagerHLS) Budget() BudgetSnapshot {
+func (m *PackagerHLS) Budget() admission.BudgetSnapshot {
 	if m.budget == nil {
-		return BudgetSnapshot{}
+		return admission.BudgetSnapshot{}
 	}
 	return m.budget.Snapshot()
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // rotatingSource airs short items rotating through generated sources, so a channel crosses an item
@@ -22,7 +23,7 @@ type rotatingSource struct {
 	epoch   time.Time
 	itemLen time.Duration
 	paths   []string
-	formats []MediaFormat
+	formats []media.MediaFormat
 	out     OutputProfile
 }
 
@@ -57,7 +58,7 @@ func TestPackagerOriginServesHLSAndTSAcrossItemBoundaries(t *testing.T) {
 			"-t", "5", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
 			"-metadata:s:a", "title=Surround Mix", p) // library sources title their streams
 		src.paths = append(src.paths, p)
-		src.formats = append(src.formats, MediaFormat{VideoCodec: "h264", Width: s.w, Height: s.h, FrameRate: float64(s.fps),
+		src.formats = append(src.formats, media.MediaFormat{VideoCodec: "h264", Width: s.w, Height: s.h, FrameRate: float64(s.fps),
 			PixelFormat: "yuv420p", AudioCodec: "aac", AudioChannels: 1, AudioSampleRate: 44100, Container: "matroska,webm"})
 	}
 	m, err := NewPackagerHLS(src, "ffmpeg", filepath.Join(dir, "hls"), time.Second, nil)

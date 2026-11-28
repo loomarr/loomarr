@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
@@ -118,7 +120,7 @@ func TestNewScratchRootSweepsOnlyUnownedRoots(t *testing.T) {
 func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 	host := encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
 	out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 23, TargetKbps: 3000, MaxKbps: 4500, GOPSeconds: 1, AudioKbps: 128}
-	format := MediaFormat{VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
+	format := media.MediaFormat{VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
 	slot := packager.Slot{Frames: 250, AudioFrames: 469}
 	for gain, want := range map[float64]string{-2.5: "volume=-2.5dB", 0: ""} {
@@ -224,7 +226,7 @@ type recordingSource struct {
 }
 
 func (s *recordingSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
-	item := progItem(MediaFormat{})
+	item := progItem(media.MediaFormat{})
 	item.RecordAiringServed = func(context.Context) { s.recorded.Add(1) }
 	return item, nil
 }
@@ -268,7 +270,7 @@ func (s fixedItemSource) ItemAt(context.Context, string, time.Time) (PackagerIte
 }
 
 // progItem is an hour of a library title with no watermark.
-func progItem(format MediaFormat) PackagerItem {
+func progItem(format media.MediaFormat) PackagerItem {
 	return PackagerItem{Label: "prog", Remaining: time.Hour, Input: "title.mkv", Format: format}
 }
 
@@ -482,7 +484,7 @@ func TestOriginFailsTheStartOfAChannelWhoseSourceIsUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
-	m.source = fixedItemSource{item: PackagerItem{Label: "movie", Remaining: time.Hour, Input: src, Format: MediaFormat{
+	m.source = fixedItemSource{item: PackagerItem{Label: "movie", Remaining: time.Hour, Input: src, Format: media.MediaFormat{
 		VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}}
 	m.startDeadline = 300 * time.Millisecond
@@ -503,7 +505,7 @@ func TestOriginFailsTheStartOfAChannelWhoseSourceIsUnreadable(t *testing.T) {
 type slowItemSource struct{ stuckSlateSource }
 
 func (slowItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
-	return PackagerItem{Label: "prog", Remaining: time.Hour, Input: "movie.mkv", Format: MediaFormat{
+	return PackagerItem{Label: "prog", Remaining: time.Hour, Input: "movie.mkv", Format: media.MediaFormat{
 		VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}, nil
 }
@@ -580,7 +582,7 @@ func TestStartBoundsTheFirstItemLookup(t *testing.T) {
 type hdrItemSource struct{}
 
 func (hdrItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
-	return PackagerItem{Label: "hdr", Remaining: time.Hour, Input: "hdr.mkv", Format: MediaFormat{
+	return PackagerItem{Label: "hdr", Remaining: time.Hour, Input: "hdr.mkv", Format: media.MediaFormat{
 		VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24, PixelFormat: "yuv420p10le",
 		ColorTransfer: "smpte2084", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}, nil
 }
@@ -602,7 +604,7 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	budget := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(3.5) })
+	budget := admission.NewResourceBudget(func() admission.BudgetFacts { return softwareHDRFacts(3.5) })
 	m, err := NewPackagerHLS(hdrItemSource{}, ffmpeg, t.TempDir(), time.Hour, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -629,7 +631,7 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 		t.Fatalf("ledger = %+v, want one HDR transcode at rung 1", use)
 	}
 	// A second channel: even SDR keyframes-only (0.297) does not fit beside 3.42 on 3.5.
-	if _, err := m.acquirePlaylist("ch2", false, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("ch2", false, ""); !errors.Is(err, admission.ErrAtCapacity) {
 		t.Fatalf("second channel: err = %v, want ErrAtCapacity", err)
 	}
 	m.StopChannel("ch1")
@@ -663,8 +665,8 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 		t.Fatal(err)
 	}
 	allowance := 0.8
-	budget := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(allowance) })
-	held, err := budget.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K})
+	budget := admission.NewResourceBudget(func() admission.BudgetFacts { return softwareHDRFacts(allowance) })
+	held, err := budget.Admit(context.Background(), admission.AdmitRequest{Class: media.ClassHDR4K})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -676,7 +678,7 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	if _, err := m.acquirePlaylist("ch", false, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("ch", false, ""); !errors.Is(err, admission.ErrAtCapacity) {
 		t.Fatalf("4K HDR first item on a nearly full host: err = %v, want ErrAtCapacity", err)
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -725,13 +727,13 @@ func TestPackagerItemEncoderTeachesTheLedgerItsCPUCost(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
-	budget := NewResourceBudget(nvencFacts)
-	lease, err := budget.Admit(t.Context(), AdmitRequest{Class: ClassSDR})
+	budget := admission.NewResourceBudget(nvencFacts)
+	lease, err := budget.Admit(t.Context(), admission.AdmitRequest{Class: media.ClassSDR})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lease.Release()
-	cost := func() float64 { return budget.Snapshot().Classes[ClassSDR].CPUCores }
+	cost := func() float64 { return budget.Snapshot().Classes[media.ClassSDR].CPUCores }
 	base := cost()
 	_, out := slowItemSource{}.Output(t.Context(), "ch", FormatBaseline, 0)
 	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline},
@@ -837,14 +839,14 @@ func (s *premiumSource) Output(_ context.Context, _ string, class FormatClass, _
 
 // premiumFacts is a measured NVENC host: SDR 1080p at 6x, 4K HDR tone-map at 2.4x, and the premium
 // class at 2.4x (a 0.5 GPU share); premium is left unmeasured when measured is false.
-func premiumFacts(measured bool) BudgetFacts {
-	f := BudgetFacts{Hardware: true, SessionLimit: 12, CPUAllowance: 8, Rungs: []int{1080}, Costs: map[CostKey]ClassCost{
-		{Class: ClassSDR, Height: 1080}:                {Speed: 6, CPUCores: 0.2},
-		HDRKey(ClassHDR4K, 1080, DefaultToneCurve):     {Speed: 2.4, CPUCores: 0.4},
-		{Class: ClassPremium4K, Height: premiumHeight}: {Speed: 2.4, CPUCores: 0.5},
+func premiumFacts(measured bool) admission.BudgetFacts {
+	f := admission.BudgetFacts{Hardware: true, SessionLimit: 12, CPUAllowance: 8, Rungs: []int{1080}, Costs: map[admission.CostKey]admission.ClassCost{
+		{Class: media.ClassSDR, Height: 1080}:                            {Speed: 6, CPUCores: 0.2},
+		admission.HDRKey(media.ClassHDR4K, 1080, media.DefaultToneCurve): {Speed: 2.4, CPUCores: 0.4},
+		{Class: media.ClassPremium4K, Height: premiumHeight}:             {Speed: 2.4, CPUCores: 0.5},
 	}}
 	if !measured {
-		delete(f.Costs, CostKey{Class: ClassPremium4K, Height: premiumHeight})
+		delete(f.Costs, admission.CostKey{Class: media.ClassPremium4K, Height: premiumHeight})
 	}
 	return f
 }
@@ -867,7 +869,7 @@ func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	budget := NewResourceBudget(func() BudgetFacts { return premiumFacts(true) })
+	budget := admission.NewResourceBudget(func() admission.BudgetFacts { return premiumFacts(true) })
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
@@ -951,7 +953,7 @@ func TestPackagerHLSPremiumPlaylistStartsThePremiumPackager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	budget := NewResourceBudget(func() BudgetFacts { return premiumFacts(true) })
+	budget := admission.NewResourceBudget(func() admission.BudgetFacts { return premiumFacts(true) })
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
@@ -998,9 +1000,9 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 			if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\ntouch "+ran+"\nexec sleep 5\n"), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			budget := NewResourceBudget(func() BudgetFacts { return premiumFacts(tc.measured) })
+			budget := admission.NewResourceBudget(func() admission.BudgetFacts { return premiumFacts(tc.measured) })
 			for range tc.held {
-				if _, err := budget.Admit(t.Context(), AdmitRequest{Class: ClassSDR}); err != nil {
+				if _, err := budget.Admit(t.Context(), admission.AdmitRequest{Class: media.ClassSDR}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -1011,7 +1013,7 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 			m.WithBudget(budget)
 			t.Cleanup(m.Stop)
 
-			if _, _, err := m.MediaPlaylist(t.Context(), "ch", "4k-hevc-hdr.m3u8", false); !errors.Is(err, ErrAtCapacity) {
+			if _, _, err := m.MediaPlaylist(t.Context(), "ch", "4k-hevc-hdr.m3u8", false); !errors.Is(err, admission.ErrAtCapacity) {
 				t.Fatalf("premium play err = %v, want ErrAtCapacity", err)
 			}
 			time.Sleep(200 * time.Millisecond)
@@ -1150,10 +1152,10 @@ func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
-	m.ladderCfg = RungMonitorConfig{Settle: 100 * time.Millisecond, Window: 300 * time.Millisecond, DownFor: 400 * time.Millisecond}
-	budget := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(8) })
-	lease, err := budget.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K})
-	if err != nil || lease.SoftwareRung() != RungFull {
+	m.ladderCfg = admission.RungMonitorConfig{Settle: 100 * time.Millisecond, Window: 300 * time.Millisecond, DownFor: 400 * time.Millisecond}
+	budget := admission.NewResourceBudget(func() admission.BudgetFacts { return softwareHDRFacts(8) })
+	lease, err := budget.Admit(context.Background(), admission.AdmitRequest{Class: media.ClassHDR4K})
+	if err != nil || lease.SoftwareRung() != admission.RungFull {
 		t.Fatalf("admission: %v, rung %s; want full on 8 cores", err, lease.SoftwareRung())
 	}
 	host, out := hdrItemSource{}.Output(context.Background(), "ch", "", 0)
@@ -1180,7 +1182,7 @@ func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
 		t.Fatal("a 0.5x encoder was never stepped down")
 	}
 	_ = rc.Close()
-	if lease.SoftwareRung() != RungLight || budget.Snapshot().InUse.CPUCores > 3.6*heavyRungCosts[RungLight]+1e-9 {
+	if lease.SoftwareRung() != admission.RungLight || budget.Snapshot().InUse.CPUCores > 3.6*admission.HeavyRungCosts[admission.RungLight]+1e-9 {
 		t.Fatalf("lease after the step: rung %s, %.3f cores; want rung 1 re-priced", lease.SoftwareRung(), budget.Snapshot().InUse.CPUCores)
 	}
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 )
 
 type fixedPlayoutCapability struct{ capability playout.Capacity }
@@ -16,7 +17,7 @@ type idlePlayoutObserver struct{ fixedPlayoutCapability }
 
 func (idlePlayoutObserver) Stats(time.Time) []playout.SessionStat { return nil }
 func (idlePlayoutObserver) Capacity() int                         { return 0 }
-func (idlePlayoutObserver) Budget() playout.BudgetSnapshot        { return playout.BudgetSnapshot{} }
+func (idlePlayoutObserver) Budget() admission.BudgetSnapshot      { return admission.BudgetSnapshot{} }
 
 // An idle host has no session row to infer its encoder from. Its retained, measured capability is
 // still operational truth: VAAPI/QSV is hardware even when NVIDIA-only VRAM telemetry is unknown.

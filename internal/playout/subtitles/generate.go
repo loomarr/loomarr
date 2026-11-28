@@ -79,7 +79,7 @@ type SilenceDetector interface {
 	Silence(ctx context.Context, file string, start, end time.Duration) ([]Span, error)
 }
 
-// Budget admits local transcription as filler media work (playout.ResourceBudget): the context
+// Budget admits local transcription as filler media work (admission.ResourceBudget): the context
 // is born ended when playout has no headroom, and ends when a live admission leaves none.
 type Budget interface {
 	MediaWorkContext(ctx context.Context, overdue bool) (context.Context, context.CancelFunc)

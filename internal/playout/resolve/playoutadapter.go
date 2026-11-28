@@ -35,6 +35,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
@@ -146,7 +147,7 @@ type Resolver struct {
 
 	// probeFormat probes a source's codec/format for the direct-play copy decision (probe.go).
 	// Nil ⇒ treat as transcode-required (safe: correctness over speed when we cannot probe).
-	probeFormat playout.FormatProber
+	probeFormat media.FormatProber
 
 	// ffmpegPath is the binary the capability probe executes.
 	ffmpegPath func() string
@@ -304,7 +305,7 @@ type Config struct {
 	// ProbeSource, ProbeTracks and ProbeFormat are the ffprobe-backed source, track and format probes.
 	ProbeSource playout.SourceProber
 	ProbeTracks playout.TrackProber
-	ProbeFormat playout.FormatProber
+	ProbeFormat media.FormatProber
 	// ProcessDiagnostics tracks the processes the resolver starts.
 	ProcessDiagnostics *diagnostics.ProcessManager
 	// Log is the structured logger; nil logs nothing.

@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
 	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 )
 
@@ -66,7 +67,7 @@ func (f *fakePlayoutSessions) Capacity() int {
 	return f.capacity
 }
 
-func (f *fakePlayoutSessions) Budget() playout.BudgetSnapshot { return playout.BudgetSnapshot{} }
+func (f *fakePlayoutSessions) Budget() admission.BudgetSnapshot { return admission.BudgetSnapshot{} }
 
 func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string) (<-chan []byte, func(), error) {
 	f.mu.Lock()
@@ -693,7 +694,7 @@ func TestPlayoutStream_SessionEndEndsTheResponse(t *testing.T) {
 // that raising a configured cap creates hardware headroom.
 func TestPlayoutStream_AtCapacityIsActionable(t *testing.T) {
 	harness := newPlayoutHarness(t, playoutHarnessConfig{
-		Sessions: &fakePlayoutSessions{err: playout.ErrAtCapacity},
+		Sessions: &fakePlayoutSessions{err: admission.ErrAtCapacity},
 	})
 	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // testBug is the approved default look at 1080p: 6% of the frame height (65 px, rounded to even),
@@ -30,22 +31,22 @@ func TestWatermarkPlacement_AnchorsToTheActivePicture(t *testing.T) {
 	out := testOutput
 	cases := []struct {
 		name   string
-		src    MediaFormat
+		src    media.MediaFormat
 		corner Corner
 		x, y   int
 	}{
 		// Full-frame 16:9: the frame corner, minus the margin.
-		{"16:9 top-right", MediaFormat{Width: 1920, Height: 1080}, CornerTopRight, 1920 - 96 - 144, 54},
-		{"16:9 bottom-left", MediaFormat{Width: 1920, Height: 1080}, CornerBottomLeft, 96, 1080 - 54 - 64},
+		{"16:9 top-right", media.MediaFormat{Width: 1920, Height: 1080}, CornerTopRight, 1920 - 96 - 144, 54},
+		{"16:9 bottom-left", media.MediaFormat{Width: 1920, Height: 1080}, CornerBottomLeft, 96, 1080 - 54 - 64},
 		// 4:3 source, pillarboxed by the pad: the picture is 1440 wide at x=240.
-		{"4:3 pillarbox", MediaFormat{Width: 1440, Height: 1080}, CornerTopRight, 240 + 1440 - 96 - 144, 54},
+		{"4:3 pillarbox", media.MediaFormat{Width: 1440, Height: 1080}, CornerTopRight, 240 + 1440 - 96 - 144, 54},
 		// 2.39:1 letterbox baked into a 4K frame: 3840x1608 active at y=276, i.e. 804 lines at y=138.
-		{"baked letterbox", MediaFormat{Width: 3840, Height: 2160, Active: Rect{X: 0, Y: 276, W: 3840, H: 1608}},
+		{"baked letterbox", media.MediaFormat{Width: 3840, Height: 2160, Active: media.Rect{X: 0, Y: 276, W: 3840, H: 1608}},
 			CornerTopRight, 1920 - 96 - 144, 138 + 54},
-		{"baked letterbox bottom", MediaFormat{Width: 3840, Height: 2160, Active: Rect{X: 0, Y: 276, W: 3840, H: 1608}},
+		{"baked letterbox bottom", media.MediaFormat{Width: 3840, Height: 2160, Active: media.Rect{X: 0, Y: 276, W: 3840, H: 1608}},
 			CornerBottomRight, 1920 - 96 - 144, 138 + 804 - 54 - 64},
 		// Unknown geometry: the frame.
-		{"unknown geometry", MediaFormat{}, CornerTopLeft, 96, 54},
+		{"unknown geometry", media.MediaFormat{}, CornerTopLeft, 96, 54},
 	}
 	for _, c := range cases {
 		wm := testBug()
@@ -65,7 +66,7 @@ func TestWatermarkPlacement_StaysInsideTheFrame(t *testing.T) {
 	wm := testBug()
 	for _, corner := range []Corner{CornerTopLeft, CornerTopRight, CornerBottomLeft, CornerBottomRight} {
 		wm.Corner = corner
-		x, y := wm.position(MediaFormat{Width: 1920, Height: 1080, Active: Rect{X: 900, Y: 500, W: 100, H: 60}}, testOutput)
+		x, y := wm.position(media.MediaFormat{Width: 1920, Height: 1080, Active: media.Rect{X: 900, Y: 500, W: 100, H: 60}}, testOutput)
 		if x < 0 || y < 0 || x+wm.Width > testOutput.Width || y+wm.Height > testOutput.Height {
 			t.Errorf("%s: bug at (%d,%d) leaves the frame", corner, x, y)
 		}

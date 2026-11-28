@@ -9,13 +9,14 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // slowEncodeSource airs one never-ending movie on a fixed host.
 type slowEncodeSource struct{ host encode.HostProfile }
 
 func (slowEncodeSource) ItemAt(context.Context, string, time.Time) (playout.PackagerItem, error) {
-	return playout.PackagerItem{Label: "prog", Remaining: time.Hour, Input: "movie.mkv", Format: playout.MediaFormat{
+	return playout.PackagerItem{Label: "prog", Remaining: time.Hour, Input: "movie.mkv", Format: media.MediaFormat{
 		VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm",
 	}}, nil

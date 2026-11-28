@@ -135,7 +135,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/store/operationstore` | `platform/store/storedb` |
 | `platform/store/proposalstore` | `platform/store/channelstore`, `platform/store/storedb`, `proposals` |
 | `platform/store/storedb` | — |
-| `playout` | `media/encode`, `platform/diagnostics`, `platform/langcode`, `playout/timeline` |
+| `playout` | `media/encode`, `platform/diagnostics`, `platform/langcode`, `playout/admission`, `playout/media`, `playout/timeline` |
+| `playout/admission` | `playout/media` |
+| `playout/media` | — |
 | `playout/timeline` | `channels/schedule`, `library/provision` |
 | `playout/tunarr` | `channels/schedule`, `platform/httpx`, `platform/metrics` |
 | `proposals` | `channels/schedule`, `library/provision`, `platform/storagegovernor` |

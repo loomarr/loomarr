@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // nvencFacts is the dev GeForce shape from phase 0: 0.034 cores and ~19x per 1080p SDR stream, a
@@ -14,15 +16,15 @@ func nvencFacts() BudgetFacts {
 		Hardware: true, SessionLimit: 12, CPUAllowance: 1,
 		Rungs: []int{1080, 1080, 720, 720},
 		Costs: map[CostKey]ClassCost{
-			{Class: ClassSDR, Height: 1080}:   {Speed: 19, CPUCores: 0.034},
-			{Class: ClassSDR, Height: 720}:    {Speed: 30, CPUCores: 0.025},
-			{Class: ClassHDR4K, Height: 1080}: {Speed: 2.4, CPUCores: 0.12},
-			{Class: ClassHDR4K, Height: 720}:  {Speed: 3.6, CPUCores: 0.1},
+			{Class: media.ClassSDR, Height: 1080}:   {Speed: 19, CPUCores: 0.034},
+			{Class: media.ClassSDR, Height: 720}:    {Speed: 30, CPUCores: 0.025},
+			{Class: media.ClassHDR4K, Height: 1080}: {Speed: 2.4, CPUCores: 0.12},
+			{Class: media.ClassHDR4K, Height: 720}:  {Speed: 3.6, CPUCores: 0.1},
 		},
 	}
 }
 
-func admitN(t *testing.T, b *ResourceBudget, class StreamClass, n int) []*Lease {
+func admitN(t *testing.T, b *ResourceBudget, class media.StreamClass, n int) []*Lease {
 	t.Helper()
 	var out []*Lease
 	for i := 0; i < n; i++ {
@@ -39,27 +41,27 @@ func TestResourceBudget_CapacityIsTheMinimumOfThreeLimits(t *testing.T) {
 	cases := []struct {
 		name  string
 		facts func() BudgetFacts
-		class StreamClass
+		class media.StreamClass
 		want  int
 	}{
 		// 19x / 1.2 = 15.8 GPU streams, 1 / 0.034 = 29 CPU streams, 12 sessions: the session cap binds.
-		{"nvenc session cap binds", nvencFacts, ClassSDR, 12},
+		{"nvenc session cap binds", nvencFacts, media.ClassSDR, 12},
 		// 1 / 0.0875 = 11.4 CPU streams (phase 0 Arc, before the fMP4-forward packager).
 		{"cpu allowance binds", func() BudgetFacts {
 			f := nvencFacts()
 			f.SessionLimit = 0
-			f.Costs[CostKey{Class: ClassSDR, Height: 1080}] = ClassCost{Speed: 19, CPUCores: 0.0875}
+			f.Costs[CostKey{Class: media.ClassSDR, Height: 1080}] = ClassCost{Speed: 19, CPUCores: 0.0875}
 			return f
-		}, ClassSDR, 11},
+		}, media.ClassSDR, 11},
 		// 2.4x / 1.2 = 2 GPU streams of 4K HDR.
-		{"gpu throughput binds", nvencFacts, ClassHDR4K, 2},
+		{"gpu throughput binds", nvencFacts, media.ClassHDR4K, 2},
 		// Software: no GPU term; 3 cores / 1.35 = 2 streams at 1080p (maintainer: 2 at 1080p).
 		{"software host", func() BudgetFacts {
 			return BudgetFacts{CPUAllowance: 3, Rungs: []int{1080}, Costs: map[CostKey]ClassCost{
-				{Class: ClassSDR, Height: 1080}: {Speed: 3.1, CPUCores: 1.35},
+				{Class: media.ClassSDR, Height: 1080}: {Speed: 3.1, CPUCores: 1.35},
 			}}
-		}, ClassSDR, 2},
-		{"operator cap lowers", func() BudgetFacts { f := nvencFacts(); f.OperatorCap = 3; return f }, ClassSDR, 3},
+		}, media.ClassSDR, 2},
+		{"operator cap lowers", func() BudgetFacts { f := nvencFacts(); f.OperatorCap = 3; return f }, media.ClassSDR, 3},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,26 +87,26 @@ func TestResourceBudget_DropsARungBeforeRefusing(t *testing.T) {
 	facts.SessionLimit = 0
 	b := NewResourceBudget(func() BudgetFacts { return facts })
 	// Two 4K HDR streams at 1080p use 2 x 1.2/2.4 = the whole GPU.
-	admitN(t, b, ClassHDR4K, 1)
-	l, err := b.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K})
+	admitN(t, b, media.ClassHDR4K, 1)
+	l, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassHDR4K})
 	if err != nil || l.Rung() != 0 {
 		t.Fatalf("second HDR stream: rung %v err %v, want top rung", l, err)
 	}
 	// The third does not fit at 1080p; the 720p rung costs 1.2/3.6 and does not fit either. Free room
 	// for exactly one 720p stream by releasing nothing: the GPU is full, so it is refused.
-	if _, err := b.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K}); !errors.Is(err, ErrAtCapacity) {
+	if _, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassHDR4K}); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("full GPU: err = %v, want ErrAtCapacity", err)
 	}
 
 	// SDR streams: 15 fit at 1080p (19/1.2), then the 720p rung (30/1.2 = 25) takes the remaining share.
 	b = NewResourceBudget(func() BudgetFacts { return facts })
-	top := admitN(t, b, ClassSDR, 15)
+	top := admitN(t, b, media.ClassSDR, 15)
 	for _, l := range top {
 		if l.Rung() != 0 {
 			t.Fatalf("stream under capacity dropped to rung %d", l.Rung())
 		}
 	}
-	dropped, err := b.Admit(context.Background(), AdmitRequest{Class: ClassSDR})
+	dropped, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassSDR})
 	if err != nil {
 		t.Fatalf("16th stream refused instead of dropping a rung: %v", err)
 	}
@@ -122,14 +124,14 @@ func TestResourceBudget_CopyIsFreeAndReleaseReturnsCapacity(t *testing.T) {
 	f := nvencFacts()
 	f.OperatorCap = 1
 	b := NewResourceBudget(func() BudgetFacts { return f })
-	held := admitN(t, b, ClassSDR, 1)
-	admitN(t, b, ClassCopy, 5)
-	if _, err := b.Admit(context.Background(), AdmitRequest{Class: ClassSDR}); !errors.Is(err, ErrAtCapacity) {
+	held := admitN(t, b, media.ClassSDR, 1)
+	admitN(t, b, media.ClassCopy, 5)
+	if _, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassSDR}); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("err = %v, want ErrAtCapacity", err)
 	}
 	held[0].Release()
 	held[0].Release() // idempotent
-	admitN(t, b, ClassSDR, 1)
+	admitN(t, b, media.ClassSDR, 1)
 	if s := b.Snapshot(); s.InUse.Transcodes != 1 || s.InUse.Sessions != 6 {
 		t.Fatalf("in use = %+v, want 1 transcode of 6 sessions", s.InUse)
 	}
@@ -142,29 +144,29 @@ func TestResourceBudget_ReclassFromCopyMustFitButATranscodeNeverStops(t *testing
 	f := nvencFacts()
 	f.OperatorCap = 1
 	b := NewResourceBudget(func() BudgetFacts { return f })
-	a := admitN(t, b, ClassSDR, 1)[0]
-	c := admitN(t, b, ClassCopy, 1)[0]
-	if c.Reclass(context.Background(), ClassSDR) {
+	a := admitN(t, b, media.ClassSDR, 1)[0]
+	c := admitN(t, b, media.ClassCopy, 1)[0]
+	if c.Reclass(context.Background(), media.ClassSDR) {
 		t.Fatal("a copy session became a transcode past the cap")
 	}
 	// A watched transcode crossing into an HDR item keeps playing even though it costs more.
-	if !a.Reclass(context.Background(), ClassHDR4K) {
+	if !a.Reclass(context.Background(), media.ClassHDR4K) {
 		t.Fatal("a live transcode was refused at an item boundary")
 	}
 	a.Release()
-	if !c.Reclass(context.Background(), ClassSDR) {
+	if !c.Reclass(context.Background(), media.ClassSDR) {
 		t.Fatal("copy → transcode refused with the cap free")
 	}
 }
 
 func TestResourceBudget_LegacyUnitsWithoutMeasurements(t *testing.T) {
 	b := NewResourceBudget(func() BudgetFacts { return BudgetFacts{MeasuredCapacity: 2} })
-	admitN(t, b, ClassSDR, 2)
-	if _, err := b.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K}); !errors.Is(err, ErrAtCapacity) {
+	admitN(t, b, media.ClassSDR, 2)
+	if _, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassHDR4K}); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("err = %v, want ErrAtCapacity", err)
 	}
 	unmeasured := NewResourceBudget(func() BudgetFacts { return BudgetFacts{} })
-	admitN(t, unmeasured, ClassSDR, 50) // unmeasured never blocks playout
+	admitN(t, unmeasured, media.ClassSDR, 50) // unmeasured never blocks playout
 }
 
 func TestResourceBudget_PlaybackHeadroom(t *testing.T) {
@@ -172,7 +174,7 @@ func TestResourceBudget_PlaybackHeadroom(t *testing.T) {
 	if b.PlaybackNeedsHeadroom() {
 		t.Fatal("idle budget reports playback needs headroom")
 	}
-	l := admitN(t, b, ClassSDR, 1)[0]
+	l := admitN(t, b, media.ClassSDR, 1)[0]
 	if !b.PlaybackNeedsHeadroom() {
 		t.Fatal("a live transcode must make background work yield")
 	}
@@ -189,17 +191,17 @@ func TestResourceBudget_PlaybackHeadroom(t *testing.T) {
 // starved for two weeks while one stream was always on).
 func TestResourceBudget_FillerWaitsOnlyNearCapacity(t *testing.T) {
 	b := NewResourceBudget(nvencFacts)
-	sdr := admitN(t, b, ClassSDR, 1)
+	sdr := admitN(t, b, media.ClassSDR, 1)
 	if busy, why := b.PlaybackBusy(); busy {
 		t.Fatalf("one SDR stream holds back filler: %s", why)
 	}
 	sdr[0].Release()
-	hdr := admitN(t, b, ClassHDR4K, 1)
+	hdr := admitN(t, b, media.ClassHDR4K, 1)
 	if busy, _ := b.PlaybackBusy(); !busy {
 		t.Fatal("an HDR 4K stream leaves no room for two more, but filler would start")
 	}
 	hdr[0].Release()
-	eleven := admitN(t, b, ClassSDR, 11)
+	eleven := admitN(t, b, media.ClassSDR, 11)
 	if busy, why := b.PlaybackBusy(); !busy || why == "" {
 		t.Fatal("11 of 12 encoder sessions in use, but filler would start")
 	}
@@ -208,7 +210,7 @@ func TestResourceBudget_FillerWaitsOnlyNearCapacity(t *testing.T) {
 	}
 
 	unmeasured := NewResourceBudget(func() BudgetFacts { return BudgetFacts{} })
-	admitN(t, unmeasured, ClassSDR, 1)
+	admitN(t, unmeasured, media.ClassSDR, 1)
 	if busy, _ := unmeasured.PlaybackBusy(); !busy {
 		t.Fatal("an unmeasured install let filler start beside a live transcode")
 	}
@@ -218,17 +220,17 @@ func TestResourceBudget_FillerWaitsOnlyNearCapacity(t *testing.T) {
 // tight. Overdue work starts even while tight, and still yields to the next admission.
 func TestResourceBudget_MediaWorkYieldsOnlyWhenAnAdmissionLeavesNoRoom(t *testing.T) {
 	b := NewResourceBudget(nvencFacts)
-	admitN(t, b, ClassSDR, 1)
+	admitN(t, b, media.ClassSDR, 1)
 	work, cancel := b.MediaWorkContext(t.Context(), false)
 	defer cancel()
 	if work.Err() != nil {
 		t.Fatal("media work was born ended beside one SDR stream")
 	}
-	admitN(t, b, ClassSDR, 1)
+	admitN(t, b, media.ClassSDR, 1)
 	if work.Err() != nil {
 		t.Fatal("a second SDR viewer cut filler work on a roomy GPU")
 	}
-	if _, err := b.Reserve(AdmitRequest{Class: ClassHDR4K}); err != nil {
+	if _, err := b.Reserve(AdmitRequest{Class: media.ClassHDR4K}); err != nil {
 		t.Fatal(err)
 	}
 	if !errors.Is(context.Cause(work), ErrYielded) {
@@ -245,7 +247,7 @@ func TestResourceBudget_MediaWorkYieldsOnlyWhenAnAdmissionLeavesNoRoom(t *testin
 	if overdue.Err() != nil {
 		t.Fatal("overdue media work did not start while playout is tight")
 	}
-	if _, err := b.Reserve(AdmitRequest{Class: ClassSDR}); err != nil {
+	if _, err := b.Reserve(AdmitRequest{Class: media.ClassSDR}); err != nil {
 		t.Fatal(err)
 	}
 	if !errors.Is(context.Cause(overdue), ErrYielded) {
@@ -255,16 +257,16 @@ func TestResourceBudget_MediaWorkYieldsOnlyWhenAnAdmissionLeavesNoRoom(t *testin
 
 func TestClassOf(t *testing.T) {
 	for _, tc := range []struct {
-		f    MediaFormat
-		want StreamClass
+		f    media.MediaFormat
+		want media.StreamClass
 	}{
-		{MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080, PixelFormat: "yuv420p"}, ClassSDR},
-		{MediaFormat{}, ClassSDR},
-		{MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, PixelFormat: "yuv420p10le"}, ClassHEVC10},
-		{MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084"}, ClassHDR4K},
-		{MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p"}, ClassHDR4K},
+		{media.MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080, PixelFormat: "yuv420p"}, media.ClassSDR},
+		{media.MediaFormat{}, media.ClassSDR},
+		{media.MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, PixelFormat: "yuv420p10le"}, media.ClassHEVC10},
+		{media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084"}, media.ClassHDR4K},
+		{media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p"}, media.ClassHDR4K},
 	} {
-		if got := ClassOf(tc.f); got != tc.want {
+		if got := media.ClassOf(tc.f); got != tc.want {
 			t.Errorf("ClassOf(%+v) = %s, want %s", tc.f, got, tc.want)
 		}
 	}
@@ -276,25 +278,25 @@ func TestClassOf(t *testing.T) {
 func TestResourceBudget_LiveCPURefinesTheSyntheticCostWithinBounds(t *testing.T) {
 	facts := nvencFacts()
 	b := NewResourceBudget(func() BudgetFacts { return facts })
-	lease := admitN(t, b, ClassSDR, 1)[0]
-	cpu := func() float64 { return b.Snapshot().Classes[ClassSDR].CPUCores }
+	lease := admitN(t, b, media.ClassSDR, 1)[0]
+	cpu := func() float64 { return b.Snapshot().Classes[media.ClassSDR].CPUCores }
 
-	lease.ObserveCPU(ClassSDR, 1*time.Second, 5*time.Second) // too short a sample
+	lease.ObserveCPU(media.ClassSDR, 1*time.Second, 5*time.Second) // too short a sample
 	if got := cpu(); got != 0.034 {
 		t.Fatalf("a 5 s sample moved the cost to %v", got)
 	}
-	lease.ObserveCPU(ClassSDR, 6*time.Second, 60*time.Second) // 0.1 cores: clamped to 0.068
+	lease.ObserveCPU(media.ClassSDR, 6*time.Second, 60*time.Second) // 0.1 cores: clamped to 0.068
 	if got := cpu(); got <= 0.034 || got > 0.068 {
 		t.Fatalf("after one heavy sample CPU = %v, want within (0.034, 0.068]", got)
 	}
 	for range 50 {
-		lease.ObserveCPU(ClassSDR, 6*time.Second, 60*time.Second)
+		lease.ObserveCPU(media.ClassSDR, 6*time.Second, 60*time.Second)
 	}
 	if got := cpu(); got > 0.068+1e-9 {
 		t.Fatalf("refined CPU = %v escaped the 2x bound", got)
 	}
 
-	facts.Costs[CostKey{Class: ClassSDR, Height: 1080}] = ClassCost{Speed: 19, CPUCores: 0.05} // re-measured
+	facts.Costs[CostKey{Class: media.ClassSDR, Height: 1080}] = ClassCost{Speed: 19, CPUCores: 0.05} // re-measured
 	if got := cpu(); got != 0.05 {
 		t.Fatalf("a new synthetic measurement kept the old refinement: %v", got)
 	}
@@ -303,21 +305,21 @@ func TestResourceBudget_LiveCPURefinesTheSyntheticCostWithinBounds(t *testing.T)
 // A class covering several graphs must retain enough CPU for the costliest measured item.
 func TestResourceBudget_ConservativeCPUEnvelopeSurvivesCheaperItems(t *testing.T) {
 	facts := nvencFacts()
-	key := CostKey{Class: ClassSDR, Height: 1080}
+	key := CostKey{Class: media.ClassSDR, Height: 1080}
 	base := facts.Costs[key]
 	base.ConservativeCPU = true
 	facts.Costs[key] = base
 	b := NewResourceBudget(func() BudgetFacts { return facts })
-	lease := admitN(t, b, ClassSDR, 1)[0]
+	lease := admitN(t, b, media.ClassSDR, 1)[0]
 	defer lease.Release()
 	for range 50 {
-		lease.ObserveCPU(ClassSDR, time.Second, 60*time.Second)
+		lease.ObserveCPU(media.ClassSDR, time.Second, 60*time.Second)
 	}
-	if got := b.Snapshot().Classes[ClassSDR].CPUCores; got != base.CPUCores {
+	if got := b.Snapshot().Classes[media.ClassSDR].CPUCores; got != base.CPUCores {
 		t.Fatalf("cheaper items underpriced the measured CPU envelope: %v < %v", got, base.CPUCores)
 	}
-	lease.ObserveCPU(ClassSDR, 6*time.Second, 60*time.Second)
-	if got := b.Snapshot().Classes[ClassSDR].CPUCores; got <= base.CPUCores {
+	lease.ObserveCPU(media.ClassSDR, 6*time.Second, 60*time.Second)
+	if got := b.Snapshot().Classes[media.ClassSDR].CPUCores; got <= base.CPUCores {
 		t.Fatalf("conservative envelope prevented upward live correction: %v", got)
 	}
 }
@@ -330,7 +332,7 @@ func TestResourceBudget_BackgroundYieldsTheMomentATranscodeIsReserved(t *testing
 	bg, cancel := b.BackgroundContext(t.Context())
 	defer cancel()
 
-	copyLease, err := b.Reserve(AdmitRequest{Class: ClassCopy})
+	copyLease, err := b.Reserve(AdmitRequest{Class: media.ClassCopy})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +341,7 @@ func TestResourceBudget_BackgroundYieldsTheMomentATranscodeIsReserved(t *testing
 		t.Fatal("a copy interrupted background work; it holds no encoder")
 	}
 
-	live, err := b.Reserve(AdmitRequest{Class: ClassSDR})
+	live, err := b.Reserve(AdmitRequest{Class: media.ClassSDR})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,23 +379,23 @@ func TestBudgetFacts_HDRCostFollowsTheToneCurve(t *testing.T) {
 	facts := BudgetFacts{
 		Hardware: true, CPUAllowance: 1, Rungs: []int{720},
 		Costs: map[CostKey]ClassCost{
-			{Class: ClassSDR, Height: 720}:                    {Speed: 30, CPUCores: 0.02},
-			{Class: ClassHDR4K, Height: 720}:                  {Speed: 6, CPUCores: 0.1}, // stored before curves: Hable
-			{Class: ClassHDR4K, Height: 720, Curve: "bt2390"}: {Speed: 6, CPUCores: 0.33},
+			{Class: media.ClassSDR, Height: 720}:                    {Speed: 30, CPUCores: 0.02},
+			{Class: media.ClassHDR4K, Height: 720}:                  {Speed: 6, CPUCores: 0.1}, // stored before curves: Hable
+			{Class: media.ClassHDR4K, Height: 720, Curve: "bt2390"}: {Speed: 6, CPUCores: 0.33},
 		},
 	}
-	if got := facts.capacity(ClassHDR4K, 720); got != 5 {
+	if got := facts.capacity(media.ClassHDR4K, 720); got != 5 {
 		t.Fatalf("Hable HDR capacity = %d, want 5 (GPU-bound: 6x / 1.2x)", got)
 	}
 	facts.ToneCurve = "bt2390"
-	if got := facts.capacity(ClassHDR4K, 720); got != 3 {
+	if got := facts.capacity(media.ClassHDR4K, 720); got != 3 {
 		t.Fatalf("BT.2390 HDR capacity = %d, want 3 (CPU-bound: 1 core / 0.33)", got)
 	}
-	if got := facts.capacity(ClassSDR, 720); got != 25 {
+	if got := facts.capacity(media.ClassSDR, 720); got != 25 {
 		t.Errorf("the curve changed SDR capacity: %d", got)
 	}
 	facts.ToneCurve = "unmeasured-curve"
-	if got := facts.capacity(ClassHDR4K, 720); got != 5 {
+	if got := facts.capacity(media.ClassHDR4K, 720); got != 5 {
 		t.Errorf("an unmeasured curve's HDR capacity = %d, want Hable's 5 until it is measured", got)
 	}
 }
@@ -402,8 +404,8 @@ func TestBudgetFacts_HDRCostFollowsTheToneCurve(t *testing.T) {
 // quality (phase 0b's 4-CPU box), with an SDR cell beside it.
 func softwareHDRFacts(allowance float64) BudgetFacts {
 	return BudgetFacts{CPUAllowance: allowance, Rungs: []int{720}, Costs: map[CostKey]ClassCost{
-		{Class: ClassSDR, Height: 720}:   {Speed: 3.1, CPUCores: 1.35},
-		{Class: ClassHDR4K, Height: 720}: {Speed: 0.3, CPUCores: 3.6},
+		{Class: media.ClassSDR, Height: 720}:   {Speed: 3.1, CPUCores: 1.35},
+		{Class: media.ClassHDR4K, Height: 720}: {Speed: 0.3, CPUCores: 3.6},
 	}}
 }
 
@@ -419,7 +421,7 @@ func TestResourceBudget_SoftwareHostPicksTheBestRungThatFits(t *testing.T) {
 		{3, RungKeyframes},
 	} {
 		b := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(tc.allowance) })
-		l, err := b.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K})
+		l, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassHDR4K})
 		if err != nil {
 			t.Fatalf("allowance %v: %v", tc.allowance, err)
 		}
@@ -436,7 +438,7 @@ func TestResourceBudget_SoftwareHostPicksTheBestRungThatFits(t *testing.T) {
 // same cell on a GPU host is still refused, where speed is the GPU's throughput.
 func TestResourceBudget_SoftwareHostNeverRefusesForSpeed(t *testing.T) {
 	b := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(1) })
-	l, err := b.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K})
+	l, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassHDR4K})
 	if err != nil {
 		t.Fatalf("a software host refused 4K HDR measured at 0.3x: %v", err)
 	}
@@ -445,7 +447,7 @@ func TestResourceBudget_SoftwareHostNeverRefusesForSpeed(t *testing.T) {
 	}
 	gpu := softwareHDRFacts(1)
 	gpu.Hardware = true
-	if _, err := NewResourceBudget(func() BudgetFacts { return gpu }).Admit(context.Background(), AdmitRequest{Class: ClassHDR4K}); !errors.Is(err, ErrAtCapacity) {
+	if _, err := NewResourceBudget(func() BudgetFacts { return gpu }).Admit(context.Background(), AdmitRequest{Class: media.ClassHDR4K}); !errors.Is(err, ErrAtCapacity) {
 		t.Errorf("a GPU host admitted a class measured at 0.3x: %v", err)
 	}
 }
@@ -456,21 +458,21 @@ func TestResourceBudget_SoftwareHostNeverRefusesForSpeed(t *testing.T) {
 func TestResourceBudget_SoftwareHostRefusesOnlyWhenKeyframesDoNotFit(t *testing.T) {
 	allowance := 1.0
 	b := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(allowance) })
-	leases := admitN(t, b, ClassHDR4K, 2)
-	if _, err := b.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K}); !errors.Is(err, ErrAtCapacity) {
+	leases := admitN(t, b, media.ClassHDR4K, 2)
+	if _, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassHDR4K}); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("third keyframes-only stream on 1 core: err = %v, want ErrAtCapacity", err)
 	}
-	if _, err := b.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K, NoRungDrop: true}); !errors.Is(err, ErrAtCapacity) {
+	if _, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassHDR4K, NoRungDrop: true}); !errors.Is(err, ErrAtCapacity) {
 		t.Fatal("NoRungDrop admitted below full quality")
 	}
 	leases[1].Release()
-	sdr, err := b.Admit(context.Background(), AdmitRequest{Class: ClassSDR})
+	sdr, err := b.Admit(context.Background(), AdmitRequest{Class: media.ClassSDR})
 	if err != nil || sdr.SoftwareRung() != RungKeyframes {
 		t.Fatalf("SDR beside one HDR stream: rung %v err %v, want keyframes (0.568 cores left)", sdr.SoftwareRung(), err)
 	}
 	leases[0].Release()
 	allowance = 2 // e.g. playout.app_reserve_millicores lowered
-	if !sdr.ReclassItem(context.Background(), ClassSDR) || sdr.SoftwareRung() != RungFull {
+	if !sdr.ReclassItem(context.Background(), media.ClassSDR) || sdr.SoftwareRung() != RungFull {
 		t.Fatalf("an item on an idle host stayed on rung %s, want full", sdr.SoftwareRung())
 	}
 }
@@ -483,7 +485,7 @@ func TestLease_LiveLadderStepsRepriceTheLease(t *testing.T) {
 	cores := func() float64 { return b.Snapshot().InUse.CPUCores }
 	near := func(got, want float64) bool { return got > want-1e-9 && got < want+1e-9 }
 
-	full := admitN(t, b, ClassHDR4K, 1)[0] // 3.6 cores at full
+	full := admitN(t, b, media.ClassHDR4K, 1)[0] // 3.6 cores at full
 	if full.SoftwareRung() != RungFull {
 		t.Fatalf("first HDR stream on 4.1 cores: rung %s, want full", full.SoftwareRung())
 	}
@@ -493,7 +495,7 @@ func TestLease_LiveLadderStepsRepriceTheLease(t *testing.T) {
 		t.Fatalf("step down: decisions %+v, lease %s, ledger %.3f cores; want rung 1 at 3.42", got, full.SoftwareRung(), cores())
 	}
 
-	small := admitN(t, b, ClassHDR4K, 1)[0] // 0.68 left: keyframes-only (0.432)
+	small := admitN(t, b, media.ClassHDR4K, 1)[0] // 0.68 left: keyframes-only (0.432)
 	if small.SoftwareRung() != RungKeyframes {
 		t.Fatalf("second HDR stream: rung %s, want keyframes-only", small.SoftwareRung())
 	}

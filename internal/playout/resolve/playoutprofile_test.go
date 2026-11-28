@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/media"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -182,9 +183,9 @@ func TestPlayoutResolver_LocalAudioProbeFeedsCopyPlanWithoutSecondProbe(t *testi
 				},
 			}, nil
 		},
-		probeFormat: func(context.Context, string) (playout.MediaFormat, error) {
+		probeFormat: func(context.Context, string) (media.MediaFormat, error) {
 			formatProbes++
-			return playout.MediaFormat{}, nil
+			return media.MediaFormat{}, nil
 		},
 	}
 
@@ -293,9 +294,9 @@ func TestPlayoutResolver_FirstPlayMeasuresFactsOnceAndActivatesMinimalProbe(t *t
 				},
 			}, nil
 		},
-		probeFormat: func(context.Context, string) (playout.MediaFormat, error) {
+		probeFormat: func(context.Context, string) (media.MediaFormat, error) {
 			formatProbes++
-			return playout.MediaFormat{}, nil
+			return media.MediaFormat{}, nil
 		},
 	}
 	r.measurer = r.newMeasurer(measure.Tools{}, st)
@@ -334,7 +335,7 @@ func TestPlayoutResolver_AirtimeFormatCarriesTheMeasuredActivePicture(t *testing
 		},
 	}
 	r.measurer = r.newMeasurer(measure.Tools{}, st)
-	if format := r.FormatOf(t.Context(), "", path); format.Active != (playout.Rect{}) {
+	if format := r.FormatOf(t.Context(), "", path); format.Active != (media.Rect{}) {
 		t.Fatalf("unmeasured source: active %+v, want unknown", format.Active)
 	}
 	origin, ok := r.ensureLocalInventorySource(t.Context(), path)
@@ -350,7 +351,7 @@ func TestPlayoutResolver_AirtimeFormatCarriesTheMeasuredActivePicture(t *testing
 		AnalyzedAt: time.Now(), ActivePicture: &inventory.PictureArea{Y: 140, W: 1920, H: 800}}); err != nil {
 		t.Fatal(err)
 	}
-	if format := r.FormatOf(t.Context(), "", path); format.Active != (playout.Rect{Y: 140, W: 1920, H: 800}) {
+	if format := r.FormatOf(t.Context(), "", path); format.Active != (media.Rect{Y: 140, W: 1920, H: 800}) {
 		t.Fatalf("measured source: active %+v, want the stored letterbox picture", format.Active)
 	}
 }
@@ -366,7 +367,7 @@ func TestPlayoutResolver_UnmeasurableSourceKeepsFullProbe(t *testing.T) {
 		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
 			return playout.SourceObservation{}, errors.New("unreadable")
 		},
-		probeFormat: func(context.Context, string) (playout.MediaFormat, error) { return playout.MediaFormat{}, nil },
+		probeFormat: func(context.Context, string) (media.MediaFormat, error) { return media.MediaFormat{}, nil },
 	}
 	r.measurer = r.newMeasurer(measure.Tools{}, st)
 	format := r.FormatOf(t.Context(), "", path)

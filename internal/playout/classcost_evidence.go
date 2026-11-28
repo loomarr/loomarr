@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // MeasuredCosts is the class probe's persisted answer for one encoder on one host.
 type MeasuredCosts struct {
 	Encoder encode.Encoder
-	Costs   map[CostKey]ClassCost
+	Costs   map[admission.CostKey]admission.ClassCost
 	// SessionLimit is how many encoder sessions opened at once (ProbeSessionLimit); 0 = none known.
 	SessionLimit int
 	ObservedAt   time.Time
@@ -37,12 +39,12 @@ type classCostEvidence struct {
 }
 
 type classCostCell struct {
-	Class           StreamClass `json:"class"`
-	Height          int         `json:"height"`
-	Curve           ToneCurve   `json:"curve,omitempty"` // HDR only; absent = Hable
-	Speed           float64     `json:"speed"`
-	CPUCores        float64     `json:"cpuCores"`
-	ConservativeCPU bool        `json:"conservativeCPU,omitempty"`
+	Class           media.StreamClass `json:"class"`
+	Height          int               `json:"height"`
+	Curve           media.ToneCurve   `json:"curve,omitempty"` // HDR only; absent = Hable
+	Speed           float64           `json:"speed"`
+	CPUCores        float64           `json:"cpuCores"`
+	ConservativeCPU bool              `json:"conservativeCPU,omitempty"`
 }
 
 // HostFingerprint identifies this FFmpeg build, GPU and default profile, the same key the encoder
@@ -67,9 +69,9 @@ func LoadClassCosts(root, fingerprint string, enc encode.Encoder, now time.Time)
 		now.Sub(e.ObservedAt) > capabilityEvidenceMaxAge || len(e.Costs) == 0 {
 		return MeasuredCosts{}, false
 	}
-	m := MeasuredCosts{Encoder: e.Encoder, SessionLimit: e.SessionLimit, ObservedAt: e.ObservedAt, Costs: map[CostKey]ClassCost{}}
+	m := MeasuredCosts{Encoder: e.Encoder, SessionLimit: e.SessionLimit, ObservedAt: e.ObservedAt, Costs: map[admission.CostKey]admission.ClassCost{}}
 	for _, c := range e.Costs {
-		m.Costs[CostKey{Class: c.Class, Height: c.Height, Curve: c.Curve}] = ClassCost{Speed: c.Speed, CPUCores: c.CPUCores, ConservativeCPU: c.ConservativeCPU}
+		m.Costs[admission.CostKey{Class: c.Class, Height: c.Height, Curve: c.Curve}] = admission.ClassCost{Speed: c.Speed, CPUCores: c.CPUCores, ConservativeCPU: c.ConservativeCPU}
 	}
 	return m, true
 }
@@ -78,7 +80,7 @@ func LoadClassCosts(root, fingerprint string, enc encode.Encoder, now time.Time)
 func StoreClassCosts(root, fingerprint string, m MeasuredCosts) error {
 	e := classCostEvidence{Version: classCostEvidenceVersion, Fingerprint: fingerprint, Encoder: m.Encoder,
 		SessionLimit: m.SessionLimit, ObservedAt: m.ObservedAt.UTC()}
-	for _, class := range append(TranscodeClasses, ClassPremium4K) {
+	for _, class := range append(media.TranscodeClasses, media.ClassPremium4K) {
 		for k, c := range m.Costs {
 			if k.Class == class {
 				e.Costs = append(e.Costs, classCostCell{Class: k.Class, Height: k.Height, Curve: k.Curve, Speed: c.Speed, CPUCores: c.CPUCores, ConservativeCPU: c.ConservativeCPU})

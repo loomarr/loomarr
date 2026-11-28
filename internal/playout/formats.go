@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // Channel formats (#1512 G10). Every channel airs a 1080p SDR H.264 baseline. When its lineup
@@ -76,7 +77,7 @@ type ChannelFormats struct {
 // DeriveChannelFormats is the lineup-warranted formats. An item without inventory facts (zero
 // geometry, unknown transfer) contributes nothing: it cannot prove 4K or HDR, so a lineup with no
 // facts at all is baseline only.
-func DeriveChannelFormats(items []MediaFormat) ChannelFormats {
+func DeriveChannelFormats(items []media.MediaFormat) ChannelFormats {
 	var uhd, hdr bool
 	for _, it := range items {
 		uhd = uhd || Is4K(it)
@@ -95,7 +96,7 @@ func DeriveChannelFormats(items []MediaFormat) ChannelFormats {
 // Is4K reports whether a source has more detail than the 1080p baseline can carry: larger than
 // QHD (2560x1440) in either dimension. Width alone catches scope films (3840x1600), height alone
 // catches cropped-width 4K encodes.
-func Is4K(f MediaFormat) bool {
+func Is4K(f media.MediaFormat) bool {
 	return f.Width > 2560 || f.Height > 1440
 }
 

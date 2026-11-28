@@ -7,18 +7,20 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 func TestPlayoutBudgetFacts_FailedProbeDoesNotRestoreWholeStreamAllowance(t *testing.T) {
-	host := playout.HostCPU{Cores: 4, Source: "cgroup-v2"}
-	for _, table := range []map[playout.CostKey]playout.ClassCost{nil, {}} {
+	host := admission.HostCPU{Cores: 4, Source: "cgroup-v2"}
+	for _, table := range []map[admission.CostKey]admission.ClassCost{nil, {}} {
 		costs := &playout.MeasuredCosts{Encoder: encode.EncoderVideoToolbox, Costs: table}
 		facts := playoutBudgetFacts(host, true, 12, costs, nil, playout.TierBalanced, 1000, 1000)
-		budget := playout.NewResourceBudget(func() playout.BudgetFacts { return facts })
-		if _, err := budget.Reserve(playout.AdmitRequest{Class: playout.ClassSDR}); !errors.Is(err, playout.ErrAtCapacity) {
+		budget := admission.NewResourceBudget(func() admission.BudgetFacts { return facts })
+		if _, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassSDR}); !errors.Is(err, admission.ErrAtCapacity) {
 			t.Fatalf("failed class probe admitted an unpriced stream: %v", err)
 		}
-		lease, err := budget.Reserve(playout.AdmitRequest{Class: playout.ClassCopy})
+		lease, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassCopy})
 		if err != nil {
 			t.Fatalf("failed transcode measurement blocked a copy: %v", err)
 		}
@@ -27,7 +29,7 @@ func TestPlayoutBudgetFacts_FailedProbeDoesNotRestoreWholeStreamAllowance(t *tes
 }
 
 func TestPlayoutBudgetFacts(t *testing.T) {
-	host := playout.HostCPU{Cores: 4, Source: "cgroup-v2"}
+	host := admission.HostCPU{Cores: 4, Source: "cgroup-v2"}
 	measured := playoutBudgetFacts(host, true, 12, nil, nil, playout.TierBalanced, 1000, 1000)
 	if measured.CPUAllowance != 1 || measured.CPUSource != "cgroup-v2" || measured.FirstRung != 0 {
 		t.Fatalf("GPU host facts = %+v, want a 1-core allowance from the cgroup and the top rung", measured)
@@ -38,8 +40,8 @@ func TestPlayoutBudgetFacts(t *testing.T) {
 	}
 	// An unmeasured host must not be treated as unlimited: its first session takes the bottom rung.
 	unmeasured := playoutBudgetFacts(host, false, 1, nil, nil, playout.TierBalanced, 1000, 1000)
-	lease, err := playout.NewResourceBudget(func() playout.BudgetFacts { return unmeasured }).
-		Admit(context.Background(), playout.AdmitRequest{Class: playout.ClassSDR})
+	lease, err := admission.NewResourceBudget(func() admission.BudgetFacts { return unmeasured }).
+		Admit(context.Background(), admission.AdmitRequest{Class: media.ClassSDR})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,9 +53,9 @@ func TestPlayoutBudgetFacts(t *testing.T) {
 // Measured class costs replace the whole-stream count: the probed session limit applies, the first
 // rung is the top one, and the operator cap and VRAM shading apply to the measured ceiling.
 func TestPlayoutBudgetFacts_MeasuredCostsDriveAdmission(t *testing.T) {
-	host := playout.HostCPU{Cores: 4, Source: "cgroup-v2"}
-	costs := &playout.MeasuredCosts{Encoder: encode.EncoderNVENC, SessionLimit: 12, Costs: map[playout.CostKey]playout.ClassCost{
-		{Class: playout.ClassSDR, Height: 1080}: {Speed: 19.18, CPUCores: 0.026},
+	host := admission.HostCPU{Cores: 4, Source: "cgroup-v2"}
+	costs := &playout.MeasuredCosts{Encoder: encode.EncoderNVENC, SessionLimit: 12, Costs: map[admission.CostKey]admission.ClassCost{
+		{Class: media.ClassSDR, Height: 1080}: {Speed: 19.18, CPUCores: 0.026},
 	}}
 	capAt := func(n int) int { return min(n, 5) } // playout.max_channels = 5
 	f := playoutBudgetFacts(host, true, 1, costs, capAt, playout.TierBalanced, 1000, 1000)
@@ -72,12 +74,12 @@ func TestPlaybackHeadroom_IsTheResourceBudget(t *testing.T) {
 	if playbackHeadroomFor(nil) != nil {
 		t.Fatal("no internal playout must mean no filler headroom gate")
 	}
-	budget := playout.NewResourceBudget(nil)
+	budget := admission.NewResourceBudget(nil)
 	headroom := playbackHeadroomFor(budget)
 	if busy, _ := headroom.PlaybackBusy(); busy {
 		t.Fatal("an idle budget reported playback busy")
 	}
-	copyLease, err := budget.Reserve(playout.AdmitRequest{Class: playout.ClassCopy})
+	copyLease, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassCopy})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +87,7 @@ func TestPlaybackHeadroom_IsTheResourceBudget(t *testing.T) {
 	if busy, _ := headroom.PlaybackBusy(); busy {
 		t.Fatal("a copy session held filler back")
 	}
-	live, err := budget.Reserve(playout.AdmitRequest{Class: playout.ClassSDR})
+	live, err := budget.Reserve(admission.AdmitRequest{Class: media.ClassSDR})
 	if err != nil {
 		t.Fatal(err)
 	}

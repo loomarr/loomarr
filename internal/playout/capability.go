@@ -12,6 +12,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // Encoder capability detection (§9.1) — "which encoder should this box use, and how many
@@ -305,7 +307,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 	// exactly what testsrc's CPU frames are: the upload, then the family's GPU scale/pad and encoder.
 	// A filter-graph mismatch (CPU frames into a GPU encoder, a GPU filter missing from the build) is
 	// one of the real cold-path failures, so the trial must exercise it. No tone-map: testsrc is SDR.
-	pipe, err := Build(encode.HostFor(enc, false, encode.GPUFilters{}), MediaFormat{}, ChannelOutput(probe))
+	pipe, err := Build(encode.HostFor(enc, false, encode.GPUFilters{}), media.MediaFormat{}, ChannelOutput(probe))
 	if err != nil {
 		return Capability{Encoder: enc, Available: true, Err: err.Error()}
 	}
@@ -385,7 +387,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 	if !hasKeyframeObserved(probeCtx, ffmpegPath, outPath, manager) {
 		return Capability{Encoder: enc, Err: "encoded but produced no keyframe the HLS remux could segment on"}
 	}
-	return Capability{Encoder: enc, Works: true, Speed: speed, PeakRSSBytes: peakRSSBytes(cmd.ProcessState)}
+	return Capability{Encoder: enc, Works: true, Speed: speed, PeakRSSBytes: admission.PeakRSSBytes(cmd.ProcessState)}
 }
 
 // hasKeyframe reports whether an MPEG-TS file carries at least one video keyframe. This is the
