@@ -8,7 +8,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PairingShell } from "../index";
+import { PairingShell } from "../pairing";
 
 // Records which Action asks for the TV's initial focus; react-native-web drops the prop from the DOM.
 const preferredFocus = vi.hoisted(() => ({ labels: [] as string[] }));

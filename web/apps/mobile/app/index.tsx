@@ -25,8 +25,6 @@ import {
 } from "@loomarr/player/native";
 import {
   ClientShell,
-  DeviceSheet,
-  PairingShell,
   PlayerAudio,
   PlayerBottomSheet,
   PlayerChrome,
@@ -45,6 +43,7 @@ import {
   watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import { GuideJourney } from "@loomarr/ui/guide";
+import { DeviceSheet, PairingShell } from "@loomarr/ui/pairing";
 import { RequestsJourney } from "@loomarr/ui/requests";
 import Constants from "expo-constants";
 import * as ScreenOrientation from "expo-screen-orientation";

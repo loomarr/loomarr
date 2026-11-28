@@ -22,7 +22,7 @@ vi.mock("react-native", async (importOriginal) => {
   };
 });
 
-const { PairingShell, pairingBackAvailable } = await import("../index");
+const { PairingShell, pairingBackAvailable } = await import("../pairing");
 
 // A root the test renders into more than once, unmounted by `cleanup`.
 const testRoot = () => {
