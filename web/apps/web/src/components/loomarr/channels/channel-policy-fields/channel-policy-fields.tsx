@@ -235,8 +235,10 @@ const ChannelPolicyFields = ({ policy, onChange, show, strategy, cycle }: Channe
             id="policy-ceiling"
             label="Audience ceiling"
             onValueChange={(v) =>
+              // The server's answer belongs to the old ceiling, so it goes with it.
               onChange({
                 ...policy,
+                automaticUnrated: undefined,
                 audience: { ...policy.audience, ceiling: v === "none" ? "" : v },
               })
             }
@@ -271,7 +273,7 @@ const ChannelPolicyFields = ({ policy, onChange, show, strategy, cycle }: Channe
             // without knowing the kids-ceiling rule. Naming the current resolution turns it into a
             // real choice.
             options={UNRATED_OPTIONS.map((o) =>
-              o.value === "default"
+              o.value === "default" && policy.automaticUnrated
                 ? {
                     ...o,
                     label: `${o.label}: ${policy.automaticUnrated === "exclude" ? "skipped" : "allowed"}`,

@@ -453,9 +453,9 @@ describe("ChannelPolicyFields", () => {
     expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveDisplayValue("Automatic: skipped");
   });
 
-  it("says Automatic allows unrated when the server says so, and before it has said", () => {
+  it("says Automatic allows unrated when the server says so, and claims nothing before it has", () => {
     const { unmount } = render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveDisplayValue("Automatic: allowed");
+    expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveDisplayValue("Automatic");
     unmount();
 
     render(
@@ -465,6 +465,18 @@ describe("ChannelPolicyFields", () => {
       />,
     );
     expect(screen.getByRole("combobox", { name: "Unrated titles" })).toHaveDisplayValue("Automatic: allowed");
+  });
+
+  it("drops the old ceiling's answer when the ceiling changes", async () => {
+    const onChange = vi.fn();
+    render(
+      <ChannelPolicyFields
+        policy={{ audience: { ceiling: "TV-14" }, automaticUnrated: "allow" }}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Audience ceiling" }), "none");
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ automaticUnrated: undefined }));
   });
 
   it("keeps the Automatic label while an explicit choice is selected", () => {
