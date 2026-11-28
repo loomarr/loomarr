@@ -466,7 +466,7 @@ func demoFilm(id string) demolibrary.Title {
 
 // stockLibrary writes the demo films as library items, as the scan of `make demo-library`'s
 // folders would, under the same ids libPick gives them.
-func stockLibrary(ctx context.Context, st store.LibraryItemStore, at time.Time, ids ...string) error {
+func stockLibrary(ctx context.Context, st librarystore.LibraryItemStore, at time.Time, ids ...string) error {
 	rows := make([]librarystore.LibraryItem, 0, len(ids))
 	for _, id := range ids {
 		t := demoFilm(id)

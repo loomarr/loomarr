@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
@@ -376,7 +377,7 @@ func demoLibraryItems(ctx context.Context, st libraryReader, lib *demolibrary.Li
 
 // firstEpisodeNamed reports whether a show's first episode carries its catalog name. The Enricher
 // fetches a season a pass after its show, so until then the guide would list file names.
-func firstEpisodeNamed(ctx context.Context, st store.LibraryEpisodeReader, seriesID string, want []demolibrary.Episode) (bool, error) {
+func firstEpisodeNamed(ctx context.Context, st librarystore.LibraryEpisodeReader, seriesID string, want []demolibrary.Episode) (bool, error) {
 	if len(want) == 0 {
 		return true, nil
 	}
