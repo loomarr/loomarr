@@ -60,13 +60,13 @@ const createWatchScreenState = ({
   watchedId,
 });
 
-/** Only the bare picture rests: anything open, focused, pointed at, paused or typed holds it. */
 /**
  * Paused, or a whole second or more behind live: what the lower third says as behind, and the one
  * test Go live and End answer to, so the two never disagree.
  */
 const offLive = (state: WatchScreenState) => state.paused || Math.floor(state.behindMs / 1000) > 0;
 
+/** Only the bare picture rests: anything open, focused, pointed at, paused or typed holds it. */
 const held = (state: WatchScreenState) =>
   state.list.open ||
   state.menu !== undefined ||
