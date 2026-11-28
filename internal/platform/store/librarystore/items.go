@@ -238,6 +238,9 @@ type LibraryItemSummary struct {
 	// edition's, or each part of a movie in parts), and ExtraBytes is what they take.
 	ExtraCopies int
 	ExtraBytes  int64
+	// HomeVideo is a title the maintainer kept as their own; Unidentified, one waiting in Needs you.
+	HomeVideo    bool
+	Unidentified bool
 }
 
 // LibraryItemQuery narrows the list. Kind "" is movies and series; Search matches the name, the
@@ -417,7 +420,8 @@ var (
 	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key,
 		` + itemImage("poster") + `, ` + itemImage("backdrop") + `, ` + itemImage("logo") + `,
 		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`) + `,
-		(SELECT COUNT(*) FROM ` + extraCopies + `), COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0)`
+		(SELECT COUNT(*) FROM ` + extraCopies + `), COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0),
+		(` + titleKept("i") + `), (` + needWhere + `)`
 	// itemProblems keeps a title that needs a look: a file that cannot play, or a movie's extra copy.
 	itemProblems = `(` + countFiles(` AND f.header = 'failed'`) + ` > 0
 		OR (i.kind = 'movie' AND EXISTS (SELECT 1 FROM ` + extraCopies + `)))`
@@ -695,7 +699,7 @@ func (s *Store) scanLibraryItems(ctx context.Context, query string, args ...any)
 		var it LibraryItemSummary
 		var catalog, set string
 		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &catalog, &it.Match.Basis,
-			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Backdrop, &it.Logo, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraCopies, &it.ExtraBytes); err != nil {
+			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Backdrop, &it.Logo, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraCopies, &it.ExtraBytes, &it.HomeVideo, &it.Unidentified); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}

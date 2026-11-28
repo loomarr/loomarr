@@ -66,7 +66,29 @@ func TestLibraryKeepHomeVideo(t *testing.T) {
 		return len(got.Needs)
 	}
 
-	const keep, answer = "/v1/library/items/90000021/keep", "/v1/library/items/90000021/answer"
+	// flags is each listed title's, and the detail read's, for the caller.
+	type flags struct {
+		ID           string `json:"id"`
+		HomeVideo    bool   `json:"homeVideo"`
+		Unidentified bool   `json:"unidentified"`
+	}
+	listed := func(cookie *http.Cookie) map[string]flags {
+		t.Helper()
+		var got struct {
+			Items []flags `json:"items"`
+		}
+		call(cookie, http.MethodGet, "/v1/library/items", "", http.StatusOK, &got)
+		out := map[string]flags{}
+		for _, i := range got.Items {
+			out[i.ID] = i
+		}
+		return out
+	}
+	if got := listed(admin)["90000021"]; !got.Unidentified || got.HomeVideo {
+		t.Fatalf("a waiting title reads %+v", got)
+	}
+
+	const keep, answer ="/v1/library/items/90000021/keep", "/v1/library/items/90000021/answer"
 	call(member, http.MethodPost, keep, "", http.StatusForbidden, nil)
 	if n := waiting(); n != 2 {
 		t.Fatalf("waiting after a member's keep = %d, want 2", n)
@@ -80,7 +102,21 @@ func TestLibraryKeepHomeVideo(t *testing.T) {
 		t.Fatalf("waiting after the keep = %d, want 1", n)
 	}
 	call(admin, http.MethodPost, keep, "", http.StatusConflict, nil)
-	call(member, http.MethodGet, "/v1/library/items/90000021", "", http.StatusOK, nil)
+	var detail struct {
+		Item flags `json:"item"`
+	}
+	call(member, http.MethodGet, "/v1/library/items/90000021", "", http.StatusOK, &detail)
+	if !detail.Item.HomeVideo {
+		t.Fatalf("a member's title page reads %+v, want homeVideo", detail)
+	}
+	for who, cookie := range map[string]*http.Cookie{"admin": admin, "member": member} {
+		if got := listed(cookie)["90000021"]; !got.HomeVideo || got.Unidentified {
+			t.Fatalf("the %s's list reads the home video as %+v", who, got)
+		}
+	}
+	if got := listed(member); len(got) != 1 {
+		t.Fatalf("a member lists %v, want only the home video", got)
+	}
 
 	call(member, http.MethodDelete, answer, "", http.StatusForbidden, nil)
 	call(admin, http.MethodDelete, answer, "", http.StatusNoContent, nil)
