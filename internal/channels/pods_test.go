@@ -32,7 +32,6 @@ func chTunarrID(t *testing.T, st store.Store, id string) string {
 // Tunarr filler-list, not per-gap slots).
 type fakePods struct {
 	calls         int
-	hasCalls      int
 	durationCalls int
 	seeds         []int64
 	sels          []pod.Selection // the selection each call received
@@ -54,12 +53,11 @@ func (f *fakePods) FitForChannel(channelID string, _ pod.Selection, _ clips.Clip
 	return pod.Fit{Reason: pod.FitAudience}
 }
 
-// HasPool mirrors the real adapter: a pool exists when there are clips to play. The double
-// keys on the same `ids` so a test that seeds clips gets breaks, and one that seeds none does
-// not — the behaviour the gate actually depends on.
-func (f *fakePods) HasPool(_ context.Context, _ string, _ int64, _ pod.Selection) bool {
-	f.hasCalls++
-	return len(f.ids) > 0
+// TunarrFillerIDs mirrors the real adapter: BuildFillerList's ids, without counting a call. The
+// double keys on the same `ids` so a test that seeds clips gets breaks, and one that seeds none
+// does not.
+func (f *fakePods) TunarrFillerIDs(_ context.Context, _ string, _ int64, _ pod.Selection) []string {
+	return f.ids
 }
 
 func (f *fakePods) PlayableDurationMs(_ context.Context, _ string, _ int64, _ pod.Selection) int64 {
@@ -173,7 +171,7 @@ func TestReconcileFillerChange_TargetsOnlyCompatibleChannels(t *testing.T) {
 }
 
 // Internal playout fills breaks from local clip paths, not Tunarr program uuids. Reconcile
-// must ask HasPool and persist the break gaps without ever building a Tunarr filler-list.
+// must ask the pod's playable duration and persist the break gaps without ever building a Tunarr filler-list.
 func TestReconcile_InternalUsesBackendIndependentFillerPool(t *testing.T) {
 	st := newStore(t)
 	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}

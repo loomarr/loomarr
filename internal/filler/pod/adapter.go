@@ -154,44 +154,6 @@ func (a *Adapter) WithMetrics(observer Metrics) *Adapter {
 
 const defaultBreakDurationMs int64 = 120_000 // 2m; mirrors filler.break_duration
 
-// BuildFillerList implements channels.PodFiller: assemble a matched clip pool for a
-// channel and return the clips' Tunarr program uuids for its filler-list. ok=false
-// on any error or an empty/all-fallback pool, so the reconcile skips the attach and
-// the channel's flex falls back to the bumper card — never dead air (§10, §9). The
-// pool is seed-deterministic (same catalog + seed → same uuids), so a re-reconcile
-// produces the same list (idempotency at the EnsureFillerList layer, §9).
-// HasPool reports whether the channel has any playable commercials at all.
-//
-// Backend-INDEPENDENT, and that is the point (§9.1): it asks "are there clips to fill a break
-// with", which decides whether the scheduler interleaves breaks. BuildFillerList answers the
-// narrower Tunarr question — "which program uuids go in a filler-list" — and using it as this
-// gate meant an install with no Tunarr assembled a perfect pod and then got no breaks, because
-// none of its clips carried a uuid.
-//
-// A pod no ad fits is not a pool. The embedded fallback card alone has nothing to play, and
-// promising breaks would render as empty channel-named blocks in the guide (§10). Station material
-// alone is not a pool either: it covers a break whose ads are all resting (#2036), and is no reason
-// to give breaks to a channel with no ad, such as a Christmas-only catalog in July (#2030).
-func (a *Adapter) HasPool(ctx context.Context, channelID string, seed int64, sel Selection) bool {
-	pod, err := a.Preview(ctx, channelID, seed, sel)
-	if err != nil {
-		if a.log != nil {
-			a.log.Warn("filler pool check failed (channel stays break-free)", "channel", channelID, "err", err)
-		}
-		return false
-	}
-	if pod.MatchLevel == MatchBumperCard {
-		return false
-	}
-	for _, e := range pod.Entries {
-		// A real file, whichever backend plays it. The fallback card has no Path.
-		if e.Path != "" {
-			return true
-		}
-	}
-	return false
-}
-
 // PlayableDurationMs reports the duration of real files in the deterministic pod: the length
 // reconcile gives every break on the channel's timeline. The embedded fallback card deliberately
 // contributes nothing: it is generated at playout time and must not extend a commercial break
@@ -225,6 +187,12 @@ func (a *Adapter) PlayableDurationMs(ctx context.Context, channelID string, seed
 	return total
 }
 
+// BuildFillerList implements channels.PodFiller: assemble a matched clip pool for a channel and
+// return the clips' Tunarr program uuids for its filler-list, station material included: the fill
+// ladder airs it before the offline card, so a break never goes to dead air (§10). ok=false on any
+// error or an empty/all-fallback pool, so the reconcile skips the attach and the channel's flex
+// falls back to the bumper card. The pool is seed-deterministic (same catalog + seed → same
+// uuids), so a re-reconcile produces the same list (idempotency at the EnsureFillerList layer, §9).
 func (a *Adapter) BuildFillerList(ctx context.Context, channelID string, seed int64, sel Selection) ([]string, bool) {
 	pod, err := a.Preview(ctx, channelID, seed, sel)
 	if err != nil {
@@ -241,17 +209,34 @@ func (a *Adapter) BuildFillerList(ctx context.Context, channelID string, seed in
 			a.metrics.FillerPodAssembled(string(pod.MatchLevel))
 		}
 	}
-	ids := make([]string, 0, len(pod.Entries))
+	ids := tunarrIDs(pod)
+	return ids, len(ids) > 0 // only the fallback card → nothing to attach; flex
+}
+
+// TunarrFillerIDs is BuildFillerList's answer without the §17 metric: the program uuids a
+// Tunarr filler list would carry, nil when it would carry none. The schedule forecast asks it,
+// so a guide poll does not count as assembling a pod.
+func (a *Adapter) TunarrFillerIDs(ctx context.Context, channelID string, seed int64, sel Selection) []string {
+	pod, err := a.Preview(ctx, channelID, seed, sel)
+	if err != nil {
+		if a.log != nil {
+			a.log.Warn("filler list: load catalog failed (channel stays flex)", "channel", channelID, "err", err)
+		}
+		return nil
+	}
+	return tunarrIDs(pod)
+}
+
+// tunarrIDs is the pod's entries a Tunarr filler list can reference, nil when there are none.
+func tunarrIDs(pod Pod) []string {
+	var ids []string
 	for _, e := range pod.Entries {
 		if e.TunarrProgramID == "" {
 			continue // the embedded bumper-card fallback isn't a real Tunarr program
 		}
 		ids = append(ids, e.TunarrProgramID)
 	}
-	if len(ids) == 0 {
-		return nil, false // only the fallback card → nothing to attach; flex
-	}
-	return ids, true
+	return ids
 }
 
 // Preview assembles the pool a channel WOULD get, without touching Tunarr (§12: the

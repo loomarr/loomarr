@@ -772,6 +772,18 @@ step 5). Nothing reads the scanner's origins until the cutover.
   search find it. Members read it like any other title, a show's episodes included. The list and
   detail reads mark it `homeVideo`. The list read also marks `unidentified` a title that is waiting
   in Needs you.
+- **A home video's picture** (#4476). A kept movie or show has no catalog artwork, so its poster
+  is one frame of its main file: a movie's first playing part, or a show's first playing episode
+  file by path. The frame is the keyframe at or before a tenth of the file's length, decoded by the
+  same ffmpeg path as a channel still (tone-mapped when the file is HDR), and stored by the image
+  service in the `poster` role, so the wall and the title page draw it like any poster, with its
+  renditions. The frame is landscape; the 2:3 poster box shows its centre and crops the sides. A
+  low-priority job, apart from the scan, checks every two minutes for kept titles with no poster
+  and extracts at most ten frames, one at a time, and none while someone is watching. A file whose
+  length is not read yet waits for its header. The scanner owns the poster role: writing a kept
+  title clears it, which a changed file does (the job then takes a new frame) and taking the answer
+  back does. A failed frame is tried again after five minutes, doubling to a day; the wait is held
+  in memory, so a restart tries again.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
@@ -805,10 +817,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   carries no `episode`, so neither its id, name nor numbering is sent (#4476).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
-  different title, or Find it with no guess); `/library/needs` holds one card each with the
+  different title, or Find it with no guess); `/library/needs` holds one card per title, with the
   reason line, the other guesses, a TMDB search, Ignore this, and the files behind a disclosure.
+  What else is wrong with that title (unplayable files, an extra copy) is listed on the same card
+  with See why, and its Waiting count is the number of cards.
   An answer locks in and leaves once seen; one that fails puts the question back. The Library nav
-  badge is the status's `needsYou`, the same number as the heading.
+  badge is the status's `needsYou`, which counts a title once for each list it is in.
 - **A title's actions** (step 11c, decision 26). Each title row records what decided which title
   it is: the basis and provider of its highest-ranked catalog id (`match_basis`, `match_app`), and
   for an arr its page there (`match_page`, from the arr's `titleSlug`). `GET /v1/library/items/{id}`

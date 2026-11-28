@@ -253,6 +253,19 @@ describe("LibraryNeedsPage", () => {
     expect((options as { action: { label: string } }).action.label).toBe("Try again");
   });
 
+  it("counts a title in two lists once, as the one card it draws", async () => {
+    const item = { id: "one", kind: "movie", name: "Low Tide", ready: true, unplayable: 1 };
+    server.use(
+      http.get("*/v1/library/needs", () =>
+        HttpResponse.json({ needs: [need("one")], orders: [], problems: [{ item, extraBytes: 10 }] }),
+      ),
+    );
+    renderPage();
+    expect(await screen.findByRole("tab", { name: /Waiting\s*1/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "See why" })).toHaveLength(1);
+    expect(screen.queryByText("Needs a look")).not.toBeInTheDocument();
+  });
+
   it("counts waiting titles, not the reasons a title needs a look", async () => {
     const item = { id: "bad", kind: "movie", name: "Low Tide", ready: true, unplayable: 1 };
     server.use(

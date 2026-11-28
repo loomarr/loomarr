@@ -59,6 +59,41 @@ func TestTrackFiltersReadTheirIndexes(t *testing.T) {
 	}
 }
 
+// The Needs you count is read on every Library status poll. Its titles are found by kind or from
+// the waiting shows, and each one's files, copies and answers by index: no table is read whole.
+func TestNeedsYouCountReadsItsIndexes(t *testing.T) {
+	s := newSQLiteStore(t).(*sqlStore)
+	query, args := librarystore.NeedsYouCountQuery(s.libraryCluster)
+	rows, err := s.db.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+query, args...)
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Log(strings.Join(plan, "\n"))
+	for _, step := range plan {
+		for _, table := range []string{"i", "f", "s", "a", "e"} {
+			if step == "SCAN "+table {
+				t.Errorf("the Needs you count scans a table: %q", step)
+			}
+		}
+	}
+	if !strings.Contains(strings.Join(plan, "\n"), "idx_library_items_unnumbered") {
+		t.Errorf("want the waiting episodes read from idx_library_items_unnumbered:\n%s", strings.Join(plan, "\n"))
+	}
+}
+
 // The shows waiting for an episode order are read from the partial index on unnumbered episodes,
 // so the Library status and Needs you cost what waits, not the size of the library. Matching on
 // kind as well led SQLite down the kind index instead: a walk over every episode on each read.

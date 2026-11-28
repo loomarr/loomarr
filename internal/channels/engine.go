@@ -78,17 +78,13 @@ type PodFiller interface {
 	// pool (empty catalog / only the fallback card): the engine skips the attach and
 	// the channel's flex falls back to the bumper card (never dead air).
 	BuildFillerList(ctx context.Context, channelID string, seed int64, sel pod.Selection) (programIDs []string, ok bool)
-	// HasPool reports whether the channel has ANY playable commercials — the question
-	// "should breaks be interleaved at all?".
-	//
-	// Separate from BuildFillerList (§9.1) because the two ask different questions.
-	// BuildFillerList is Tunarr-specific: it returns only clips carrying a Tunarr program uuid,
-	// since that is what a filler-list references. On an internal-playout install with no
-	// Tunarr, no clip has one — so a channel with a perfectly good pod would report "no pool"
-	// and get NO BREAKS AT ALL.
-	HasPool(ctx context.Context, channelID string, seed int64, sel pod.Selection) bool
-	// PlayableDurationMs reports how much real media the deterministic pod contains.
-	// It excludes the generated fallback card, which has no bytes to air.
+	// TunarrFillerIDs is BuildFillerList's answer without its §17 pod metric: the forecast asks
+	// it on every guide poll, and only the reconcile that attaches a list counts as assembling one.
+	TunarrFillerIDs(ctx context.Context, channelID string, seed int64, sel pod.Selection) []string
+	// PlayableDurationMs reports how much real media the deterministic pod contains: an
+	// internal channel's answer to "should breaks be interleaved at all?". It asks no Tunarr
+	// uuid, because internal playout airs local files. It excludes the generated fallback
+	// card, which has no bytes to air.
 	PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel pod.Selection) int64
 }
 

@@ -97,6 +97,8 @@ type LibraryNeedsStore interface {
 	// KeepLibraryNeed answers a title that needs the maintainer and has no candidate as a home
 	// video: ErrNotKeepable, and nothing saved, otherwise.
 	KeepLibraryNeed(ctx context.Context, itemID string, at time.Time) (LibraryAnswered, error)
+	// HomeVideosWithoutPoster returns the kept titles that have no poster, each with its main file.
+	HomeVideosWithoutPoster(ctx context.Context) ([]LibraryHomeVideoFrame, error)
 	// KeptLibraryTitle reports whether a file belongs to a title kept as a home video.
 	KeptLibraryTitle(ctx context.Context, kind string, origin LibraryOrigin, groups []LibraryID) (bool, error)
 	// RestoreLibraryIgnored takes back the ignore of titles, all in one transaction:
@@ -107,6 +109,9 @@ type LibraryNeedsStore interface {
 	LibraryIgnored(ctx context.Context, limit, offset int) ([]LibraryIgnoredTitle, int, error)
 	// LibraryNeeds lists every title that needs the maintainer, by sort name.
 	LibraryNeeds(ctx context.Context) ([]LibraryNeed, error)
+	// LibraryNeedsYouCount is how many titles Needs you holds: those LibraryNeeds, the episode
+	// order needs and the problem list name, each title once.
+	LibraryNeedsYouCount(ctx context.Context) (int, error)
 	// LibraryCandidates is each listed title's candidates, in rank order.
 	LibraryCandidates(ctx context.Context, itemIDs []string) (map[string][]LibraryCandidate, error)
 	// SaveLibraryCandidates replaces a title's candidates and notes what was searched.
@@ -194,9 +199,36 @@ const needWhere = `i.kind IN ('movie', 'series') AND i.grounded = FALSE AND i.or
 	AND NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
 		AND a.origin_key = i.origin_key)`
 
+// needsFrom is the FROM and WHERE of the titles that need an answer.
+func needsFrom() string {
+	return ` FROM library_items i WHERE ` + needWhere + ` AND NOT ` + titleKept("i") + ` AND ` + itemListed
+}
+
+// needsYouCount is the statement, and its arguments, that counts the titles Needs you holds. UNION
+// keeps one id for a title that is in more than one of its lists.
+func (s *Store) needsYouCount() (string, []any) {
+	problems, args, _, _ := s.listFrom(LibraryItemQuery{Problems: true})
+	return s.ph(`SELECT COUNT(*) FROM (SELECT i.id` + needsFrom() + `
+		UNION SELECT i.id FROM library_items i JOIN (` + waitingShows + `) w ON w.id = i.id
+			WHERE i.kind = 'series' AND ` + itemListed + `
+		UNION SELECT i.id` + problems + `) x`), args
+}
+
+// NeedsYouCountQuery is needsYouCount, for the plan test.
+func NeedsYouCountQuery(s *Store) (string, []any) { return s.needsYouCount() }
+
+func (s *Store) LibraryNeedsYouCount(ctx context.Context) (int, error) {
+	query, args := s.needsYouCount()
+	var n int
+	if err := s.h.QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("library needs you count: %w", err)
+	}
+	return n, nil
+}
+
 func (s *Store) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, i.origin_authority, i.origin_key, i.searched
-		FROM library_items i WHERE `+needWhere+` AND NOT `+titleKept("i")+` AND `+itemListed+` ORDER BY i.sort_name, i.id`))
+		`+needsFrom()+` ORDER BY i.sort_name, i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("library needs: %w", err)
 	}

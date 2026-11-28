@@ -1,4 +1,5 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
+import type { ListLibraryItemsHdr } from "@loomarr/api/models/listLibraryItemsHdr";
 import type { ListLibraryItemsKind } from "@loomarr/api/models/listLibraryItemsKind";
 import type { ListLibraryItemsSort } from "@loomarr/api/models/listLibraryItemsSort";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -20,6 +21,13 @@ interface LibraryItemsFilter {
   sort?: typeof ListLibraryItemsSort.recent;
   /** Only titles with this genre. */
   genre?: string;
+  studio?: string;
+  /** Only titles crediting this person, by id. */
+  person?: string;
+  audio?: string;
+  subtitles?: string;
+  uhd?: boolean;
+  hdr?: ListLibraryItemsHdr;
   /**
    * How far down the list a jump wants loaded: pages short of it ask for as much as the server
    * gives at once. It is not part of the key, since the titles are the same list however they
@@ -28,8 +36,8 @@ interface LibraryItemsFilter {
   reach?: () => number;
 }
 
-const libraryItemsQueryOptions = ({ kind, search, sort, genre, reach }: LibraryItemsFilter) => {
-  const params = { kind, search, sort, genre, limit: LIBRARY_PAGE_SIZE };
+const libraryItemsQueryOptions = ({ reach, ...filter }: LibraryItemsFilter) => {
+  const params = { ...filter, limit: LIBRARY_PAGE_SIZE };
   return infiniteQueryOptions({
     queryKey: [...libraryApi.getListLibraryItemsQueryKey(params), "pages"],
     initialPageParam: 0,

@@ -113,8 +113,13 @@ export type {
   LibrarySettingsProps,
   LibraryShelfAdmin,
   LibraryShelfCounts,
+  LibraryShelfFacet,
+  LibraryShelfFacets,
+  LibraryShelfFiltering,
+  LibraryShelfFilters,
   LibraryShelfGenre,
   LibraryShelfLetter,
+  LibraryShelfPersonSearch,
   LibraryShelfProps,
   LibraryShelfStatus,
   LibraryShelfTitle,
@@ -139,6 +144,7 @@ export {
   LibraryTitle,
   LibraryTitleMissing,
   LibraryWizardStep,
+  waitingTitles,
 } from "./src/library";
 export type { ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-row";
 export { ListGroup, ListRow } from "./src/list-row";

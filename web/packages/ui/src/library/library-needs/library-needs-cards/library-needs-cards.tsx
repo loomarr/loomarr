@@ -9,6 +9,7 @@ import { ProblemCard } from "../problem-card";
 import { problemEntries } from "../problem-entries";
 import { useAnswers } from "../use-answers";
 import { useOrderAnswers } from "../use-order-answers";
+import { waitingTitles } from "../waiting-titles";
 
 // One group under its heading; `action` sits at the heading's end.
 const Group = ({
@@ -52,10 +53,15 @@ const LibraryNeedsCards = ({
   const wide = useWindowWidth() >= 640;
   const shows = useOrderAnswers(orders, onChooseOrder);
   const entries = problemEntries(problems);
-  const waiting =
-    shows.list.filter((n) => !shows.phases[n.id]).length +
-    open.filter((n) => !phases[n.id]).length +
-    entries.length;
+  // One card per title: a question's card lists what else is wrong with it.
+  const problemOf = new Map(entries.map((entry) => [entry.id, entry]));
+  const asked = new Set([...shows.list, ...open].map((n) => n.id));
+  const alone = entries.filter((entry) => !asked.has(entry.id));
+  const waiting = waitingTitles(
+    shows.list.filter((n) => !shows.phases[n.id]),
+    open.filter((n) => !phases[n.id]),
+    entries,
+  );
   const folders = [...new Set(open.map((need) => need.folder ?? ""))];
 
   // Exactly the cards still asking under the heading, in one save.
@@ -84,6 +90,8 @@ const LibraryNeedsCards = ({
             onDone={() => done(need.id)}
             onIgnore={() => answer(need.id, "ignored", onIgnore(need.id))}
             onKeep={onKeep ? () => answer(need.id, "added", onKeep(need.id)) : undefined}
+            onOpenTitle={onOpenTitle}
+            problem={problemOf.get(need.id)}
             onPick={(c) => answer(need.id, "added", onLink(need.id, c.externalId))}
             onSearch={onSearch}
             onYes={() => {
@@ -128,14 +136,15 @@ const LibraryNeedsCards = ({
               onDone={() => shows.done(need.id)}
               onOpenTitle={onOpenTitle}
               primary={open.length === 0 && i === 0}
+              problem={problemOf.get(need.id)}
             />
           ))}
         </Group>
       ) : null}
-      {entries.length > 0 ? (
+      {alone.length > 0 ? (
         <Group heading="Needs a look" label="Needs a look">
-          {entries.map((entry) => (
-            <ProblemCard entry={entry} key={entry.key} onOpenTitle={onOpenTitle} />
+          {alone.map((entry) => (
+            <ProblemCard entry={entry} key={entry.id} onOpenTitle={onOpenTitle} />
           ))}
         </Group>
       ) : null}

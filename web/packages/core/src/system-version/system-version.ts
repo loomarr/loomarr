@@ -1,5 +1,5 @@
 import { getSystemVersionUrl } from "@loomarr/api/endpoints/system";
-import type { SystemVersionOutputBody } from "@loomarr/api/models/systemVersionOutputBody";
+import { readBody } from "@loomarr/api/mutator";
 
 interface ServerVersionSource {
   load: (signal: AbortSignal) => Promise<string>;
@@ -9,7 +9,8 @@ const createServerVersionSource = (request: typeof globalThis.fetch): ServerVers
   load: async (signal) => {
     const response = await request(getSystemVersionUrl(), { method: "GET", signal });
     if (!response.ok) throw new Error(`Couldn't read the server version (${response.status}).`);
-    const version = (await response.json()) as SystemVersionOutputBody;
+    const { VersionBody } = await import("../response-bodies");
+    const version = await readBody(response, VersionBody);
     return `${version.version}${version.dirty ? " (modified)" : ""}`;
   },
 });

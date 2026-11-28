@@ -1,4 +1,7 @@
-package playout
+// Package media is the vocabulary of what a source is and what it costs to air: the probed
+// MediaFormat, its stream class, the picture rectangle and the HDR tone curve. It is a leaf, so
+// every playout package can share these types without importing the streaming engine.
+package media
 
 import (
 	"context"
@@ -6,11 +9,11 @@ import (
 )
 
 // MediaFormat is everything a probe tells us about a source that playout might use — the class
-// each item airs as (formats.go) needs the codecs; the rest (dimensions, framerate, HDR, bit depth,
-// duration, bitrate, container) is captured in the SAME probe so consumers (framerate-aware
-// transcode, HDR tone-mapping, quality display) need no second ffprobe. Probe
-// once, keep it all. It is probed from the actual media (probe.go), never the media server's
-// metadata.
+// each item airs as (playout's formats.go) needs the codecs; the rest (dimensions, framerate, HDR,
+// bit depth, duration, bitrate, container) is captured in the SAME probe so consumers
+// (framerate-aware transcode, HDR tone-mapping, quality display) need no second ffprobe. Probe
+// once, keep it all. It is probed from the actual media (playout's probe.go), never the media
+// server's metadata.
 type MediaFormat struct {
 	// Video.
 	VideoCodec    string // e.g. "h264", "hevc", "mpeg2video" — lowercased; empty when no video
@@ -29,7 +32,7 @@ type MediaFormat struct {
 	// excluded), in source pixels; zero means the whole frame. The watermark anchors to it.
 	Active Rect
 
-	// Audio (the first/primary track — track SELECTION is a separate concern, see audio.go).
+	// Audio (the first/primary track — track SELECTION is a separate concern, see playout's audio.go).
 	AudioCodec      string // e.g. "aac", "eac3", "ac3" — lowercased; empty when no audio
 	AudioChannels   int    // 2 = stereo, 6 = 5.1, …; 0 when unknown
 	AudioSampleRate int    // Hz; the live copy format is fixed at 48000
@@ -69,5 +72,5 @@ func (f MediaFormat) PQ() bool {
 }
 
 // FormatProber reports a source's MediaFormat. An interface so callers are testable without exec,
-// mirroring TrackProber. The concrete prober (FFprobeFormatNextTo) lives in probe.go.
+// mirroring playout's TrackProber. The concrete prober (FFprobeFormatNextTo) lives in playout.
 type FormatProber func(ctx context.Context, input string) (MediaFormat, error)

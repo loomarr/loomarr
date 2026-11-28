@@ -85,7 +85,7 @@ const config: KnipConfig = {
     "packages/api": {
       // Used by the Orval-generated client (model-*, endpoint-*, zod-*, msw, generated/), which
       // is gitignored and so outside knip's view.
-      ignoreDependencies: ["@faker-js/faker", "@tanstack/react-query", "@types/react", "msw", "react", "zod"],
+      ignoreDependencies: ["@faker-js/faker", "@tanstack/react-query", "@types/react", "msw", "react"],
     },
     "packages/design-system": {
       // The Storybook build (apps/web `build-storybook`) resolves `react-native` from this

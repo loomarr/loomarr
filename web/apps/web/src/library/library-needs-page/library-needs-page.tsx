@@ -12,7 +12,7 @@ import {
   Text,
   useWindowWidth,
 } from "@loomarr/design-system";
-import { LibraryNeedsCards } from "@loomarr/ui";
+import { LibraryNeedsCards, waitingTitles } from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { type ComponentProps, type ReactNode, useRef, useState } from "react";
@@ -254,7 +254,7 @@ const LibraryNeedsPage = () => {
       onBack={() => void navigate({ to: "/library" })}
       onTabChange={setFilterTab}
       tab={tab}
-      waiting={needs.loaded ? needs.needs.length + needs.orders.length + needs.problems.length : undefined}
+      waiting={needs.loaded ? waitingTitles(needs.needs, needs.orders, needs.problems) : undefined}
     >
       {shown.error ? <ErrorState error={shown.error} onRetry={() => void shown.refetch()} /> : null}
       {tab === "waiting" && needs.loaded ? (

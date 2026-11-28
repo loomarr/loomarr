@@ -1,4 +1,5 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
+import { ListLibraryItemsHdr } from "@loomarr/api/models/listLibraryItemsHdr";
 import type { LibraryKind } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { viewerIsAdmin } from "@/auth/me-query";
@@ -18,37 +19,62 @@ interface LibrarySearch {
   /** Recently added first; absent is by name. */
   sort?: "recent";
   genre?: string;
-  /** A credit's personId, from the title page's cast and crew links. */
+  studio?: string;
+  /** A credit's personId, from the person search or the title page's cast and crew links. */
   person?: string;
+  audio?: string;
+  subtitles?: string;
+  uhd?: boolean;
+  hdr?: ListLibraryItemsHdr;
 }
+
+// A text filter, cut to what the server takes. The router reads "1917" in a URL as a number.
+const text = <K extends string>(search: Record<string, unknown>, key: K, max: number) => {
+  const raw = search[key];
+  const value = typeof raw === "number" ? String(raw) : raw;
+  return typeof value === "string" && value.trim() !== ""
+    ? ({ [key]: value.slice(0, max) } as Record<K, string>)
+    : {};
+};
+
+const HDR_KINDS: readonly unknown[] = Object.values(ListLibraryItemsHdr);
 
 const validateLibrarySearch = (search: Record<string, unknown>): LibrarySearch => ({
   ...(search.kind === "movie" || search.kind === "series" ? { kind: search.kind } : {}),
   ...(typeof search.q === "string" && search.q.trim() !== "" ? { q: search.q.slice(0, 200) } : {}),
   ...(search.sort === "recent" ? { sort: search.sort } : {}),
-  ...(typeof search.genre === "string" && search.genre.trim() !== ""
-    ? { genre: search.genre.slice(0, 100) }
-    : {}),
-  ...(typeof search.person === "string" && search.person.trim() !== ""
-    ? { person: search.person.slice(0, 600) }
-    : {}),
+  ...text(search, "genre", 100),
+  ...text(search, "studio", 200),
+  ...text(search, "person", 600),
+  ...text(search, "audio", 35),
+  ...text(search, "subtitles", 35),
+  ...(search.uhd === true || search.uhd === "true" ? { uhd: true } : {}),
+  ...(HDR_KINDS.includes(search.hdr) ? { hdr: search.hdr as ListLibraryItemsHdr } : {}),
 });
 
 const LibraryScreen = () => {
   useDocumentTitle("Library");
-  const { kind, q, sort, genre } = Route.useSearch();
-  return <LibraryPage filter={kind ?? "all"} genre={genre} search={q ?? ""} sort={sort ?? "name"} />;
+  const { kind, q, sort, genre, ...filters } = Route.useSearch();
+  return (
+    <LibraryPage
+      filter={kind ?? "all"}
+      filters={filters}
+      genre={genre}
+      search={q ?? ""}
+      sort={sort ?? "name"}
+    />
+  );
 };
 
 const Route = createFileRoute("/_authed/library/")({
   validateSearch: validateLibrarySearch,
-  loaderDeps: ({ search: { kind, q, sort, genre } }) => ({ kind, q, sort, genre }),
+  loaderDeps: ({ search }) => search,
   // What the wall paints: the first page of titles, the tabs' counts, and for an admin the status
   // line over them. The page's search box starts from the URL's `q`, trimmed, so that is the entry
   // warmed here. A member's status request would 403, so only an admin's is asked.
-  loader: async ({ context: { queryClient }, deps: { kind, q, sort, genre } }) => {
+  loader: async ({ context: { queryClient }, deps: { q, ...filter } }) => {
     const titles = queryClient.ensureInfiniteQueryData(
-      libraryItemsQueryOptions({ kind, search: q?.trim() || undefined, sort, genre }),
+      libraryItemsQueryOptions({ ...filter, search: q?.trim() || undefined }),
     );
     const counts = libraryCountsQueryOptions().map((options) => queryClient.ensureQueryData(options));
     const status = (await viewerIsAdmin(queryClient))

@@ -1,3 +1,10 @@
+export type {
+  LibraryShelfFacet,
+  LibraryShelfFacets,
+  LibraryShelfFiltering,
+  LibraryShelfFilters,
+  LibraryShelfPersonSearch,
+} from "../library-filters";
 export { LibraryShelf } from "./library-shelf";
 export type {
   LibraryFilter,

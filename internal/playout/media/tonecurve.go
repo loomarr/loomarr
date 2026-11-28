@@ -1,4 +1,4 @@
-package playout
+package media
 
 import "strings"
 
@@ -47,22 +47,22 @@ func ParseToneCurve(s string) ToneCurve {
 	return DefaultToneCurve
 }
 
-// placeboFirst: the curve exists only in libplacebo, so libplacebo is its GPU tone-mapper even
-// where that costs a CPU hop (Intel).
-func (c ToneCurve) placeboFirst() bool {
+// PlaceboFirst reports a curve that exists only in libplacebo, so libplacebo is its GPU tone-mapper
+// even where that costs a CPU hop (Intel).
+func (c ToneCurve) PlaceboFirst() bool {
 	return c == ToneCurveBT2390 || c == ToneCurveBT2446a || c == ToneCurveSpline
 }
 
-// openCL is the curve's tonemap_opencl name, "" when tonemap_opencl lacks it.
-func (c ToneCurve) openCL() string {
-	if c.placeboFirst() {
+// OpenCL is the curve's tonemap_opencl name, "" when tonemap_opencl lacks it.
+func (c ToneCurve) OpenCL() string {
+	if c.PlaceboFirst() {
 		return ""
 	}
 	return string(c)
 }
 
-// placebo is the curve's libplacebo `tonemapping` name.
-func (c ToneCurve) placebo() string {
+// Placebo is the curve's libplacebo `tonemapping` name.
+func (c ToneCurve) Placebo() string {
 	switch c {
 	case ToneCurveBT2390:
 		return "bt.2390"
@@ -72,9 +72,9 @@ func (c ToneCurve) placebo() string {
 	return string(c)
 }
 
-// cpu is the CPU tonemap filter's curve and whether it is the curve asked for.
-func (c ToneCurve) cpu() (ToneCurve, bool) {
-	if c.placeboFirst() {
+// CPU is the CPU tonemap filter's curve and whether it is the curve asked for.
+func (c ToneCurve) CPU() (ToneCurve, bool) {
+	if c.PlaceboFirst() {
 		return ToneCurveMobius, false
 	}
 	return c, true

@@ -13,6 +13,7 @@ import {
   LibraryTitle,
   LibraryTitleMissing,
   LibraryWizardStep,
+  waitingTitles,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, screen, waitFor } from "storybook/test";
@@ -204,6 +205,50 @@ const GENRES = [
 // One genre of the wall, chosen beside the order.
 const GenreChosen: Story = { args: { genres: GENRES, genre: "Drama" } };
 
+const filtering: NonNullable<LibraryShelfProps["filtering"]> = {
+  filters: {},
+  onChange: () => {},
+  onClear: () => {},
+  facets: {
+    studios: [{ value: "Lantern Works", name: "Lantern Works", titles: 41 }],
+    audio: [{ value: "eng", name: "English", titles: 1180 }],
+    subtitles: [{ value: "fre", name: "French", titles: 212 }],
+    uhd: 96,
+    hdrAny: 54,
+  },
+  personSearch: { value: "", onChange: () => {}, options: [], loading: false, failed: false },
+};
+
+const openFilters: Story["play"] = async ({ canvas, userEvent }) => {
+  await userEvent.click(canvas.getByRole("button", { name: /^More filters/ }));
+};
+
+// The disclosure open, with nothing chosen yet.
+const FiltersOpen: Story = { args: { genres: GENRES, filtering }, play: openFilters };
+
+// A person from the URL, on a chip that removes them.
+const PersonChip: Story = {
+  args: {
+    genres: GENRES,
+    filtering: { ...filtering, filters: { person: "p1" }, personName: "Robin Vale", total: 3 },
+  },
+};
+
+const severalFilters = {
+  ...filtering,
+  filters: { studio: "Lantern Works", audio: "eng", subtitles: "fre", uhd: true, hdr: "any" },
+  total: 12,
+};
+
+const SeveralFilters: Story = { args: { genres: GENRES, genre: "Drama", filtering: severalFilters } };
+
+// The phone: the disclosure stacked, with what is on under it.
+const FiltersPhone: Story = {
+  tags: ["route"],
+  args: { genres: GENRES, filtering: severalFilters },
+  play: openFilters,
+};
+
 // The letter rail beside the wall, on a desktop window: letters with no titles are disabled.
 const LetterJump: Story = {
   args: {
@@ -356,14 +401,17 @@ const ORDERS: LibraryOrderNeed[] = [
 const answered = () => Promise.resolve();
 const search = () => Promise.resolve([]);
 
+// The Ignored tab and the "ignored files" button count the same files.
+const IGNORED = 3;
+
 // Needs you's own page, with what the app puts in it.
 const needsStory = (needs: LibraryNeed[], orders: LibraryOrderNeed[], problems: LibraryProblem[]) => (
   <LibraryNeedsView
-    ignored={1}
+    ignored={IGNORED}
     onBack={() => {}}
     onTabChange={() => {}}
     tab="waiting"
-    waiting={needs.length + orders.length + problems.length}
+    waiting={waitingTitles(needs, orders, problems)}
   >
     <LibraryNeedsCards
       hideHeading
@@ -377,7 +425,7 @@ const needsStory = (needs: LibraryNeed[], orders: LibraryOrderNeed[], problems: 
       onSearch={search}
       orders={orders}
       problems={problems}
-      empty={<AllCaughtUp ignored={3} onBack={() => {}} onShowIgnored={() => {}} />}
+      empty={<AllCaughtUp ignored={IGNORED} onBack={() => {}} onShowIgnored={() => {}} />}
     />
   </LibraryNeedsView>
 );
@@ -1064,6 +1112,8 @@ export {
   ExtraCopyRemoved,
   ExtraCopyUndoRefused,
   FactsWrapped,
+  FiltersOpen,
+  FiltersPhone,
   FolderOffline,
   Fresh,
   GenreChosen,
@@ -1092,10 +1142,12 @@ export {
   NothingNeedsYou,
   NotInLibrary,
   Paused,
+  PersonChip,
   RecentlyAdded,
   SeasonsWithStills,
   Series,
   SeriesOrderWaiting,
+  SeveralFilters,
   StopUsingFolder,
   Unidentified,
   WizardStep,

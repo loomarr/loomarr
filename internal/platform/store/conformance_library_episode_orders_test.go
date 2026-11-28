@@ -60,8 +60,25 @@ func testLibraryEpisodeOrders(t *testing.T, newStore NewStoreFunc) {
 		}) {
 		t.Fatalf("order needs = %+v, want Harbor Show with 2 unnumbered episodes and their files, seasons running to 3 and 1", needs)
 	}
-	if n, err := st.LibraryOrderNeedCount(ctx); err != nil || n != 1 {
-		t.Fatalf("order need count = %d, %v; want the one show listed", n, err)
+	// Harbor Show waits for its order, and Numbered Show, which nothing grounds, for an answer.
+	if n, err := st.LibraryNeedsYouCount(ctx); err != nil || n != 2 {
+		t.Fatalf("needs you count = %d, %v; want the two shows", n, err)
+	}
+	// A show that waits for its order and has a file that can't be played is still one title.
+	broken := file("e1", harborID)
+	broken.Header = librarystore.LibraryHeaderFailed
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{broken}); err != nil {
+		t.Fatal(err)
+	}
+	problems, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Problems: true})
+	if err != nil || len(problems.Items) != 1 || problems.Items[0].ID != harborID {
+		t.Fatalf("problems = %+v, %v; want the waiting show", problems.Items, err)
+	}
+	if n, err := st.LibraryNeedsYouCount(ctx); err != nil || n != 2 {
+		t.Fatalf("needs you count = %d, %v; want the show in two lists counted once", n, err)
+	}
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{file("e1", harborID)}); err != nil {
+		t.Fatal(err)
 	}
 
 	if _, ok, err := st.LibraryEpisodeOrderFor(ctx, show); err != nil || ok {
