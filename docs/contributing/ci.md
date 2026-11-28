@@ -422,8 +422,13 @@ policy. The Playwright runner selects repository contracts, visual, e2e, tuner, 
 broad Web unit gate is not selected: its `make fe-unit` and `make fe-checks` paths never invoke
 either script, while each container-backed Playwright target and `test-pg` owns an explicit
 prerequisite.
-Any production or test change under `internal/platform/releaseverify` or `cmd/releaseverify` selects both the
-policy job and the sharded Go job, because only the latter executes the package's RED-capable tests.
+Any production or test change under `internal/platform/releaseverify` or `cmd/releaseverify` selects the
+policy job, and a `.go` change there also selects repository contracts.
+
+Repository contracts runs `make guard-test`, the architecture guards in the root `internal` package. They
+read the source tree from disk, and pull requests run no unit-test shards, so this is where a guard
+regression fails. `scripts/go-impact.sh` selects the same package for any Go change under `internal/` or
+`cmd/`.
 
 Playwright is the second active job. Its four shards consume the union of `impact_visual` and
 `impact_e2e`; the combined job still runs both suites exactly as before. Shipping Web runtime

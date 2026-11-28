@@ -27,7 +27,7 @@ import (
 // accept.Approver approves, which makes the title `available` and binds its channel. No
 // `available` row or lineup is written directly. The running backend's reconcile then computes each
 // channel's schedule from the media server, like any approved channel.
-func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) error {
+func seedLibraryChannels(ctx context.Context, st proposalStore, picksPath string) error {
 	raw, err := os.ReadFile(picksPath)
 	if err != nil {
 		return fmt.Errorf("read picks: %w", err)
@@ -85,7 +85,7 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 }
 
 // existingAdmin is the first admin of an already-bootstrapped store, who owns the proposals.
-func existingAdmin(ctx context.Context, st store.Store) (string, error) {
+func existingAdmin(ctx context.Context, st store.UserStore) (string, error) {
 	users, err := st.ListUsers(ctx)
 	if err != nil {
 		return "", fmt.Errorf("list users: %w", err)

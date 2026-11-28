@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // The watermark self-check (#1512): does THIS host's GPU overlay draw the bug AND keep
@@ -112,7 +113,7 @@ func WatermarkCheck(ctx context.Context, ffmpeg string, host encode.HostProfile,
 		src, err := class.make(ctx, ffmpeg, dir)
 		if err != nil {
 			if class.optional {
-				details = append(details, class.name+": not checked ("+firstLine(err.Error())+")")
+				details = append(details, class.name+": not checked ("+FirstLine(err.Error())+")")
 				continue
 			}
 			return fail("%s source: %v", class.name, err)
@@ -147,7 +148,7 @@ func WatermarkCheck(ctx context.Context, ffmpeg string, host encode.HostProfile,
 
 type checkSource struct {
 	name     string
-	facts    MediaFormat
+	facts    media.MediaFormat
 	optional bool
 	make     func(ctx context.Context, ffmpeg, dir string) (string, error)
 }
@@ -158,7 +159,7 @@ type checkSource struct {
 func checkClasses(host encode.HostProfile) []checkSource {
 	classes := []checkSource{{
 		name: "sdr",
-		facts: MediaFormat{VideoCodec: "h264", Width: checkWidth, Height: checkHeight, FrameRate: checkFPS,
+		facts: media.MediaFormat{VideoCodec: "h264", Width: checkWidth, Height: checkHeight, FrameRate: checkFPS,
 			PixelFormat: "yuv420p", Container: "matroska,webm"},
 		make: func(ctx context.Context, ffmpeg, dir string) (string, error) {
 			return synthWatermarkClip(ctx, ffmpeg, filepath.Join(dir, "sdr.mkv"),
@@ -169,7 +170,7 @@ func checkClasses(host encode.HostProfile) []checkSource {
 	if host.TonemapOpenCL || host.Libplacebo || host.CPUTonemap {
 		classes = append(classes, checkSource{
 			name: "hdr", optional: true,
-			facts: MediaFormat{VideoCodec: "hevc", Width: checkWidth, Height: checkHeight, FrameRate: checkFPS,
+			facts: media.MediaFormat{VideoCodec: "hevc", Width: checkWidth, Height: checkHeight, FrameRate: checkFPS,
 				PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084", Container: "matroska,webm"},
 			make: func(ctx context.Context, ffmpeg, dir string) (string, error) {
 				return synthWatermarkClip(ctx, ffmpeg, filepath.Join(dir, "hdr.mkv"),
@@ -195,7 +196,7 @@ func synthWatermarkClip(ctx context.Context, ffmpeg, out string, args ...string)
 }
 
 // checkClass encodes src bug-off and bug-on through the production graph and compares them.
-func checkClass(ctx context.Context, ffmpeg string, host encode.HostProfile, facts MediaFormat, src string, wm *Watermark, target checkTarget, prefix string) (string, error) {
+func checkClass(ctx context.Context, ffmpeg string, host encode.HostProfile, facts media.MediaFormat, src string, wm *Watermark, target checkTarget, prefix string) (string, error) {
 	out := OutputProfile{Width: checkWidth, Height: checkHeight, FPS: checkFPS, Quality: outputQuality,
 		TargetKbps: outputTargetKbps, MaxKbps: outputMaxKbps, GOPSeconds: outputGOPSeconds, AudioKbps: 128}
 	// encode runs the graph over checkFrames and returns its wall time, which overlaySpeed compares.
@@ -214,7 +215,7 @@ func checkClass(ctx context.Context, ffmpeg string, host encode.HostProfile, fac
 		defer cancel()
 		start := time.Now()
 		if b, err := exec.CommandContext(ctx, ffmpeg, args...).CombinedOutput(); err != nil {
-			return 0, fmt.Errorf("encode: %w: %s", err, firstLine(string(bytes.TrimSpace(b))))
+			return 0, fmt.Errorf("encode: %w: %s", err, FirstLine(string(bytes.TrimSpace(b))))
 		}
 		return time.Since(start), nil
 	}
@@ -247,7 +248,7 @@ func checkClass(ctx context.Context, ffmpeg string, host encode.HostProfile, fac
 		return "", err
 	}
 	x, y := wm.position(facts, out)
-	bug := Rect{X: x, Y: y, W: wm.Width, H: wm.Height}
+	bug := media.Rect{X: x, Y: y, W: wm.Width, H: wm.Height}
 	luma := checkWidth * checkHeight
 	m := compareBugTo(offYUV[:luma], onYUV[:luma], checkWidth, bug, target.y)
 	switch {
@@ -339,7 +340,7 @@ func decodeFrame(ctx context.Context, ffmpeg, path string, n int) ([]byte, error
 	cmd.Stderr = &stderr
 	yuv, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("decode %s: %w: %s", filepath.Base(path), err, firstLine(stderr.String()))
+		return nil, fmt.Errorf("decode %s: %w: %s", filepath.Base(path), err, FirstLine(stderr.String()))
 	}
 	if len(yuv) != checkWidth*checkHeight*3/2 {
 		return nil, fmt.Errorf("decode %s: %d yuv420p bytes, want %dx%d", filepath.Base(path), len(yuv), checkWidth, checkHeight)
@@ -354,12 +355,12 @@ type bugMeasure struct {
 
 // compareBug measures the programme outside the bug (with a guard band for chroma and coding
 // bleed) and the bug's interior against the expected straight-alpha blend of limited-range white.
-func compareBug(off, on []byte, width int, bug Rect) bugMeasure {
+func compareBug(off, on []byte, width int, bug media.Rect) bugMeasure {
 	return compareBugTo(off, on, width, bug, checkWhite.y)
 }
 
 // compareBugTo is compareBug for a test bug of coded luma bugY.
-func compareBugTo(off, on []byte, width int, bug Rect, bugY float64) bugMeasure {
+func compareBugTo(off, on []byte, width int, bug media.Rect, bugY float64) bugMeasure {
 	const guard, inset = 8, 6
 	var m bugMeasure
 	var nOut, nIn float64
@@ -394,10 +395,10 @@ func compareBugTo(off, on []byte, width int, bug Rect, bugY float64) bugMeasure 
 // bugChroma checks the bug's colour in two decoded yuv420p frames: inside the bug, U and V are the
 // white bug's neutral 128 blended at the check alpha over the bug-off chroma. The luma assertion
 // cannot see a cast: stock overlay_opencl over NV12 got luma exact and pulled V toward 0 (#1595).
-func bugChroma(off, on []byte, bug Rect) error { return bugChromaOf(off, on, bug, checkWhite) }
+func bugChroma(off, on []byte, bug media.Rect) error { return bugChromaOf(off, on, bug, checkWhite) }
 
 // bugChromaOf is bugChroma for the target's U and V.
-func bugChromaOf(off, on []byte, bug Rect, target checkTarget) error {
+func bugChromaOf(off, on []byte, bug media.Rect, target checkTarget) error {
 	const inset = 4 // chroma samples in from the bug's edge, past the 2x2 alpha blending and coding bleed
 	cw, ch := checkWidth/2, checkHeight/2
 	for p, name := range []string{"U", "V"} {

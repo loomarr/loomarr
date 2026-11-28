@@ -15,9 +15,16 @@ import { LibraryTitlePage } from "./library-title-page";
 const mocks = vi.hoisted(() => ({ navigate: vi.fn(), back: vi.fn(), canGoBack: vi.fn(() => false) }));
 vi.mock("@tanstack/react-router", () => ({
   // The router's link as an anchor, so its address is what the test reads.
-  Link: ({ to, search, ...rest }: { to: string; search: Record<string, string> }) => (
-    <a {...rest} href={`${to}?${new URLSearchParams(search)}`} />
-  ),
+  Link: ({
+    to,
+    search,
+    params,
+    ...rest
+  }: {
+    to: string;
+    search?: Record<string, string>;
+    params?: { id: string };
+  }) => <a {...rest} href={`${to.replace("$id", params?.id ?? "")}?${new URLSearchParams(search)}`} />,
   useNavigate: () => mocks.navigate,
   useRouter: () => ({ history: { canGoBack: mocks.canGoBack, back: mocks.back } }),
 }));
@@ -44,7 +51,7 @@ const echo = {
       size: 1_000_000,
       ready: true,
       subtitles: [],
-      extra: false,
+      state: "plays" as const,
       streams: [],
       chapters: [],
     },
@@ -79,7 +86,63 @@ describe("LibraryTitlePage", () => {
     mocks.canGoBack.mockReset().mockReturnValue(false);
     server.use(
       getMeMockHandler(me()),
+      http.get("*/v1/channels", () => HttpResponse.json({ channels: [] })),
       http.get("*/v1/household", () => HttpResponse.json({ timeZone: "UTC" })),
+    );
+  });
+
+  it("makes a playable channel's row a link to its player, with its logo", async () => {
+    const channel = { id: "ch-1", name: "Nightfall", number: 12 };
+    const off = { id: "ch-2", name: "Daybreak", number: 13 };
+    server.use(
+      getGetLibraryItemMockHandler({
+        ...echo,
+        channels: [channel, off],
+        nextAirings: [
+          {
+            channel,
+            start: new Date(Date.now() - 60_000).toISOString(),
+            end: new Date(Date.now() + 3_600_000).toISOString(),
+            forecast: false,
+          },
+        ],
+      }),
+      http.get("*/v1/channels", () =>
+        HttpResponse.json({
+          channels: [
+            { ...channel, logo: "/logo.png", inAppPlayable: true },
+            { ...off, inAppPlayable: false },
+          ],
+        }),
+      ),
+    );
+    const { container } = renderPage();
+
+    const link = await screen.findByRole("link", { name: /Nightfall/ });
+    expect(link).toHaveAttribute("href", "/watch/ch-1?");
+    expect(link).toHaveTextContent("On now");
+    expect(container.querySelector('img[src="/logo.png"]')).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Daybreak/ })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["admin", 1],
+    ["member", 0],
+  ] as const)("offers an %s %i next step for a title on no channel", async (role, steps) => {
+    const meRead = vi.fn();
+    server.use(
+      getMeMockHandler(() => {
+        meRead();
+        return me({ role });
+      }),
+      getGetLibraryItemMockHandler(echo),
+    );
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Not on a channel yet" })).toBeInTheDocument();
+    await waitFor(() => expect(meRead).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryAllByRole("link", { name: "Add it to a collection" })).toHaveLength(steps),
     );
   });
 
@@ -308,7 +371,7 @@ describe("LibraryTitlePage", () => {
       size: 500_000,
       ready: true,
       subtitles: [],
-      extra: true,
+      state: "extra" as const,
       streams: [],
       chapters: [],
     };

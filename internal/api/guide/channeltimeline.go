@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
@@ -148,7 +148,7 @@ func (s *Handlers) channelTimeline(ctx context.Context, in *upcomingInput) (*tim
 
 	now := time.UnixMilli(out.Body.ServerNowMs)
 	bs, err := s.playoutGuide.BroadcastsBetween(
-		ctx, ch.ID, now.Add(-playout.DVRHorizon), now.Add(timelineWindow),
+		ctx, ch.ID, now.Add(-hls.DVRHorizon), now.Add(timelineWindow),
 	)
 	if err != nil {
 		return out, nil // a guide hiccup must not blank the player

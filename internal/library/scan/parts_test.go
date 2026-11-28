@@ -155,8 +155,8 @@ func TestAMovieInPartsPlaysEveryPart(t *testing.T) {
 		t.Errorf("name = %q, want the movie's, without a part mark", detail.Name)
 	}
 	for _, f := range detail.Files {
-		if f.Extra || f.Part == 0 {
-			t.Errorf("file %s: part %d extra=%v, want a playing part", f.Path, f.Part, f.Extra)
+		if f.State != librarystore.LibraryCopyPlays || f.Part == 0 {
+			t.Errorf("file %s: part %d %s, want a playing part", f.Path, f.Part, f.State)
 		}
 	}
 

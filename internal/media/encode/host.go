@@ -48,7 +48,7 @@ type HostProfile struct {
 	// means the VAAPI→OpenCL surface mapping works, which the 10-bit letterbox needs (#1673).
 	TonemapOpenCL bool `json:"tonemapOpencl,omitempty"`
 	// Libplacebo: libplacebo on its own Vulkan device works: the first choice for the curves only it
-	// has (playout.ToneCurve), otherwise the second GPU choice, and on every GPU family the only
+	// has (media.ToneCurve), otherwise the second GPU choice, and on every GPU family the only
 	// correct SDR→HDR10 conversion (4K HDR premium). Always through system memory.
 	Libplacebo bool `json:"libplacebo,omitempty"`
 	// CPUTonemap: the build has zscale + tonemap, the last-resort tone-map.
@@ -81,7 +81,7 @@ var (
 // HostFor is the host profile for the chosen encoder on this build. A GPU tone-mapper the build
 // carries but the host cannot run (no OpenCL ICD for this GPU, e.g. AMD or a missing runtime; no
 // Vulkan device) fails at device creation, before any output; the live ladder then demotes it and
-// retries with the next one, ending at the CPU tone-map (the packager's itemFaults, demoteTonemapper).
+// retries with the next one, ending at the CPU tone-map (the packager's itemFaults, playout.DemoteTonemapper).
 func HostFor(enc Encoder, cpuTonemap bool, gpu GPUFilters) HostProfile {
 	h := HostProfile{Encoder: EngineOf(enc), CPUTonemap: cpuTonemap}
 	switch h.Encoder {

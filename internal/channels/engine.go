@@ -936,25 +936,38 @@ func scheduledPrograms(slots []schedule.Slot, anchor, until time.Time) []timelin
 	return out
 }
 
-// recordScheduled writes the scheduled ledger (#1677): every programme the accepted cycle has
-// started by now, up to the instant it hands over at the rolling-window boundary. Each row is
-// stamped as known from the programme's start, so a window arranged later reads every programme
-// that started before it opened, however late the reconcile that records it runs. Idempotent, and
-// best-effort: a ledger write never fails a reconcile.
-func (e *Engine) recordScheduled(ctx context.Context, ch channelstore.Channel, now time.Time) {
-	if e.store == nil || len(ch.Desired) == 0 || ch.PlayoutAnchor.IsZero() {
-		return
+// scheduledToRecord is the scheduled ledger's rows for the accepted cycle (#1677): every programme
+// it has started by now, up to the instant it hands over at the rolling-window boundary. Pure: the
+// reconcile writes them only once its commit proves this cycle was still the accepted one.
+func scheduledToRecord(ch channelstore.Channel, now time.Time, window time.Duration, zone *time.Location) []channeldatastore.ScheduledAiring {
+	if len(ch.Desired) == 0 || ch.PlayoutAnchor.IsZero() {
+		return nil
 	}
 	until := now.Add(time.Nanosecond) // a programme starting at now has started
-	if window, zone := e.RollingWindow(ch.Policy, now); window > 0 {
+	if window > 0 {
 		if end := timeline.CarryOverEnd(ch.Desired, ch.PlayoutAnchor, schedule.NextWindowStart(ch.PlayoutAnchor, window, zone)); end.Before(until) {
 			until = end // past the hand-over the next window airs, not this cycle
 		}
 	}
-	for _, b := range scheduledPrograms(ch.Desired, ch.PlayoutAnchor, until) {
-		airing := channeldatastore.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start}
-		if err := e.store.RecordScheduledAirings(ctx, ch.ID, []channeldatastore.ScheduledAiring{airing}, b.Start); err != nil {
-			e.log.Warn("recency: scheduled airing not recorded", "channel", ch.ID, "item", b.LibraryItemID, "err", err)
+	programs := scheduledPrograms(ch.Desired, ch.PlayoutAnchor, until)
+	rows := make([]channeldatastore.ScheduledAiring, 0, len(programs))
+	for _, b := range programs {
+		rows = append(rows, channeldatastore.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start})
+	}
+	return rows
+}
+
+// recordScheduled writes the scheduled ledger's rows. Each row is stamped as known from the
+// programme's start, so a window arranged later reads every programme that started before it
+// opened, however late the reconcile that records it runs. Idempotent, and best-effort: a ledger
+// write never fails a reconcile.
+func (e *Engine) recordScheduled(ctx context.Context, channelID string, rows []channeldatastore.ScheduledAiring) {
+	if e.store == nil {
+		return
+	}
+	for _, airing := range rows {
+		if err := e.store.RecordScheduledAirings(ctx, channelID, []channeldatastore.ScheduledAiring{airing}, airing.AiredAt); err != nil {
+			e.log.Warn("recency: scheduled airing not recorded", "channel", channelID, "item", airing.LibraryItemID, "err", err)
 			return
 		}
 	}

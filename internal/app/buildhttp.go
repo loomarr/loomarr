@@ -14,7 +14,6 @@ import (
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -22,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 )
@@ -80,7 +80,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 			return titlesearch.LibraryOwnership{Titles: st}
 		})
 		proposalOutlook = outlook.New(outlook.Config{
-			Titles: st, Library: playoutresolve.ItemMetadata{Facts: st}, Episodes: channels.LibraryEpisodeResolver(st),
+			Titles: st, Library: resolve.ItemMetadata{Facts: st}, Episodes: channels.LibraryEpisodeResolver(st),
 			Planner: chBinder, Preview: preview, Additions: additionResolver, Holidays: deps.foundation.holidays,
 		})
 	}

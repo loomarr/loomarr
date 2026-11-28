@@ -7339,7 +7339,7 @@ components:
       additionalProperties: false
       properties:
         extraCopies:
-          description: A movie's files that never play, beyond the copy of each edition (or each part) that does. Admins only
+          description: "A movie's extra copies: files that never play because another of its files plays in their place (state extra). Admins only"
           format: int64
           type: integer
         files:
@@ -7368,7 +7368,7 @@ components:
           description: Waiting in Needs you. Admins only; absent otherwise
           type: boolean
         unplayable:
-          description: "Files that can't be played: their details couldn't be read. Admins only"
+          description: "Files that can't be played: their details couldn't be read and no other copy plays in their place. Admins only"
           format: int64
           type: integer
         year:
@@ -7504,9 +7504,6 @@ components:
         edition:
           description: The labelled version of the title it is, such as Extended; absent for the default
           type: string
-        extra:
-          description: A copy that never plays, because another of the title's files does
-          type: boolean
         lengthMillis:
           description: How long it plays, measured from the file
           format: int64
@@ -7528,6 +7525,15 @@ components:
           description: Bytes
           format: int64
           type: integer
+        state:
+          description: "What the file is to the title: the copy that plays; an extra copy that never plays because another of its files plays in its place; one that can't be played; one whose details are being read; or a copy that doesn't play while the copy in its place is missing or can't be played"
+          enum:
+            - plays
+            - extra
+            - unplayable
+            - reading
+            - waiting
+          type: string
         streams:
           description: Every track in order, the file's own then the files beside it; empty while unread
           items:
@@ -7543,7 +7549,7 @@ components:
         - size
         - ready
         - subtitles
-        - extra
+        - state
         - streams
         - chapters
       type: object

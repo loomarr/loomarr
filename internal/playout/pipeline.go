@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // The transcode pipeline builder (#1512).
@@ -52,10 +54,10 @@ type OutputProfile struct {
 	GOPSeconds int
 	AudioKbps  int
 	// ToneCurve is the HDR→SDR curve (`playout.tone_curve`, pinned per stream); empty is the default.
-	ToneCurve ToneCurve
+	ToneCurve media.ToneCurve
 	// SoftwareRung is the software family's degradation rung for this item (softwareladder.go). It
 	// changes how the item is decoded, never the output; GPU families ignore it.
-	SoftwareRung SoftwareRung
+	SoftwareRung admission.SoftwareRung
 }
 
 // Maintainer's output picture setting (#1512, 2026-09-26). The target and cap are the 1080p budget;
@@ -90,7 +92,7 @@ func outputRate(at1080p, floor, width, height int) int {
 	return max(int(math.Round(float64(at1080p)*share/100))*100, floor)
 }
 
-func (o OutputProfile) gop() int {
+func (o OutputProfile) GOP() int {
 	s := o.GOPSeconds
 	if s <= 0 {
 		s = outputGOPSeconds
@@ -176,24 +178,24 @@ const conformHDRMetadata = "sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA
 
 // Build returns the pipeline for one source on one host, or ErrRefused. It never draws a watermark:
 // breaks are built with it.
-func Build(host encode.HostProfile, src MediaFormat, out OutputProfile) (Pipeline, error) {
+func Build(host encode.HostProfile, src media.MediaFormat, out OutputProfile) (Pipeline, error) {
 	return BuildItem(host, src, out, nil)
 }
 
 // BuildItem is Build for a programme item that carries the channel's bug when wm is non-nil. A host
 // that cannot draw it on the GPU gets the bug-free pipeline with the reason in Fallbacks; the bug
 // never refuses a programme.
-func BuildItem(host encode.HostProfile, src MediaFormat, out OutputProfile, wm *Watermark) (Pipeline, error) {
+func BuildItem(host encode.HostProfile, src media.MediaFormat, out OutputProfile, wm *Watermark) (Pipeline, error) {
 	return BuildItemBurning(host, src, out, wm, nil)
 }
 
 // BuildItemBurning is BuildItem that also burns in an image subtitle track when burn is non-nil
 // (burnin.go). Like the bug, a host that cannot blend it on the GPU drops it, with the reason in
 // Fallbacks; it never refuses a programme.
-func BuildItemBurning(host encode.HostProfile, src MediaFormat, out OutputProfile, wm *Watermark, burn *SubtitleBurn) (Pipeline, error) {
+func BuildItemBurning(host encode.HostProfile, src media.MediaFormat, out OutputProfile, wm *Watermark, burn *SubtitleBurn) (Pipeline, error) {
 	b := builder{host: host, src: src, out: out, tonemap: src.HDR() && !out.HDR, convert: out.HDR && !src.PQ(), wm: wm, burn: burn}
 	b.p.Family = host.Family
-	if out.premium() {
+	if out.Premium() {
 		switch {
 		case host.Family == encode.FamilySoftware || host.Family == encode.FamilyGeneric:
 			return Pipeline{}, fmt.Errorf("%w: a premium format needs a GPU family (%s)", ErrRefused, host.Family)
@@ -292,7 +294,7 @@ func (p Pipeline) WithGain(gainDB float64) Pipeline {
 
 type builder struct {
 	host encode.HostProfile
-	src  MediaFormat
+	src  media.MediaFormat
 	out  OutputProfile
 	// tonemap: an HDR source into an SDR output. convert: an SDR or HLG source into an HDR10 output.
 	tonemap, convert bool
@@ -371,7 +373,7 @@ func (b *builder) tail() string {
 	return fmt.Sprintf("fps=%d,%s,%s", b.out.FPS, conformSAR, colour)
 }
 
-func (b *builder) curve() ToneCurve { return ParseToneCurve(string(b.out.ToneCurve)) }
+func (b *builder) curve() media.ToneCurve { return media.ParseToneCurve(string(b.out.ToneCurve)) }
 
 // gpuTonemapper is the GPU tone-mapper for the curve on this host: the curve's preferred one, then
 // the other one that has the curve, or "" when neither does (the CPU tone-map follows). The live
@@ -412,7 +414,7 @@ func (b *builder) cpuChain() string {
 	if !exact {
 		b.fallback("tonemap", "the CPU tone-mapper has no "+string(b.curve())+"; "+string(c)+" instead")
 	}
-	return hdrToSDR(c)
+	return HDRToSDR(c)
 }
 
 // cpuTonemap is the declared tone-map fallback for a GPU family: download the already-downscaled
@@ -797,14 +799,14 @@ func videoEncoder(host encode.HostProfile, out OutputProfile) []string {
 	return encode.VideoArgs(host, encode.Video{
 		HEVC: out.HEVC, HDR: out.HDR,
 		Quality: out.Quality, TargetKbps: out.TargetKbps, MaxKbps: out.MaxKbps,
-		GOPFrames: out.gop(),
+		GOPFrames: out.GOP(),
 	})
 }
 
 // missingFacts lists the stream facts minimal probing depends on that the source does not supply.
 // The container must declare its streams in a header (Matroska, MP4/MOV): MPEG-TS, AVI and other
 // packet-discovered containers need ffmpeg's probe to find their streams at all.
-func missingFacts(f MediaFormat) []string {
+func missingFacts(f media.MediaFormat) []string {
 	var missing []string
 	add := func(ok bool, name string) {
 		if !ok {

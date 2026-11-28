@@ -17,7 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
-	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -28,9 +28,9 @@ type seekCloser struct{ *bytes.Reader }
 
 func (seekCloser) Close() error { return nil }
 
-func (pollPlayout) OpenAsset(context.Context, string, string, bool) (playout.Asset, bool, error) {
+func (pollPlayout) OpenAsset(context.Context, string, string, bool) (hls.Asset, bool, error) {
 	body := "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\nseg-1.ts\n"
-	return playout.Asset{Content: seekCloser{bytes.NewReader([]byte(body))}, Modified: time.Unix(1, 0), Playlist: true}, true, nil
+	return hls.Asset{Content: seekCloser{bytes.NewReader([]byte(body))}, Modified: time.Unix(1, 0), Playlist: true}, true, nil
 }
 
 type testClock struct {

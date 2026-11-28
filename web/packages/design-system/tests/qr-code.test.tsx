@@ -1,8 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-
+import { withoutRuntimeMarker } from "../atomic-css";
 import { LoomarrProvider, QrCode } from "../index";
-import { withoutRuntimeMarker } from "./support/atomic-css";
 
 describe("Loomarr QR code", () => {
   it("renders an accessible, high-contrast machine-readable pairing payload", () => {

@@ -1,0 +1,34 @@
+{
+  "name": "@loomarr/test-support",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The shared harness for tests of Loomarr's universal packages.",
+  "exports": {
+    ".": "./index.ts",
+    "./css": "./css.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@loomarr/design-system": "workspace:*",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8"
+  },
+  "peerDependencies": {
+    "react": ">=19 <20",
+    "react-dom": ">=19 <20"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "jsdom": "30.0.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "npm:react-native-tvos@0.88.1-0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

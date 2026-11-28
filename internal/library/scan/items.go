@@ -61,37 +61,15 @@ type ItemFile struct {
 	// chapter marks in order.
 	Streams  []librarystore.LibraryStream
 	Chapters []librarystore.LibraryChapter
-	// Extra is a copy that never plays, because another of the title's listed files plays in its
-	// place (decisions 37, 54); see extraCopy.
-	Extra bool
+	// State is what the file is to the title, from the store's one rule
+	// (librarystore.LibraryItemCopies): the copy that plays, an extra copy, one that can't be
+	// played, one being read, or one waiting for the walk to settle (decisions 37, 54).
+	State librarystore.LibraryCopyState
+	// InPlaceOf is the listed files that play in an extra copy's place; nil for any other state.
+	InPlaceOf []string
 	// sourced is true when it has a source row; plays is that row's plays.
 	sourced, plays bool
 }
-
-// playsInPlaceOf is the listed files that play in files[i]'s place: each other file with a source
-// row that plays, in the same edition and either the same part or as a whole file (an edition
-// with a whole file plays it, not its parts). It is none when files[i] plays or has no source row
-// yet. The source rows follow the inventory and the list follows the walk, and the two disagree
-// while a removal waits (a pass that could not hear from an arr marks no origin unseen) and while
-// a new file waits for its first write. So a copy whose playing file has gone from the list has
-// none, and a file with no source row is neither removable nor in another's place.
-func playsInPlaceOf(files []ItemFile, i int) []ItemFile {
-	f := files[i]
-	if !f.sourced || f.plays {
-		return nil
-	}
-	var out []ItemFile
-	for j, g := range files {
-		if j != i && g.sourced && g.plays && editionKey(g.Edition) == editionKey(f.Edition) && (g.Part == f.Part || g.Part == 0) {
-			out = append(out, g)
-		}
-	}
-	return out
-}
-
-// extraCopy is whether files[i] is an extra copy: a listed file plays in its place, so a title's
-// last file is never offered for removal.
-func extraCopy(files []ItemFile, i int) bool { return len(playsInPlaceOf(files, i)) > 0 }
 
 // PlayingCopy is the file of d that plays when the title airs: of the files whose source row
 // plays, the default edition's before a labelled one, then a whole file or its first part, then
@@ -268,12 +246,21 @@ func (l *Library) Item(ctx context.Context, id string, member bool) (ItemDetail,
 		return ItemDetail{}, err
 	}
 	if summary.Kind != string(kindSeries) {
+		copies, err := l.ItemStore.LibraryItemCopies(ctx, id)
+		if err != nil {
+			return ItemDetail{}, err
+		}
 		for _, f := range files {
 			src, ok := sourceOf(page.Sources, f.Path)
-			detail.Files = append(detail.Files, itemFile(f, src, ok))
-		}
-		for i := range detail.Files {
-			detail.Files[i].Extra = extraCopy(detail.Files, i)
+			out := itemFile(f, src, ok)
+			// A file the copies' read did not see yet (written between the two reads) is being read.
+			out.State = librarystore.LibraryCopyReading
+			for _, c := range copies {
+				if c.Path == f.Path {
+					out.State, out.InPlaceOf = c.State, c.InPlaceOf
+				}
+			}
+			detail.Files = append(detail.Files, out)
 		}
 		return detail, nil
 	}

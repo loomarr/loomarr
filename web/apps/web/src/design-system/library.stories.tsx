@@ -166,6 +166,9 @@ const Loading: Story = {
   args: { admin: admin({ needsYou: 6 }), counts: undefined, loading: true, titles: [] },
 };
 
+// A library with no artwork imported: each poster draws its colour and monogram over its caption.
+const NoArtwork: Story = { args: { titles: TITLES.map(({ poster, ...title }) => title) } };
+
 // Recently added first: the order the mock's home videos are shown in.
 const RecentlyAdded: Story = { args: { sort: "recent", titles: [...TITLES].reverse() } };
 
@@ -220,7 +223,8 @@ const filtering: NonNullable<LibraryShelfProps["filtering"]> = {
 };
 
 const openFilters: Story["play"] = async ({ canvas, userEvent }) => {
-  await userEvent.click(canvas.getByRole("button", { name: /^More filters/ }));
+  // More filters from a tablet up; a phone's one Filters control, which opens the sheet.
+  await userEvent.click(canvas.getByRole("button", { name: /^(More filters|Filters)/ }));
 };
 
 // The disclosure open, with nothing chosen yet.
@@ -242,8 +246,9 @@ const severalFilters = {
 
 const SeveralFilters: Story = { args: { genres: GENRES, genre: "Drama", filtering: severalFilters } };
 
-// The phone: the disclosure stacked, with what is on under it.
+// The phone: the sheet open over the one line of search and Filters, with what is on under it.
 const FiltersPhone: Story = {
+  globals: { viewport: { value: "mobile2" } },
   tags: ["route"],
   args: { genres: GENRES, filtering: severalFilters },
   play: openFilters,
@@ -540,7 +545,7 @@ const Movie: Story = {
             picture: { width: 3840, height: 2160, hdr: true },
             audioChannels: 6,
             subtitles: [{ language: "en" }, { language: "es" }],
-            extra: false,
+            state: "plays",
           },
           {
             path: "/media/movies/Paper Kites (1996)/Paper Kites (1996) DVD.mkv",
@@ -549,7 +554,7 @@ const Movie: Story = {
             picture: { width: 720, height: 480, hdr: false },
             audioChannels: 2,
             subtitles: [],
-            extra: true,
+            state: "extra",
           },
         ],
         unplayable: 0,
@@ -685,6 +690,42 @@ const MemberSeries: Story = {
   render: () => <LibraryTitle onBack={() => {}} title={{ ...memberSeries, backdrop: art("#3b4a63") }} />,
 };
 
+// On air now: the channel's row, with its logo, is the link to watching it.
+const MemberOnNow: Story = {
+  render: () => {
+    const lateShow = {
+      id: "90000972",
+      name: "Late Show",
+      number: 7,
+      logo: <div style={{ background: "#c8862a", height: 32, width: 32 }} />,
+    };
+    return (
+      <LibraryTitle
+        onBack={() => {}}
+        title={{
+          ...memberSeries,
+          backdrop: art("#3b4a63"),
+          channels: [lateShow, { id: "90000973", name: "Sunday Stories", number: 12 }],
+          airings: [{ ...memberSeries.airings[0]!, channel: lateShow, when: "On now", forecast: false }],
+        }}
+        // The row is drawn into the link in place of its children.
+        watchLink={(id) => (id === lateShow.id ? <a href={`/watch/${id}`}>Watch</a> : undefined)}
+      />
+    );
+  },
+};
+
+// An admin's title on no channel: one next step, to Collections.
+const NotOnAChannel: Story = {
+  render: () => (
+    <LibraryTitle
+      fix={{ ...titleFixes, collectionsLink: <a href="/library/collections">Collections</a> }}
+      onBack={() => {}}
+      title={{ ...memberSeries, channels: [], airings: [] }}
+    />
+  ),
+};
+
 // A home video: no catalog details and on no channel.
 const homeVideoTitle = {
   kind: "movie" as const,
@@ -706,6 +747,11 @@ const HomeVideo: Story = {
 
 const MemberHomeVideo: Story = {
   render: () => <LibraryTitle onBack={() => {}} title={homeVideoTitle} />,
+};
+
+// No backdrop: no band, with the actions and the title block on the page.
+const NoBackdrop: Story = {
+  render: () => <LibraryTitle fix={titleFixes} onBack={() => {}} title={memberSeries} />,
 };
 
 const NotInLibrary: Story = {
@@ -939,7 +985,7 @@ const episodeFile = {
   picture: { width: 1920, height: 1080, hdr: false },
   audioChannels: 6,
   subtitles: [{ language: "en" }],
-  extra: false,
+  state: "plays" as const,
   container: "matroska,webm",
   bitrate: 9_800_000,
   streams: [
@@ -1081,7 +1127,7 @@ const ExtraCopyRemoved: Story = {
               path: "/media/movies/Paper Kites (1996)/Paper Kites DVD.mkv",
               size: 4_300_000_000,
               subtitles: [],
-              extra: true,
+              state: "extra",
             },
           ],
           unplayable: 0,
@@ -1146,6 +1192,7 @@ export {
   MemberHomeVideo,
   MemberMovie,
   MemberNoMatch,
+  MemberOnNow,
   MemberSeries,
   Movie,
   MovieFixOpen,
@@ -1155,9 +1202,12 @@ export {
   NeedsPhone,
   NeedsYou,
   NewCollection,
+  NoArtwork,
+  NoBackdrop,
   NoMatch,
   NothingNeedsYou,
   NotInLibrary,
+  NotOnAChannel,
   Paused,
   PersonChip,
   RecentlyAdded,

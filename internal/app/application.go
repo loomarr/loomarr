@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 )
 
 var ErrApplicationQuiescing = errors.New("application generation is quiescing")
@@ -52,7 +52,7 @@ type Application struct {
 	handler         http.Handler
 	log             *slog.Logger
 	lifecycle       *generationLifecycle
-	playoutResolver *playoutresolve.Resolver
+	playoutResolver *resolve.Resolver
 	serverPublicURL func() string
 }
 
@@ -60,8 +60,8 @@ type Application struct {
 // work, Build unwinds that partial generation before returning the construction error.
 func Build(parent context.Context, st store.Store, log *slog.Logger, ov Overrides) (*Application, error) {
 	lifecycle := newGenerationLifecycle(parent)
-	var resolver *playoutresolve.Resolver
-	handler, generationLog, serverPublicURL, err := buildHandler(lifecycle.ctx, records.Extend(st), log, ov, lifecycle, func(built *playoutresolve.Resolver) {
+	var resolver *resolve.Resolver
+	handler, generationLog, serverPublicURL, err := buildHandler(lifecycle.ctx, records.Extend(st), log, ov, lifecycle, func(built *resolve.Resolver) {
 		resolver = built
 	})
 	if err != nil {

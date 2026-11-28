@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
@@ -78,6 +79,9 @@ type scheduleInputs struct {
 	Settings        scheduleSettings
 	TurnAnchor      time.Time // the anchor the next window starts from; the accepted anchor until it turns
 	Turned          bool      // the accepted window has ended and a new one starts at TurnAnchor
+	// Scheduled is the ledger rows the accepted cycle aired, watched or not (#1677); reconcile
+	// only. The commit writes them once its CAS proves this cycle was still the accepted one.
+	Scheduled []channeldatastore.ScheduledAiring
 }
 
 // assemble builds a channel's arrangement inputs at `at` from one settings snapshot. Reconcile
@@ -106,7 +110,7 @@ func (e *Engine) assemble(ctx context.Context, ch channelstore.Channel, at time.
 		if mode == assembleReconcile {
 			window, zone := s.rollingWindow(ch.Policy, at)
 			d.WindowOpened, in.TurnAnchor, in.Turned = timeline.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, at)
-			e.recordScheduled(ctx, ch, at) // #1677: what the accepted cycle aired, watched or not
+			in.Scheduled = scheduledToRecord(ch, at, window, zone) // #1677: what the accepted cycle aired
 		}
 		accepted = ch.Desired // #1677: the accepted cycle's programmes count as aired
 	}

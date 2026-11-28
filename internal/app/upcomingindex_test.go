@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 )
 
-type fakeUpcomingGuide []playoutresolve.UpcomingProgramme
+type fakeUpcomingGuide []resolve.UpcomingProgramme
 
-func (f fakeUpcomingGuide) UpcomingProgrammes(context.Context, string, time.Time, time.Time) ([]playoutresolve.UpcomingProgramme, error) {
+func (f fakeUpcomingGuide) UpcomingProgrammes(context.Context, string, time.Time, time.Time) ([]resolve.UpcomingProgramme, error) {
 	return f, nil
 }
 

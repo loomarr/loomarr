@@ -6,6 +6,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/hls"
 )
 
 type fixedPlayoutCapability struct{ capability playout.Capacity }
@@ -14,9 +16,9 @@ func (f fixedPlayoutCapability) Capability() playout.Capacity { return f.capabil
 
 type idlePlayoutObserver struct{ fixedPlayoutCapability }
 
-func (idlePlayoutObserver) Stats(time.Time) []playout.SessionStat { return nil }
-func (idlePlayoutObserver) Capacity() int                         { return 0 }
-func (idlePlayoutObserver) Budget() playout.BudgetSnapshot        { return playout.BudgetSnapshot{} }
+func (idlePlayoutObserver) Stats(time.Time) []hls.SessionStat { return nil }
+func (idlePlayoutObserver) Capacity() int                     { return 0 }
+func (idlePlayoutObserver) Budget() admission.BudgetSnapshot  { return admission.BudgetSnapshot{} }
 
 // An idle host has no session row to infer its encoder from. Its retained, measured capability is
 // still operational truth: VAAPI/QSV is hardware even when NVIDIA-only VRAM telemetry is unknown.
@@ -104,11 +106,11 @@ func TestVerdict_StalledHardwarePointsAtGPU(t *testing.T) {
 
 // channelHealthFrom maps a raw SessionStat to a row, deriving mode from the encoder.
 func TestChannelHealthFrom_ModeFromEncoder(t *testing.T) {
-	copyRow := channelHealthFrom(playout.SessionStat{ChannelID: "c", Encoder: "copy", Speed: 0})
+	copyRow := channelHealthFrom(hls.SessionStat{ChannelID: "c", Encoder: "copy", Speed: 0})
 	if copyRow.Mode != "direct-play" || copyRow.Health != HealthOK {
 		t.Errorf("copy encoder → direct-play + ok, got mode=%q health=%q", copyRow.Mode, copyRow.Health)
 	}
-	txRow := channelHealthFrom(playout.SessionStat{ChannelID: "c", Encoder: "h264_vulkan", Hardware: true, Speed: 2.0})
+	txRow := channelHealthFrom(hls.SessionStat{ChannelID: "c", Encoder: "h264_vulkan", Hardware: true, Speed: 2.0})
 	if txRow.Mode != "transcode" || txRow.Health != HealthOK {
 		t.Errorf("hardware encoder at 2× → transcode + ok, got mode=%q health=%q", txRow.Mode, txRow.Health)
 	}

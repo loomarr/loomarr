@@ -5,7 +5,7 @@ import type { LibraryReadyTitle } from "../library-settings.type";
 
 // The latest few titles the import found (decision 29, option A), evolving with the scan with no
 // words about it: a pulsing loading tile while its place waits; the title, faded, under its name once
-// the walk writes it (its poster when its folder has one, else a plain tile); the title in full once
+// the walk writes it (its poster when its folder has one, else its stand-in); the title in full once
 // its file is read and it is ready; and its poster arriving when its details are looked up. The row
 // keeps its five places from the start, so nothing under it moves.
 const READY_SO_FAR = 5;
@@ -13,8 +13,7 @@ const READY_SO_FAR = 5;
 const Slot = ({ title }: { title?: LibraryReadyTitle }) => (
   <Stack aria-hidden={title ? undefined : true} width={64}>
     {title ? (
-      // The caption names it, so the tile itself sets no name.
-      <LibraryPoster art={title.poster} dim={!title.ready} name="" />
+      <LibraryPoster art={title.poster} dim={!title.ready} id={title.id} name={title.name} small />
     ) : (
       <Skeleton height={96} shape="media" width={64} />
     )}

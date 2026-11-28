@@ -56,6 +56,8 @@ const Letter = ({
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={() => onSelect(letter)}
+      // The amber border below is the focus look; forced colours turn the transparent outline visible.
+      style={{ outlineColor: "transparent", outlineStyle: "solid", outlineWidth: focus.focused ? 2 : 0 }}
     >
       <View
         alignItems="center"

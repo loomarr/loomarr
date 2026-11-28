@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 
 import { LoomarrProvider } from "@loomarr/design-system";
+import { declarationsOfTree } from "@loomarr/test-support/css";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
-
 import { OnScreenLogoSection, type OnScreenLogoSectionProps } from "../index";
-import { declarationsOfTree } from "./support/atomic-css";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

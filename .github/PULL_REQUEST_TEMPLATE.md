@@ -6,7 +6,7 @@
 
 ## Checklist
 
-- [ ] `make verify BASE=origin/main` passes (and any specialized gate this PR touches)
+- [ ] Focused tests pass for each touched package and surface (and any specialized gate this PR touches)
 - [ ] Docs updated **first** if behavior deviates from `docs/design.md` (doc-first rule)
 - [ ] No new dependency, or one added with a §14 rationale in the same PR
 - [ ] Generated files regenerated, not hand-edited (`make openapi` / orval / migrations forward-only)

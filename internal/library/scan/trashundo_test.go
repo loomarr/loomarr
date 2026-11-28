@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Undo of Remove extra copy: the file goes back where it was and the next read lists it as the
@@ -111,8 +112,8 @@ func TestRestoreExtraCopyPutsItBack(t *testing.T) {
 		t.Fatalf("title after restore = %+v, %v; want both files", d.Files, err)
 	}
 	for _, f := range d.Files {
-		if f.Extra != (f.Path == soft) {
-			t.Errorf("%s extra = %v", f.Path, f.Extra)
+		if (f.State == librarystore.LibraryCopyExtra) != (f.Path == soft) {
+			t.Errorf("%s state = %s", f.Path, f.State)
 		}
 	}
 	if err := lib.RestoreExtraCopy(ctx, id, undo); !errors.Is(err, ErrTrashGone) {

@@ -14,7 +14,7 @@ The decisions behind the beta.8 packager are records 0031–0033 and 0035–0041
 
 A channel encodes only while someone watches it. Nothing is encoded ahead of time, and with no
 viewer no encoder process runs. Each channel and format has one long-lived Go **packager**
-(`PackagerHLS` in `internal/playout`, the timeline core in `internal/playout/packager`) that owns the
+(`PackagerHLS` in `internal/playout/hls`, the timeline core in `internal/playout/packager`) that owns the
 channel's segment timeline. It starts on the first tune and stops `DefaultGrace` (30 s) after the last
 viewer leaves. There is no boot warm-up, and the channel packager is the only live path.
 
@@ -22,6 +22,9 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
 rectangle and the HDR tone curve) is the leaf package `internal/playout/media`, so a package can
 share it without importing the engine. The resource budget, the host's CPU and memory readings, the
 software rungs and their speed monitor are `internal/playout/admission`, which imports only `media`.
+The host's class-cost and session-limit probe is `internal/playout/classprobe`, which builds its
+measurements with the engine's pipeline. The channel packager, the origin that serves it and the
+guide stills are `internal/playout/hls`; the engine does not import it.
 
 **The pipeline.**
 
@@ -456,7 +459,7 @@ durably off-air requires persisted projection lifecycle state and retry, not a o
 
 ## Admission
 
-One ledger, `playout.ResourceBudget`, admits every stream against what this host **measured**, not a
+One ledger, `admission.ResourceBudget`, admits every stream against what this host **measured**, not a
 static number. A packager takes one lease when it starts, and a stream is admitted against
 `min(GPU throughput at 1.2×, CPU allowance ÷ measured CPU per stream, encoder sessions)`, per stream
 class and ladder rung. The classes are 8-bit SDR up to 1080p, 10-bit up to 1080p, and 4K or HDR with
@@ -556,7 +559,7 @@ draws them over the picture:
   programme. The answer is the text tracks of the programme on air at `from` (from the Library's
   `library_streams`, so no probe at request time) and the chosen track's cues on the channel's wall
   clock from `from` to `to` (at most ten minutes). The cues are placed by walking the accepted cycle
-  the encoder airs (`internal/app/playoutresolve/subtitles.go`): a programme part airs its media from
+  the encoder airs (`internal/playout/resolve/subtitles.go`): a programme part airs its media from
   its source offset, a break has none, and a cue cut by a break never airs.
 - A track is chosen by **key** (the language, then `-sdh` and `-forced`), so a viewer's remembered
   choice picks each programme's matching track; a programme without that key plays the language's
@@ -593,7 +596,7 @@ draws them over the picture:
     (measured ~0.005 cores on the GeForce, ~0.009 on the household Arc). Seeking a sparse stream
     with `-ss` loses the still already on screen, so the list starts at the seek instead.
   - *Limits:* the first airing of a title airs without them while its track is prepared
-    (`internal/app/playoutresolve/subtitleburn.go`; the next programme's track is queued as the
+    (`internal/playout/resolve/subtitleburn.go`; the next programme's track is queued as the
     current one starts, and a track that fails is left alone for an hour); prepared tracks are kept
     for the 48 most recently aired. PGS only: VOBSUB is dropped like any track a host cannot draw.
     No HDR10 output (the overlays take 8-bit frames).

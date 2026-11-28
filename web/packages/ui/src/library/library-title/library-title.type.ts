@@ -15,8 +15,12 @@ interface LibraryTitleFile {
   audioChannels?: number;
   /** Each subtitle stream; a language is an ISO 639 code, absent when the file doesn't say. */
   subtitles: readonly { language?: string }[];
-  /** A copy that never plays, because another of the title's files does. */
-  extra: boolean;
+  /**
+   * What the file is to the title: the copy that plays, an extra copy that never plays because
+   * another of its files plays in its place, one that can't be played, one being read, or a copy
+   * waiting while the copy in its place is missing or can't be played.
+   */
+  state: "plays" | "extra" | "unplayable" | "reading" | "waiting";
   /** Which part of a movie split over several files it is, from 1; absent for a whole file. */
   part?: number;
   /** The format its header names, such as matroska,webm. */
@@ -155,6 +159,8 @@ interface LibraryTitleChannel {
   id: string;
   name: string;
   number: number;
+  /** The channel's logo, drawn by the app; absent draws its monogram. */
+  logo?: ReactNode;
 }
 
 /**
@@ -177,6 +183,11 @@ interface LibraryTitleProps {
   /** Makes each credit with a personId a link; absent leaves every name as text. */
   personLink?: LibraryPersonLink;
   /**
+   * The app's own link element to a channel's player, which the channel's row is drawn on. Absent,
+   * or answering undefined for a channel nobody can watch, leaves the row as text.
+   */
+  watchLink?: (channelId: string) => ReactElement<Record<string, unknown>> | undefined;
+  /**
    * What an admin does about the title. Absent for a member, who reads the page only: no Update
    * details, Check files again or Wrong title?, no file cards and no Technical details, only the
    * one technical line.
@@ -194,6 +205,8 @@ interface LibraryTitleFix {
   onEpisodeFiles?: (episodeId: string) => Promise<readonly LibraryTitleFile[]>;
   /** Changes each time the title is read again, so an open episode's file is read again too. */
   episodeFilesAt?: number;
+  /** The app's own link element to Collections, offered for a title that is on no channel. */
+  collectionsLink?: ReactElement<Record<string, unknown>>;
   /** Opens the title's page in the app that decides; absent when it has none. */
   onOpenApp?: () => void;
   /** Wrong title? when the household's answer, or nothing, decides: searches for the title. */

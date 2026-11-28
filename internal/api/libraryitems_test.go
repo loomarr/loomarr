@@ -34,7 +34,7 @@ func TestLibraryExtraCopyUndo(t *testing.T) {
 			t.Fatal(err)
 		}
 		files = append(files, librarystore.LibraryFile{Path: p, Root: root, Size: 5, ModifiedNs: 1, Kind: "movie",
-			Identity: "digest", Header: librarystore.LibraryHeaderFailed, SeenAt: at, ItemID: "90000001"})
+			Identity: "digest", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: "90000001"})
 	}
 	if err := h.Store.SaveLibraryFiles(ctx, files); err != nil {
 		t.Fatal(err)
@@ -564,11 +564,15 @@ func TestLibraryItemMatchAndActions(t *testing.T) {
 		return librarystore.LibraryFile{Path: path, Root: "/media", Size: 7, ModifiedNs: 1, Kind: "movie", Identity: "digest",
 			Header: librarystore.LibraryHeaderFailed, SeenAt: at, ItemID: item, SeriesID: series}
 	}
+	// Delta's playing copy reads, so its DVD copy is an extra: a copy that can't be read never
+	// plays in another's place.
+	delta := file("/media/delta.mkv", "90000004", "")
+	delta.Header = librarystore.LibraryHeaderRead
 	if err := h.Store.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("/media/alpha/e1.mkv", "90000011", "90000001"),
 		file("/media/bravo.mkv", "90000002", ""),
 		file("/media/charlie.mkv", "90000003", ""),
-		file("/media/delta.mkv", "90000004", ""), file("/media/delta-dvd.mkv", "90000004", ""),
+		delta, file("/media/delta-dvd.mkv", "90000004", ""),
 	}); err != nil {
 		t.Fatal(err)
 	}

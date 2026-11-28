@@ -43,8 +43,8 @@ func TestRemoveExtraCopyMovesItToTheTrash(t *testing.T) {
 		t.Fatalf("title = %+v, %v; want one title with both files", d.Files, err)
 	}
 	for _, f := range d.Files {
-		if f.Extra != (f.Path == soft) {
-			t.Errorf("%s extra = %v", f.Path, f.Extra)
+		if (f.State == librarystore.LibraryCopyExtra) != (f.Path == soft) {
+			t.Errorf("%s state = %s", f.Path, f.State)
 		}
 	}
 
@@ -67,7 +67,7 @@ func TestRemoveExtraCopyMovesItToTheTrash(t *testing.T) {
 
 	// Half the movie's files went, which a walk would hold as a likely unplugged drive; Loomarr
 	// moved this one itself, so nothing is held.
-	if d, err = lib.Item(ctx, id, false); err != nil || len(d.Files) != 1 || d.Files[0].Path != sharp || d.Files[0].Extra {
+	if d, err = lib.Item(ctx, id, false); err != nil || len(d.Files) != 1 || d.Files[0].Path != sharp || d.Files[0].State != librarystore.LibraryCopyPlays {
 		t.Fatalf("title after removal = %+v, %v; want the copy that plays alone", d.Files, err)
 	}
 	h.run()
@@ -126,7 +126,7 @@ func TestATitlesLastFileIsNeverAnExtraCopy(t *testing.T) {
 	if err != nil || len(d.Files) != 1 || d.Files[0].Path != soft {
 		t.Fatalf("title = %+v, %v; want only the soft copy listed", d.Files, err)
 	}
-	if d.Files[0].Extra {
+	if d.Files[0].State == librarystore.LibraryCopyExtra {
 		t.Error("the title's last file is an extra copy")
 	}
 	if _, err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlays) {
@@ -164,8 +164,8 @@ func TestRemoveExtraCopyNeedsTheCopyThatPlaysOnDisk(t *testing.T) {
 		t.Fatalf("title = %+v, %v; want both files listed", d.Files, err)
 	}
 	for _, f := range d.Files {
-		if f.Extra != (f.Path == soft) {
-			t.Errorf("%s extra = %v, want only the soft copy shown as an extra", f.Path, f.Extra)
+		if (f.State == librarystore.LibraryCopyExtra) != (f.Path == soft) {
+			t.Errorf("%s state = %s, want only the soft copy shown as an extra", f.Path, f.State)
 		}
 	}
 	if _, err := lib.RemoveExtraCopy(ctx, id, soft); !errors.Is(err, ErrPlayingCopyUnseen) {
@@ -258,49 +258,6 @@ func TestTwoRemovalsAtOnceKeepOneCopy(t *testing.T) {
 	}
 	if left != 1 {
 		t.Errorf("%d copies left on disk, want 1", left)
-	}
-}
-
-// A listed copy that does not play is an extra only while a listed copy plays in its place: one in
-// its edition with its part, or a whole file of its edition for a part. A file with no source row
-// yet is never an extra, and never plays in another's place.
-func TestAnExtraCopyNeedsAListedCopyPlayingInItsPlace(t *testing.T) {
-	file := func(edition string, part int, plays bool) ItemFile {
-		return ItemFile{Edition: edition, Part: part, sourced: true, plays: plays}
-	}
-	unsourced := func(edition string) ItemFile {
-		f := itemFile(librarystore.LibraryFile{}, librarystore.LibrarySource{}, false)
-		f.Edition = edition
-		return f
-	}
-	for name, tc := range map[string]struct {
-		files  []ItemFile
-		extras []bool
-	}{
-		"a second copy":             {[]ItemFile{file("", 0, true), file("", 0, false)}, []bool{false, true}},
-		"a lone copy":               {[]ItemFile{file("", 0, false)}, []bool{false}},
-		"parts beside a whole":      {[]ItemFile{file("", 0, true), file("", 1, false), file("", 2, false)}, []bool{false, true, true}},
-		"a second copy of a part":   {[]ItemFile{file("", 1, true), file("", 1, false), file("", 2, true)}, []bool{false, true, false}},
-		"a part whose part is gone": {[]ItemFile{file("", 1, false), file("", 2, true)}, []bool{false, false}},
-		"another edition plays": {
-			[]ItemFile{file("Extended", 0, true), file("", 0, false)}, []bool{false, false},
-		},
-		"labels of one edition": {
-			[]ItemFile{file("Directors Cut", 0, true), file("director's cut", 0, false)}, []bool{false, true},
-		},
-		"no source row yet":            {[]ItemFile{unsourced(""), file("", 0, false)}, []bool{false, false}},
-		"unsourced in another edition": {[]ItemFile{unsourced("Extended"), file("", 0, false)}, []bool{false, false}},
-		"two copies both playing":      {[]ItemFile{file("", 0, true), file("", 0, true)}, []bool{false, false}},
-		"none playing":                 {[]ItemFile{file("", 0, false), file("", 0, false)}, []bool{false, false}},
-		"a stale whole beside playing parts": {
-			[]ItemFile{file("", 0, false), file("", 1, true), file("", 2, true)}, []bool{false, false, false},
-		},
-	} {
-		for i, want := range tc.extras {
-			if got := extraCopy(tc.files, i); got != want {
-				t.Errorf("%s: file %d extra = %v, want %v", name, i, got, want)
-			}
-		}
 	}
 }
 

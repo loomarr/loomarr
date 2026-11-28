@@ -44,7 +44,7 @@ const MATCH_WORDS: Record<LibraryTitleMatch["by"], (app?: string) => string> = {
 // A file is named for what it is to the title: an extra copy, one part of a movie split over
 // several files ("Part 1 of 2"), or the file.
 const fileLabel = (file: LibraryTitleFile, parts: number): string => {
-  if (file.extra) return "Extra copy";
+  if (file.state === "extra") return "Extra copy";
   if (file.part && parts > 1) return `Part ${file.part} of ${parts}`;
   return "File";
 };
@@ -58,7 +58,7 @@ const TechnicalDetails = ({
 }) => {
   const [open, setOpen] = useState(false);
   const origin = originSentence(title.detailsFrom);
-  const parts = title.files.filter((file) => file.part && !file.extra).length;
+  const parts = title.files.filter((file) => file.part && file.state !== "extra").length;
   return (
     <Disclosure expanded={open} label="Technical details" onExpandedChange={setOpen}>
       <Stack gap="control">

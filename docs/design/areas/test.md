@@ -6,7 +6,7 @@ Code that exists for tests and never ships in the server: the shared test double
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — library (15), platform (12), proposals (7), channels (6), media (2), playout (2), filler (2), people (2)
+**Imports from other areas:** any, by design — library (15), platform (12), proposals (7), channels (6), playout (4), media (2), filler (2), people (2)
 
 ## Packages
 
@@ -18,7 +18,7 @@ One area of the [package map](../package-map.md#start-here).
   One TMDB v3 stand-in: an in-memory catalogue served over the endpoints internal/library/tmdb calls.
 - **`platform/store/storetest`** · → `testkit/postgresimage`
   Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.
-- **`testkit`** · 2 importers · → `channels/schedule`, `demolibrary`, `filler/acquisition`, `filler/records`, `library/provision`, `library/tmdb/tmdbstandin`, `media/images/rustgen`, `people/access`, `people/notifications`, `platform/llm`, `platform/store`, `platform/store/channelstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout`, `playout/subtitles`, `proposals/quality`, `proposals/webreference`, `testkit/execfixture`, `testkit/postgresimage`
+- **`testkit`** · 2 importers · → `channels/schedule`, `demolibrary`, `filler/acquisition`, `filler/records`, `library/provision`, `library/tmdb/tmdbstandin`, `media/images/rustgen`, `people/access`, `people/notifications`, `platform/llm`, `platform/store`, `platform/store/channelstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/proposalstore`, `playout`, `playout/admission`, `playout/subtitles`, `proposals/quality`, `proposals/webreference`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/catalogfixture`** · → `library/mediaserver`, `library/provision`, `library/titlesearch`
   Shared no-network adapters for catalog tests.
@@ -29,13 +29,15 @@ One area of the [package map](../package-map.md#start-here).
 - **`testkit/httpfixture`**
   Shared no-network HTTP test seams without importing any application adapter.
 - **`testkit/imagetestkit`** · → `media/images`, `testkit`
-  In-memory image store and a real image service over it, shared by the adapter tests of internal/app and internal/app/playoutresolve.
+  In-memory image store and a real image service over it, shared by the adapter tests of internal/app and internal/playout/resolve.
 - **`testkit/libraryfixture`** · → `channels/schedule`, `library/mediaserver`, `library/provision`
   No-network adapters for library-facing tests.
 - **`testkit/mediatool`**
   Locates the media binaries real-tool tests run, without importing application packages: it is a cycle-free leaf beneath testkit, so a package testkit itself imports can use it.
 - **`testkit/moviecollectionsfixture`** · → `library/tmdb`
   The shared deterministic source for movie-collection resolver tests.
+- **`testkit/originfixture`** · → `playout/hls`
+  Shared in-memory double for the playback seam the HLS origin serves.
 - **`testkit/outlookfixture`** · → `channels/schedule`, `library/mediaserver`
   Shared read-only library observations for tests.
 - **`testkit/playoutstreamfixture`**

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -159,8 +160,9 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 
 // A file whose header couldn't be read counts as unplayable toward its item and its series, and
 // the problems list keeps just the titles that need a look: one with an unplayable file, or a movie
-// with a copy that does not play, sized. A skipped file (a disc image) is neither, and nor is a
-// movie whose two editions each play.
+// with a copy that does not play, sized by its file. A skipped file (a disc image) is neither, and
+// nor is a movie whose two editions each play. A broken copy beside one that plays is an extra,
+// not a title that can't be played; a title whose only file is broken can't be played.
 func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
@@ -172,6 +174,10 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 		{ID: "cuts", Kind: "movie", Name: "Cuts Film", Sources: []librarystore.LibrarySource{
 			{Path: "/media/cuts/a.mkv", SizeBytes: 5, Plays: true},
 			{Path: "/media/cuts/b.mkv", SizeBytes: 7, Edition: "Extended", Plays: true}}},
+		{ID: "copy", Kind: "movie", Name: "Copy Film", Sources: []librarystore.LibrarySource{
+			{Path: "/media/copy/main.mkv", SizeBytes: 5, Plays: true}, {Path: "/media/copy/uhd.mkv", SizeBytes: 9}}},
+		{ID: "lone", Kind: "movie", Name: "Lone Film", Sources: []librarystore.LibrarySource{
+			{Path: "/media/lone/only.mkv", SizeBytes: 5, Plays: true}}},
 		{ID: "fine", Kind: "movie", Name: "Fine Film"},
 		{ID: "show", Kind: "series", Name: "A Show"},
 		{ID: "shows", Kind: "series", Name: "Fine Show"},
@@ -186,14 +192,21 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 		return librarystore.LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header,
 			SeenAt: at, ItemID: item, SeriesID: series}
 	}
+	sized := func(f librarystore.LibraryFile, size int64) librarystore.LibraryFile {
+		f.Size = size
+		return f
+	}
 	disc := file("/media/fine/disc.iso", "fine", "", librarystore.LibraryHeaderFailed)
 	disc.Problem = "disc_image"
 	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("/media/broken.mkv", "broken", "", librarystore.LibraryHeaderFailed),
 		file("/media/twice/a.mkv", "twice", "", librarystore.LibraryHeaderRead),
-		file("/media/twice/b.mkv", "twice", "", librarystore.LibraryHeaderRead),
+		sized(file("/media/twice/b.mkv", "twice", "", librarystore.LibraryHeaderRead), 30),
 		file("/media/cuts/a.mkv", "cuts", "", librarystore.LibraryHeaderRead),
 		file("/media/cuts/b.mkv", "cuts", "", librarystore.LibraryHeaderRead),
+		file("/media/copy/main.mkv", "copy", "", librarystore.LibraryHeaderRead),
+		sized(file("/media/copy/uhd.mkv", "copy", "", librarystore.LibraryHeaderFailed), 40),
+		file("/media/lone/only.mkv", "lone", "", librarystore.LibraryHeaderFailed),
 		file("/media/fine/fine.mkv", "fine", "", librarystore.LibraryHeaderRead),
 		disc,
 		file("/media/show/e1.mkv", "e1", "show", librarystore.LibraryHeaderRead),
@@ -215,20 +228,172 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	for _, it := range page.Items {
 		got = append(got, it.ID)
 	}
-	// Sorted by name: A Show, Broken Film, Twice Film.
-	if page.Total != 3 || len(got) != 3 || got[0] != "show" || got[1] != "broken" || got[2] != "twice" {
-		t.Fatalf("problems = %v (total %d), want show, broken and twice", got, page.Total)
+	// Sorted by name: A Show, Broken Film, Copy Film, Lone Film, Twice Film.
+	want := []string{"show", "broken", "copy", "lone", "twice"}
+	if page.Total != len(want) || !reflect.DeepEqual(got, want) {
+		t.Fatalf("problems = %v (total %d), want %v", got, page.Total, want)
 	}
-	if page.Items[1].Unplayable != 1 || page.Items[1].ExtraCopies != 0 || page.Items[1].ExtraBytes != 0 ||
-		page.Items[2].Unplayable != 0 || page.Items[2].Files != 2 || page.Items[2].ExtraCopies != 1 || page.Items[2].ExtraBytes != 30 {
-		t.Errorf("problem counts = %+v, want Twice Film's 30-byte copy extra", page.Items)
+	type counts struct {
+		Unplayable, ExtraCopies int
+		ExtraBytes              int64
 	}
-	if all, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{}); err != nil || all.Total != 6 {
-		t.Errorf("every title = %d, %v; want six", all.Total, err)
+	for i, c := range []counts{{1, 0, 0}, {1, 0, 0}, {0, 1, 40}, {1, 0, 0}, {0, 1, 30}} {
+		it := page.Items[i]
+		if have := (counts{it.Unplayable, it.ExtraCopies, it.ExtraBytes}); have != c {
+			t.Errorf("%s counts = %+v, want %+v", it.ID, have, c)
+		}
+	}
+	if one, err := st.LibraryItem(ctx, "copy"); err != nil || one.Unplayable != 0 || one.ExtraCopies != 1 || one.ExtraBytes != 40 {
+		t.Errorf("copy = %+v, %v; want its broken 40-byte copy an extra, nothing unplayable", one, err)
+	}
+	if all, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{}); err != nil || all.Total != 8 {
+		t.Errorf("every title = %d, %v; want eight", all.Total, err)
 	}
 	if paged, err := st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Problems: true, Limit: 1}); err != nil ||
-		paged.Total != 3 || len(paged.Items) != 1 {
-		t.Errorf("a page of problems = %d of %d, %v; want one of three", len(paged.Items), paged.Total, err)
+		paged.Total != len(want) || len(paged.Items) != 1 {
+		t.Errorf("a page of problems = %d of %d, %v; want one of five", len(paged.Items), paged.Total, err)
+	}
+
+	// Each file's state comes from the same rule as the counts.
+	for id, want := range map[string][]librarystore.LibraryCopy{
+		"broken": {{Path: "/media/broken.mkv", State: librarystore.LibraryCopyUnplayable}},
+		"twice": {{Path: "/media/twice/a.mkv", State: librarystore.LibraryCopyPlays},
+			{Path: "/media/twice/b.mkv", State: librarystore.LibraryCopyExtra, InPlaceOf: []string{"/media/twice/a.mkv"}}},
+		"cuts": {{Path: "/media/cuts/a.mkv", State: librarystore.LibraryCopyPlays},
+			{Path: "/media/cuts/b.mkv", State: librarystore.LibraryCopyPlays}},
+		"copy": {{Path: "/media/copy/main.mkv", State: librarystore.LibraryCopyPlays},
+			{Path: "/media/copy/uhd.mkv", State: librarystore.LibraryCopyExtra, InPlaceOf: []string{"/media/copy/main.mkv"}}},
+		"lone": {{Path: "/media/lone/only.mkv", State: librarystore.LibraryCopyUnplayable}},
+		"fine": {{Path: "/media/fine/fine.mkv", State: librarystore.LibraryCopyReading}},
+		"show": {},
+	} {
+		got, err := st.LibraryItemCopies(ctx, id)
+		if err != nil || len(got) != len(want) || (len(want) > 0 && !reflect.DeepEqual(got, want)) {
+			t.Errorf("%s copies = %+v, %v; want %+v", id, got, err, want)
+		}
+	}
+}
+
+// A listed copy that does not play is an extra only while a listed copy plays in its place: one in
+// its edition with its part, or a whole file of its edition for a part. A file with no source row
+// yet is never an extra, and never plays in another's place.
+func testLibraryItemCopiesInPlace(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	type copy struct {
+		edition string
+		part    int
+		plays   bool
+		// unsourced is a listed file with no source row yet.
+		unsourced bool
+	}
+	cases := map[string]struct {
+		copies []copy
+		extras []bool
+	}{
+		"a second copy":             {[]copy{{plays: true}, {}}, []bool{false, true}},
+		"a lone copy":               {[]copy{{}}, []bool{false}},
+		"parts beside a whole":      {[]copy{{plays: true}, {part: 1}, {part: 2}}, []bool{false, true, true}},
+		"a second copy of a part":   {[]copy{{part: 1, plays: true}, {part: 1}, {part: 2, plays: true}}, []bool{false, true, false}},
+		"a part whose part is gone": {[]copy{{part: 1}, {part: 2, plays: true}}, []bool{false, false}},
+		"another edition plays":     {[]copy{{edition: "Extended", plays: true}, {}}, []bool{false, false}},
+		"no source row yet":         {[]copy{{unsourced: true}, {}}, []bool{false, false}},
+		"unsourced in another edition": {
+			[]copy{{edition: "Extended", unsourced: true}, {}}, []bool{false, false},
+		},
+		"two copies both playing": {[]copy{{plays: true}, {plays: true}}, []bool{false, false}},
+		"none playing":            {[]copy{{}, {}}, []bool{false, false}},
+		"a stale whole beside playing parts": {
+			[]copy{{}, {part: 1, plays: true}, {part: 2, plays: true}}, []bool{false, false, false},
+		},
+	}
+	var items []LibraryItem
+	var files []librarystore.LibraryFile
+	n := 0
+	for name, tc := range cases {
+		n++
+		id := fmt.Sprintf("m%d", n)
+		it := LibraryItem{ID: id, Kind: "movie", Name: name}
+		for i, c := range tc.copies {
+			path := fmt.Sprintf("/media/%s/%d.mkv", id, i)
+			if !c.unsourced {
+				it.Sources = append(it.Sources, librarystore.LibrarySource{Path: path, Edition: c.edition, Part: c.part, Plays: c.plays})
+			}
+			files = append(files, librarystore.LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie",
+				Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: id})
+		}
+		items = append(items, it)
+	}
+	if err := st.SaveLibraryItems(ctx, items, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLibraryFiles(ctx, files); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		tc := cases[it.Name]
+		got, err := st.LibraryItemCopies(ctx, it.ID)
+		if err != nil || len(got) != len(tc.extras) {
+			t.Fatalf("%s: copies = %+v, %v", it.Name, got, err)
+		}
+		extras := 0
+		for i, want := range tc.extras {
+			if (got[i].State == librarystore.LibraryCopyExtra) != want {
+				t.Errorf("%s: file %d = %s, want extra %v", it.Name, i, got[i].State, want)
+			}
+			if want {
+				extras++
+			}
+		}
+		if sum, err := st.LibraryItem(ctx, it.ID); err != nil || sum.ExtraCopies != extras || sum.ExtraBytes != int64(extras) {
+			t.Errorf("%s: summary = %d extras of %d bytes, %v; want %d", it.Name, sum.ExtraCopies, sum.ExtraBytes, err, extras)
+		}
+	}
+}
+
+// A copy that doesn't play waits while the copy that plays in its place is gone from the list or
+// can't be read: it is neither an extra nor a file that can't be played.
+func testLibraryItemCopiesWaiting(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+		{ID: "gone", Kind: "movie", Name: "Gone Film", Sources: []librarystore.LibrarySource{
+			{Path: "/media/gone/a.mkv", Plays: true}, {Path: "/media/gone/b.mkv"}}},
+		{ID: "bad", Kind: "movie", Name: "Bad Film", Sources: []librarystore.LibrarySource{
+			{Path: "/media/bad/a.mkv", Plays: true}, {Path: "/media/bad/b.mkv"}}},
+		{ID: "new", Kind: "movie", Name: "New Film", Sources: []librarystore.LibrarySource{
+			{Path: "/media/new/a.mkv", Plays: true}}},
+	}, at); err != nil {
+		t.Fatal(err)
+	}
+	file := func(path, item, header string) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header,
+			SeenAt: at, ItemID: item}
+	}
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
+		file("/media/gone/b.mkv", "gone", librarystore.LibraryHeaderRead),
+		file("/media/bad/a.mkv", "bad", librarystore.LibraryHeaderFailed),
+		file("/media/bad/b.mkv", "bad", librarystore.LibraryHeaderRead),
+		file("/media/new/a.mkv", "new", librarystore.LibraryHeaderRead),
+		file("/media/new/b.mkv", "new", librarystore.LibraryHeaderRead),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string][]librarystore.LibraryCopy{
+		"gone": {{Path: "/media/gone/b.mkv", State: librarystore.LibraryCopyWaiting}},
+		"bad": {{Path: "/media/bad/a.mkv", State: librarystore.LibraryCopyUnplayable},
+			{Path: "/media/bad/b.mkv", State: librarystore.LibraryCopyWaiting}},
+		"new": {{Path: "/media/new/a.mkv", State: librarystore.LibraryCopyPlays},
+			{Path: "/media/new/b.mkv", State: librarystore.LibraryCopyReading}},
+	} {
+		if got, err := st.LibraryItemCopies(ctx, id); err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s copies = %+v, %v; want %+v", id, got, err, want)
+		}
+	}
+	if bad, err := st.LibraryItem(ctx, "bad"); err != nil || bad.Unplayable != 1 || bad.ExtraCopies != 0 {
+		t.Errorf("bad = %+v, %v; want its broken playing copy unplayable and no extra", bad, err)
 	}
 }
 

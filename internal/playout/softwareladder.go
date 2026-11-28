@@ -1,6 +1,9 @@
 package playout
 
-import "github.com/loomarr/loomarr/internal/playout/admission"
+import (
+	"github.com/loomarr/loomarr/internal/playout/admission"
+	"github.com/loomarr/loomarr/internal/playout/media"
+)
 
 // The software degradation ladder (#1517). On a CPU-only host a title too heavy for the CPU never
 // refuses, never shows a message and never stalls: the item's encoder steps down a quality ladder
@@ -19,16 +22,6 @@ import "github.com/loomarr/loomarr/internal/playout/admission"
 // A 4K decode alone costs 2.3–2.6 cores, so only rung 3 reliably fits a 4-CPU host. Software hosts
 // never produce a premium (4K) format; that is the premium format's own admission.
 
-// SoftwareRung is the admission ledger's rung, under the name the pipeline's output profile uses.
-type SoftwareRung = admission.SoftwareRung
-
-const (
-	RungFull      = admission.RungFull
-	RungLight     = admission.RungLight
-	RungNoRef     = admission.RungNoRef
-	RungKeyframes = admission.RungKeyframes
-)
-
 // rungWorkingLines is the height the rung decodes into before the scale to the channel geometry; 0
 // means the channel's own height.
 //
@@ -36,14 +29,14 @@ const (
 // cost follow the pixel count. An SDR source up to 1080p takes their decoder shortcuts at its own
 // size: a 1080→720→1080 round trip costs more than it saves (supervisor decision on the live
 // numbers, #1517: rung 1 ran 1.38x against rung 0's 2.11x on a 1080p HEVC title).
-func rungWorkingLines(r SoftwareRung, heavy bool) int {
+func rungWorkingLines(r admission.SoftwareRung, heavy bool) int {
 	switch r {
-	case RungLight, RungNoRef:
+	case admission.RungLight, admission.RungNoRef:
 		if !heavy {
 			return 0
 		}
 		return 720
-	case RungKeyframes:
+	case admission.RungKeyframes:
 		return 480
 	}
 	return 0
@@ -51,14 +44,14 @@ func rungWorkingLines(r SoftwareRung, heavy bool) int {
 
 // rungDecoderOptions are the rung's decoder shortcuts: input options, so they precede -i. The :v
 // specifier scopes them to the video decoder, so the audio is decoded in full on every rung.
-func rungDecoderOptions(r SoftwareRung) []string {
+func rungDecoderOptions(r admission.SoftwareRung) []string {
 	switch r {
-	case RungLight:
+	case admission.RungLight:
 		return []string{"-skip_loop_filter:v", "all"}
-	case RungNoRef:
+	case admission.RungNoRef:
 		// "noref" is ffmpeg's spelling; "nonref" is rejected by the option parser (phase 0b).
 		return []string{"-skip_loop_filter:v", "all", "-skip_frame:v", "noref"}
-	case RungKeyframes:
+	case admission.RungKeyframes:
 		return []string{"-skip_loop_filter:v", "all", "-skip_frame:v", "nokey"}
 	}
 	return nil
@@ -68,8 +61,8 @@ func rungDecoderOptions(r SoftwareRung) []string {
 // repeats frames only up to the last one decoded, so keyframes-only ends the video up to one source
 // GOP before the audio (measured: 1 frame out of 50 for a 2 s single-GOP item). The clone covers
 // GOPs up to 10 s; the item's own bound (-frames:v, -t) trims the surplus.
-func rungTailFill(r SoftwareRung) string {
-	if r == RungNoRef || r == RungKeyframes {
+func rungTailFill(r admission.SoftwareRung) string {
+	if r == admission.RungNoRef || r == admission.RungKeyframes {
 		return "tpad=stop_mode=clone:stop_duration=10"
 	}
 	return ""
@@ -77,12 +70,12 @@ func rungTailFill(r SoftwareRung) string {
 
 // heavySource is a source whose picture cost follows its pixel count on the CPU: HDR (tone-mapped)
 // or above 1080p. Unknown geometry counts as not heavy.
-func heavySource(src MediaFormat) bool {
+func heavySource(src media.MediaFormat) bool {
 	return src.HDR() || src.Height > 1080 || src.Width > 1920
 }
 
 // RungCostsFor is the rung cost table for a source's class.
-func RungCostsFor(src MediaFormat) admission.RungCosts {
+func RungCostsFor(src media.MediaFormat) admission.RungCosts {
 	if heavySource(src) {
 		return admission.HeavyRungCosts
 	}
@@ -103,18 +96,18 @@ type RungCost struct {
 // Unmeasured, SDR up to 1080p starts at full quality, and anything 4K or HDR (phase 0b: 2.3–3.7
 // cores at 1x on 4 CPUs) starts on keyframes-only, the one rung that always fits, and steps up
 // when the monitor sees headroom.
-func StartRung(src MediaFormat, cost RungCost) SoftwareRung {
+func StartRung(src media.MediaFormat, cost RungCost) admission.SoftwareRung {
 	if cost.Speed <= 0 {
 		if heavySource(src) {
-			return RungKeyframes
+			return admission.RungKeyframes
 		}
-		return RungFull
+		return admission.RungFull
 	}
 	costs := RungCostsFor(src)
-	for _, r := range []SoftwareRung{RungFull, RungLight} {
+	for _, r := range []admission.SoftwareRung{admission.RungFull, admission.RungLight} {
 		if cost.Speed/costs[r] >= admission.MinStartSpeed {
 			return r
 		}
 	}
-	return RungKeyframes
+	return admission.RungKeyframes
 }

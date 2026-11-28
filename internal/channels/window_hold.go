@@ -9,13 +9,12 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
-	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
 // dealtFrom is "<edited>.<dealt>", two fingerprints of a channel's deal (#4140 step 1).
 //
-// <edited> is what an operator decides: the lineup (which titles, in order, and the seasons and
+// <edited> is decisionDigest, what an operator decides: the lineup (which titles, in order, and the seasons and
 // episodes each may air), the channel's policy without the relaxations reconcile writes back, its
 // ordering, and the install's break, window and calendar settings (guide time zone, home country,
 // holiday definitions). Library facts are left out on purpose,
@@ -25,30 +24,38 @@ import (
 // <dealt> is the deal those inputs and the library produce, which only a window that never turns
 // reads: there a library change re-deals once, and the next sweep, dealing the same, keeps it.
 //
-// breaksPerHour is the channel's effective break density, which is 0 when it has no filler to air
+// The density it hashes is the channel's effective one, which is 0 when it has no filler to air
 // (a taxonomy edit or an emptied catalog). Whether breaks exist at all is decided there, so a
 // channel that gains or loses its filler re-deals after the programme on air rather than airing
 // empty breaks, or none, until the window turns.
-func dealtFrom(ch channelstore.Channel, breaksPerHour int, s scheduleSettings, deal []schedule.Slot) string {
+func dealtFrom(in scheduleInputs, deal []schedule.Slot) string {
 	h := fnv.New64a()
 	blob, _ := json.Marshal(deal) // slots are plain values: a marshal cannot fail
 	_, _ = h.Write(blob)
-	return edited(ch, breaksPerHour, s) + "." + strconv.FormatUint(h.Sum64(), 16)
+	return decisionDigest(in) + "." + strconv.FormatUint(h.Sum64(), 16)
 }
 
-// edited is dealtFrom's <edited> half, over the pass's settings snapshot. It hashes JSON, not %v:
+// decisionDigest is dealtFrom's <edited> half, over the pass's inputs. It hashes JSON, not %v:
 // policies hold optional fields behind pointers, which %v prints as addresses that differ on
 // every read.
-func edited(ch channelstore.Channel, breaksPerHour int, s scheduleSettings) string {
+//
+// ⚠ Every byte it hashes is part of every internal channel's stored dealt_from. A change to what
+// it hashes, or to how a hashed type marshals, re-deals the whole fleet after the programme on
+// air at the first sweep after deploy. A new ChannelPolicy field is safe only with `omitempty` and
+// a zero default; a field without it, or any non-pointer struct field (omitempty never omits a
+// struct), changes every digest. A field reconcile owns belongs outside Policy.Decided(), or every
+// library change reads as an edit.
+func decisionDigest(in scheduleInputs) string {
 	type entry struct {
 		Key                  string
 		SeasonMin, SeasonMax int
 		Episodes             schedule.EpisodeSelection
 	}
-	entries := make([]entry, 0, len(ch.Lineup))
-	for _, l := range ch.Lineup {
+	entries := make([]entry, 0, len(in.Lineup))
+	for _, l := range in.Lineup {
 		entries = append(entries, entry{string(l.Key), l.SeasonMin, l.SeasonMax, l.EpisodeSelection})
 	}
+	s := in.Settings
 	cal := s.Calendar
 	zone := ""
 	if cal.Zone != nil {
@@ -64,7 +71,7 @@ func edited(ch channelstore.Channel, breaksPerHour int, s scheduleSettings) stri
 		Install       schedule.PendingPolicy
 		Zone, Country string
 		Holidays      any
-	}{entries, ch.Policy.Decided(), ch.Strategy, breaksPerHour, s.BreakLength, s.Window, s.Pending,
+	}{entries, in.Policy.Decided(), in.Channel.Strategy, in.Channel.BreaksPerHour, s.BreakLength, s.Window, s.Pending,
 		zone, cal.Country, cal.Holidays})
 	if err != nil {
 		return "" // the same "" every sweep, so a policy that cannot marshal never reads as an edit

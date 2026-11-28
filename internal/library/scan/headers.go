@@ -393,6 +393,10 @@ func (im *Importer) saveRead(ctx context.Context, read []pending) error {
 	if err := im.Store.SaveLibraryFiles(ctx, rows); err != nil {
 		return err
 	}
+	// A file whose length was not known can now be its title's main file.
+	if err := im.Store.ClearStaleHomeVideoPosters(ctx); err != nil {
+		return err
+	}
 	// The files read are what makes their titles ready.
 	im.titlesChanged()
 	return nil

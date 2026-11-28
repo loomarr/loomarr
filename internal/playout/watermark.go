@@ -10,6 +10,7 @@ import (
 	"regexp"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // The channel watermark ("bug"), #1512.
@@ -110,7 +111,7 @@ type Watermark struct {
 // position is the bug's top-left in output pixels: the corner of the ACTIVE picture (the source's
 // measured picture area, letterbox and pillarbox bars excluded, after the fit and centring pad),
 // inset by the margins, rounded down to even for 4:2:0 chroma, and clamped inside the frame.
-func (w Watermark) position(src MediaFormat, out OutputProfile) (int, int) {
+func (w Watermark) position(src media.MediaFormat, out OutputProfile) (int, int) {
 	a := activeInOutput(src, out)
 	x, y := a.X+w.MarginX, a.Y+w.MarginY
 	if w.Corner == CornerTopRight || w.Corner == CornerBottomRight {
@@ -127,17 +128,17 @@ func (w Watermark) position(src MediaFormat, out OutputProfile) (int, int) {
 // activeInOutput maps the source's active picture into the output frame: the fitted picture
 // (force_original_aspect_ratio=decrease), centred by the pad, and the measured active area scaled
 // with it. Unknown geometry is the whole frame.
-func activeInOutput(src MediaFormat, out OutputProfile) Rect {
+func activeInOutput(src media.MediaFormat, out OutputProfile) media.Rect {
 	fw, fh, ok := fitSize(src.Width, src.Height, out.Width, out.Height)
 	if !ok {
-		return Rect{W: out.Width, H: out.Height}
+		return media.Rect{W: out.Width, H: out.Height}
 	}
 	ox, oy := (out.Width-fw)/2, (out.Height-fh)/2
 	a := src.Active
 	if a.W <= 0 || a.H <= 0 || a.X < 0 || a.Y < 0 || a.X+a.W > src.Width || a.Y+a.H > src.Height {
-		return Rect{X: ox, Y: oy, W: fw, H: fh}
+		return media.Rect{X: ox, Y: oy, W: fw, H: fh}
 	}
-	return Rect{
+	return media.Rect{
 		X: ox + a.X*fw/src.Width, Y: oy + a.Y*fh/src.Height,
 		W: a.W * fw / src.Width, H: a.H * fh / src.Height,
 	}

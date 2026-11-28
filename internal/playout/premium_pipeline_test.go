@@ -10,16 +10,17 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 // Premium sources: a native 4K SDR film (HEVC Main10 BT.709, like the spike's S4) and an HLG
 // broadcast recording, alongside the baseline classes.
-func premiumSources() map[string]MediaFormat {
+func premiumSources() map[string]media.MediaFormat {
 	src := testSources()
-	src["hevc10-4k-sdr"] = MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24000.0 / 1001,
+	src["hevc10-4k-sdr"] = media.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24000.0 / 1001,
 		PixelFormat: "yuv420p10le", ColorTransfer: "bt709", AudioCodec: "eac3", AudioChannels: 6, AudioSampleRate: 48000,
 		Container: "matroska,webm"}
-	src["hevc10-1080p-hlg"] = MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, FrameRate: 25,
+	src["hevc10-1080p-hlg"] = media.MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, FrameRate: 25,
 		PixelFormat: "yuv420p10le", ColorTransfer: "arib-std-b67", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000,
 		Container: "matroska,webm"}
 	return src
@@ -27,13 +28,13 @@ func premiumSources() map[string]MediaFormat {
 
 // scopeSources are pictures shorter than the 16:9 output, so every family must letterbox them
 // (#1673): a 2.40:1 4K HDR10 film and a 2.40:1 1080p SDR episode.
-func scopeSources() map[string]MediaFormat {
+func scopeSources() map[string]media.MediaFormat {
 	src := premiumSources()
 	hdr := src["hevc-4k-hdr-dv"]
 	hdr.Height = 1600
 	sdr := src["h264-1080p-sdr-25"]
 	sdr.Height = 800
-	return map[string]MediaFormat{"hevc-4k-hdr-scope": hdr, "h264-scope-sdr": sdr}
+	return map[string]media.MediaFormat{"hevc-4k-hdr-scope": hdr, "h264-scope-sdr": sdr}
 }
 
 func premiumOutput(t *testing.T, class FormatClass) OutputProfile {

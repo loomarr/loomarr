@@ -20,6 +20,7 @@ const SERVER_NAMES: Record<CollectionDTOImportedFrom, string> = {
 // The first three titles, front first, for the card's pile.
 const pileOf = (titles: readonly LibraryItemDTO[]): LibraryCollectionPoster[] =>
   titles.slice(0, 3).map((t) => ({
+    id: t.id,
     name: t.name,
     poster: t.poster ? <ServedImage alt="" image={t.poster} sizes={PILE_SIZES} /> : undefined,
   }));

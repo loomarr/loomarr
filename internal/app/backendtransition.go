@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
@@ -19,7 +18,7 @@ import (
 // durable backend workflow. Keeping initialization here prevents the composition root from knowing the
 // controller's boot ordering in addition to all of its other subsystem wiring.
 type backendTransitionDependencies struct {
-	store     store.Store
+	store     playoutStore
 	fleet     backendtransition.Fleet
 	publisher backendtransition.Publisher
 	cutover   backendtransition.Cutover

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // An edition is shown as its source gave it, fixed only when it came in one case; the theatrical
@@ -268,7 +269,7 @@ func TestEachEditionHasItsOwnPlayingCopy(t *testing.T) {
 	}
 	extras := 0
 	for _, f := range detail.Files {
-		if f.Extra {
+		if f.State == librarystore.LibraryCopyExtra {
 			extras++
 			if f.Edition != "" || f.Size != 10 {
 				t.Errorf("extra = %s (%q, %d bytes), want the smaller default copy", f.Path, f.Edition, f.Size)
@@ -280,5 +281,31 @@ func TestEachEditionHasItsOwnPlayingCopy(t *testing.T) {
 	}
 	if name := detail.Facts.Name; name != "Kilo (2016)" {
 		t.Errorf("name = %q, want no edition tag in it", name)
+	}
+}
+
+// Two labels of one edition are one edition: every copy of it carries the first label in path
+// order, so the smaller copy is an extra beside the one that plays.
+func TestLabelsOfOneEditionShareOneLabel(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	dir := "Kilo (2016) {tmdb-90000301}/"
+	h.file(dir+"Kilo (2016) {tmdb-90000301} {edition-DIRECTORS CUT}.mkv", 20)
+	small := h.file(dir+"Kilo (2016) {tmdb-90000301} {edition-director's cut}.mkv", 15)
+	h.run()
+
+	item := h.item(fileOrigin(h.root, dir+"Kilo (2016) {tmdb-90000301} {edition-DIRECTORS CUT}.mkv"))
+	sources := librarySources(item)
+	if len(sources) != 2 || sources[0].Edition != "Directors Cut" || sources[1].Edition != "Directors Cut" {
+		t.Fatalf("sources = %+v, want two copies labelled Directors Cut", sources)
+	}
+	detail, err := (&Library{ItemStore: h.st, Inventory: h.inv}).Item(ctx, string(item.ID), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range detail.Files {
+		if want := f.Path == small; (f.State == librarystore.LibraryCopyExtra) != want {
+			t.Errorf("%s state = %s, want extra %v", f.Path, f.State, want)
+		}
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/playout/media"
 )
 
 func ffmpegBin(t *testing.T) string {
@@ -56,7 +57,7 @@ func TestLive_EveryLadderRungEncodes(t *testing.T) {
 			p := Resolve(tier, enc, rung)
 			// The live pipeline, as the capability trial builds it: testsrc's CPU frames take the
 			// family's upload, GPU scale and encoder, so a rung the graph cannot carry fails here.
-			pipe, err := Build(encode.HostFor(enc, false, encode.GPUFilters{}), MediaFormat{}, ChannelOutput(p))
+			pipe, err := Build(encode.HostFor(enc, false, encode.GPUFilters{}), media.MediaFormat{}, ChannelOutput(p))
 			if err != nil {
 				t.Errorf("%s rung=%d: build: %v", tier, rung, err)
 				continue

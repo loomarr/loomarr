@@ -7,7 +7,7 @@ interface LibraryCollectionMember {
   name: string;
   /** Absent when unknown. */
   year?: number;
-  /** Drawn by the app; absent draws the name on the placeholder. */
+  /** Drawn by the app; absent draws the stand-in. */
   poster?: ReactNode;
 }
 
