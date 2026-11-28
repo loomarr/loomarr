@@ -18,6 +18,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, screen, waitFor } from "storybook/test";
 import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
 import { toastRemoved, toastRestoreRefused } from "@/library/extra-copy-toasts";
+import { AllCaughtUp, IgnoredList, LibraryNeedsView } from "@/library/library-needs-page";
 
 // The Library (#2151, design/library variant D): the poster grid in each scan state and a title's
 // page. Stories load no remote images: a title with artwork gets a flat stand-in in its own colour.
@@ -345,42 +346,61 @@ const ORDERS: LibraryOrderNeed[] = [
 const answered = () => Promise.resolve();
 const search = () => Promise.resolve([]);
 
-const NeedsCards: Story = {
-  args: {
-    admin: admin({ needsYou: 6 }),
-    showTitles: false,
-    needs: (
-      <LibraryNeedsCards
-        needs={NEEDS}
-        onChooseOrder={answered}
-        onIgnore={answered}
-        onLink={answered}
-        onOpenTitle={() => {}}
-        onSearch={search}
-        orders={ORDERS}
-        problems={PROBLEMS}
-      />
-    ),
-  },
+// Needs you's own page, with what the app puts in it.
+const needsStory = (needs: LibraryNeed[], orders: LibraryOrderNeed[], problems: LibraryProblem[]) => (
+  <LibraryNeedsView
+    ignored={1}
+    onBack={() => {}}
+    onTabChange={() => {}}
+    tab="waiting"
+    waiting={needs.length + orders.length + problems.length}
+  >
+    <LibraryNeedsCards
+      hideHeading
+      needs={needs}
+      onChooseOrder={answered}
+      onIgnore={answered}
+      onIgnoreFolder={answered}
+      onLink={answered}
+      onOpenTitle={() => {}}
+      onSearch={search}
+      orders={orders}
+      problems={problems}
+      empty={<AllCaughtUp ignored={3} onBack={() => {}} onShowIgnored={() => {}} />}
+    />
+  </LibraryNeedsView>
+);
+
+// Two titles of one folder, so the folder has its own answer.
+const FOLDER = NEEDS.map((need) => ({ ...need, folder: "Discs" }));
+
+const NeedsCards: Story = { render: () => needsStory(FOLDER, ORDERS, PROBLEMS) };
+
+const NeedsPhone: Story = {
+  globals: { viewport: { value: "mobile2" } },
+  render: () => needsStory(FOLDER, ORDERS, PROBLEMS),
 };
 
-const NothingNeedsYou: Story = {
-  args: {
-    showTitles: false,
-    needs: (
-      <LibraryNeedsCards
-        needs={[]}
-        onChooseOrder={answered}
-        onIgnore={answered}
-        onLink={answered}
-        onOpenTitle={() => {}}
-        onSearch={search}
-        orders={[]}
-        problems={[]}
+const NeedsIgnored: Story = {
+  render: () => (
+    <LibraryNeedsView ignored={1} onBack={() => {}} onTabChange={() => {}} tab="ignored" waiting={2}>
+      <IgnoredList
+        items={[
+          {
+            id: "90000813",
+            kind: "movie",
+            name: "title_t03.mkv",
+            folder: "Discs",
+            ignoredAt: "2026-01-02T03:04:05Z",
+          },
+        ]}
+        onBringBack={() => {}}
       />
-    ),
-  },
+    </LibraryNeedsView>
+  ),
 };
+
+const NothingNeedsYou: Story = { render: () => needsStory([], [], []) };
 
 // A title's page acts through these; in a story every action goes through.
 const titleFixes = {
@@ -489,6 +509,34 @@ const MemberMovie: Story = {
         match: { by: "none" },
         detailsFrom: {},
         channels: [{ id: "90000971", name: "Quiet Hours", number: 21 }],
+      }}
+    />
+  ),
+};
+
+// Credits the library knows link to their titles; the one it doesn't stays text.
+const CastLinks: Story = {
+  render: () => (
+    <LibraryTitle
+      onBack={() => {}}
+      personLink={(person) => <a href={`/library?person=${person}`}>{person}</a>}
+      title={{
+        kind: "movie",
+        name: "Paper Kites",
+        year: 1996,
+        credits: [
+          { name: "Imelda Varge", character: "Agnes Fell", role: "actor", personId: "tmdb:90000981" },
+          { name: "Tobin Ashcroft", character: "Rafe Fell", role: "actor" },
+          { name: "Lorna Pettigrew", role: "director", personId: "tmdb:90000982" },
+          { name: "Bram Okonkwo", role: "writer" },
+        ],
+        genres: ["Crime"],
+        files: [],
+        unplayable: 0,
+        seasons: [],
+        match: { by: "none" },
+        detailsFrom: {},
+        channels: [],
       }}
     />
   ),
@@ -993,6 +1041,7 @@ export {
   Adding,
   AddingStep1,
   AddingStep3,
+  CastLinks,
   CaughtUp,
   Checking,
   CollectionEditor,
@@ -1021,6 +1070,8 @@ export {
   Movie,
   MovieFixOpen,
   NeedsCards,
+  NeedsIgnored,
+  NeedsPhone,
   NeedsYou,
   NewCollection,
   NoMatch,

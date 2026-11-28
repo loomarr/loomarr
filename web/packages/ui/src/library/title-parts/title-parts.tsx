@@ -1,8 +1,9 @@
-import { Surface, Text, useWindowWidth, VisuallyHidden } from "@loomarr/design-system";
+import { Action, Surface, Text, useWindowWidth, VisuallyHidden } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { ChannelIdentity } from "../../identity";
 import { Line, Stack } from "../library-poster";
 import type {
+  LibraryPersonLink,
   LibraryTitleAiring,
   LibraryTitleDetail,
   LibraryTitlePerson,
@@ -221,20 +222,68 @@ const CREW = [
   ["writer", "Written by"],
 ] as const;
 
+// A credit's name: a link to the person's titles when the app can name them, else plain text.
+const PersonName = ({
+  person,
+  personLink,
+  center = false,
+}: {
+  person: LibraryTitlePerson;
+  personLink?: LibraryPersonLink;
+  center?: boolean;
+}) => {
+  const { density } = useTitleLayout();
+  return personLink && person.personId ? (
+    <Action accessibilityRole="link" density={density} render={personLink(person.personId)} variant="ghost">
+      {person.name}
+    </Action>
+  ) : (
+    <Text textAlign={center ? "center" : undefined} textRole={center ? "label" : "compact"}>
+      {person.name}
+    </Text>
+  );
+};
+
 // The crew and the title's other facts as labelled lines, then the cast with their initials.
-const CastAndCrew = ({ title }: { title: LibraryTitleDetail }) => {
+const CastAndCrew = ({
+  title,
+  personLink,
+}: {
+  title: LibraryTitleDetail;
+  personLink?: LibraryPersonLink;
+}) => {
   const credits: readonly LibraryTitlePerson[] = title.credits ?? [];
   const cast = credits.filter((c) => c.role === "actor");
+  const crew = CREW.flatMap(([role, label]) => {
+    const people = credits.filter((c) => c.role === role);
+    if (people.length === 0) return [];
+    const linked = personLink && people.some((p) => p.personId);
+    const value = linked ? (
+      <Line alignItems="center" columnGap="control" key={label} rowGap="inline">
+        {people.map((p) => (
+          <PersonName key={`${p.name}:${p.personId}`} person={p} personLink={personLink} />
+        ))}
+      </Line>
+    ) : (
+      <Text key={label} textRole="compact">
+        {people.map((p) => p.name).join(", ")}
+      </Text>
+    );
+    return [{ label, value }];
+  });
   const rows = [
-    ...CREW.map(([role, label]) => ({
-      label,
-      value: credits
-        .filter((c) => c.role === role)
-        .map((c) => c.name)
-        .join(", "),
-    })),
-    ...(title.about ?? []),
-  ].filter((row) => row.value);
+    ...crew,
+    ...(title.about ?? [])
+      .filter((row) => row.value)
+      .map((row) => ({
+        label: row.label,
+        value: (
+          <Text key={row.label} textRole="compact">
+            {row.value}
+          </Text>
+        ),
+      })),
+  ];
   return (
     <>
       {rows.length > 0 ? (
@@ -247,7 +296,7 @@ const CastAndCrew = ({ title }: { title: LibraryTitleDetail }) => {
                 </Text>
               </Stack>
               <Stack flexShrink={1} minWidth={0}>
-                <Text textRole="compact">{row.value}</Text>
+                {row.value}
               </Stack>
             </Line>
           ))}
@@ -271,9 +320,7 @@ const CastAndCrew = ({ title }: { title: LibraryTitleDetail }) => {
                 >
                   <Text textRole="title">{initials(person.name)}</Text>
                 </Surface>
-                <Text textAlign="center" textRole="label">
-                  {person.name}
-                </Text>
+                <PersonName center person={person} personLink={personLink} />
                 {person.character ? (
                   <Text textAlign="center" textRole="compact" tone="muted">
                     {person.character}

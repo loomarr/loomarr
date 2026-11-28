@@ -486,6 +486,8 @@ RETIRED=(
   'clsx|#4451: compose design-system props, not class strings'
   'import { cn }|#4451: the cn class helper was deleted with Tailwind'
   '@/lib/utils|#4451: src/lib/utils held only the cn class helper and was deleted'
+  'rejudgeDoubtfulReviews|#4706: held doubts are settled by the verdict rungs; there is no boot-time re-judge'
+  'retireRemovedRows|#4706: advance retires a removed clip when its row is due; there is no boot-time sweep'
 
 )
 # ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than

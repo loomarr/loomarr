@@ -86,7 +86,7 @@ const SKIPPED_KINDS = [
     reasons: ["empty_file"],
     title: (n: number) => count(n, "video file is empty", "video files are empty"),
     body: (names: string, n: number) =>
-      `${names} ${n === 1 ? "has" : "have"} nothing in ${n === 1 ? "it" : "them"} — a copy that never finished. Copy ${n === 1 ? "it" : "them"} again or delete ${n === 1 ? "it" : "them"}, then check files again.`,
+      `${names} ${n === 1 ? "has" : "have"} nothing in ${n === 1 ? "it" : "them"}. The copy never finished. Copy ${n === 1 ? "it" : "them"} again or delete ${n === 1 ? "it" : "them"}, then check files again.`,
   },
   {
     reasons: ["identity_conflict", "invalid_facts"],
@@ -163,7 +163,7 @@ const scanHeadline = (scan: LibraryScan, notAllThere = false) => {
           ? ["progress", "Adding your media"]
           : notAllThere
             ? ["ok", "Up to date"]
-            : ["ok", "All caught up — every title's ready to air"];
+            : ["ok", "All caught up. Every title's ready to air"];
   const step = scan.step === "idle" ? undefined : scan.step;
   const lastStep = scan.stepNumber === LAST_STEP;
   const eta = running && !scan.paused && scan.etaSeconds !== undefined ? scan.etaSeconds : undefined;
@@ -208,17 +208,17 @@ const scanHeadline = (scan: LibraryScan, notAllThere = false) => {
 // the progress says so instead. A key problem never shows here — the household has nothing to do
 // about it (a release build ships its own key), so only the server's log says it. undefined when
 // nothing waits on a retry.
-//   line:   "12 titles are waiting on details — trying again at 3:40 PM" (the Library's line)
+//   line:   "12 titles are waiting on details. Trying again at 3:40 PM" (the Library's line)
 //   title:  "12 titles are waiting on details" (Settings → Library's row)
-//   reason: "Can't reach TMDB — trying again at 3:40 PM", or "Trying again at 3:40 PM"
+//   reason: "Can't reach TMDB. Trying again at 3:40 PM", or "Trying again at 3:40 PM"
 // The time is told on the household's clock (the Guide's), the device's while that is unknown.
 const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan, timeZone?: string) => {
   if (!details?.retryAt || details.waiting === 0 || scan.step === "lookingUp") return undefined;
   const title = `${count(details.waiting, "title", "titles")} ${details.waiting === 1 ? "is" : "are"} waiting on details`;
   const at = formatGuideTime(Date.parse(details.retryAt), timeZone);
-  const retry = `trying again at ${at}`;
-  const reason = details.unreachable ? `Can't reach TMDB — ${retry}` : `Trying again at ${at}`;
-  return { title, line: `${title} — ${retry}`, reason };
+  const retry = `Trying again at ${at}`;
+  const reason = details.unreachable ? `Can't reach TMDB. ${retry}` : retry;
+  return { title, line: `${title}. ${retry}`, reason };
 };
 
 // What the folder browser says a folder holds, one look inside it (#2151):
