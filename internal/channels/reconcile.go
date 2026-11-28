@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
@@ -199,6 +200,10 @@ type reconcilePlan struct {
 	acceptedSlots  []schedule.Slot
 	acceptedAnchor time.Time
 	turned         bool
+	// scheduled is the ledger rows acceptedSlots aired (#1677). Only a commit writes them: its CAS
+	// proves the cycle was still accepted, so an attempt that aborts or loses to another writer's
+	// re-deal never records programmes from a cycle the commit did not confirm.
+	scheduled []channeldatastore.ScheduledAiring
 	// desiredChangedLocally and channelListChangedLocally stay attempt-local so a stale commit
 	// publishes no freshness; the retry recomputes them from the winning row.
 	desiredChangedLocally     bool
@@ -308,7 +313,7 @@ func (e *Engine) planReconcile(
 			})
 		}
 		ch.DealtFrom = from
-		desired.Slots = e.planWindowOnAir(ctx, ch, turnAnchor, desired.Slots)
+		desired.Slots = e.planWindowOnAir(ctx, ch, turnAnchor, desired.Slots, settings, now)
 	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:
 	// it covers first materialization and a backend switch that reuses a historical
@@ -359,7 +364,7 @@ func (e *Engine) planReconcile(
 	channelListChangedLocally := ch.Status == schedule.StatusBuilding || internalCatalogMembershipChanged
 	return &reconcilePlan{
 		ch: ch, previousStatus: previousStatus, nextStatus: nextStatus, playsInternally: playsInternally,
-		desired: desired, chDomain: chDomain, fillerIDs: fillerIDs,
+		desired: desired, chDomain: chDomain, fillerIDs: fillerIDs, scheduled: in.Scheduled,
 		acceptedSlots: acceptedSlots, acceptedAnchor: acceptedAnchor, turned: turned,
 		desiredChangedLocally: desiredChangedLocally, channelListChangedLocally: channelListChangedLocally,
 	}, nil
@@ -476,6 +481,7 @@ func (e *Engine) commitReconcile(ctx context.Context, plan *reconcilePlan, run *
 		return fmt.Errorf("persist channel %s: %w", channelID, err)
 	}
 	ch = committed
+	e.recordScheduled(ctx, ch.ID, plan.scheduled)
 	if run.qualityEligible && (ch.Status == schedule.StatusLive || ch.Status == schedule.StatusDrifted) {
 		run.qualityScheduled = true
 	}
