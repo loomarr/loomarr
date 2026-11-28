@@ -9,6 +9,8 @@ import { OrderFiles } from "../order-files";
 import { FILES, mismatchLine, type OrderOption, onlyCatalog, orderOptions } from "../order-options";
 import { OrderRadio } from "../order-radio";
 import { plural } from "../plural";
+import type { ProblemEntry } from "../problem-entries";
+import { ProblemReasons } from "../problem-reasons";
 
 const OrderCard = ({
   need,
@@ -18,8 +20,11 @@ const OrderCard = ({
   onChoose,
   onDone,
   onOpenTitle,
+  problem,
 }: {
   need: LibraryOrderNeed;
+  /** What else is wrong with this show, listed on the same card. */
+  problem?: ProblemEntry;
   primary: boolean;
   /** The answer given, as the done line says it; absent while it is asked. */
   done?: { line: string; fromTmdb: boolean };
@@ -32,6 +37,7 @@ const OrderCard = ({
   const options = orderOptions(need);
   const [picked, setPicked] = useState(() => (options.find((o) => o.fits) ?? options[0])?.key ?? FILES);
   const wide = useWindowWidth() >= 640;
+  const density = wide ? "pointer" : "touch";
   const waiting = need.files.length;
   const chosen = options.find((o) => o.key === picked);
   const tone = primary ? { tone: "primary" as const } : { variant: "outline" as const };
@@ -61,16 +67,18 @@ const OrderCard = ({
               <Text textRole="body" tone="secondary">
                 {mismatchLine(need)}
               </Text>
+              {problem ? <ProblemReasons reasons={problem.reasons} /> : null}
               <Line>
-                <Action onPress={() => files && onChoose(files)} {...tone}>
+                <Action density={density} onPress={() => files && onChoose(files)} {...tone}>
                   That's fine
                 </Action>
-                <Action onPress={() => onOpenTitle(need.id)} variant="outline">
+                {/* See the show opens the same page See why would. */}
+                <Action density={density} onPress={() => onOpenTitle(need.id)} variant="outline">
                   See the show
                 </Action>
               </Line>
               {failed ? <NotSaved /> : null}
-              <OrderFiles files={need.files} />
+              <OrderFiles density={density} files={need.files} />
             </>
           ) : (
             <>
@@ -99,13 +107,19 @@ const OrderCard = ({
                   </Stack>
                 ))}
               </RadioGroup>
+              {problem ? <ProblemReasons reasons={problem.reasons} /> : null}
               <Line>
-                <Action onPress={() => chosen && onChoose(chosen)} {...tone}>
+                <Action density={density} onPress={() => chosen && onChoose(chosen)} {...tone}>
                   {picked === FILES ? "Keep the file names" : "Use this order"}
                 </Action>
+                {problem ? (
+                  <Action density={density} onPress={() => onOpenTitle(need.id)} variant="ghost">
+                    See why
+                  </Action>
+                ) : null}
               </Line>
               {failed ? <NotSaved /> : null}
-              <OrderFiles files={need.files} />
+              <OrderFiles density={density} files={need.files} />
             </>
           )}
         </Stack>

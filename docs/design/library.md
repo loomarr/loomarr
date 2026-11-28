@@ -805,10 +805,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   carries no `episode`, so neither its id, name nor numbering is sent (#4476).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
-  different title, or Find it with no guess); `/library/needs` holds one card each with the
+  different title, or Find it with no guess); `/library/needs` holds one card per title, with the
   reason line, the other guesses, a TMDB search, Ignore this, and the files behind a disclosure.
+  What else is wrong with that title (unplayable files, an extra copy) is listed on the same card
+  with See why, and its Waiting count is the number of cards.
   An answer locks in and leaves once seen; one that fails puts the question back. The Library nav
-  badge is the status's `needsYou`, the same number as the heading.
+  badge is the status's `needsYou`, which counts a title once for each list it is in.
 - **A title's actions** (step 11c, decision 26). Each title row records what decided which title
   it is: the basis and provider of its highest-ranked catalog id (`match_basis`, `match_app`), and
   for an arr its page there (`match_page`, from the arr's `titleSlug`). `GET /v1/library/items/{id}`
