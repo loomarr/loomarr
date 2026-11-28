@@ -447,10 +447,12 @@ var memberReads = `(` + titleIdentified("i") + ` OR (i.kind = 'episode' AND i.un
 // titleKept is the condition on the movie or series t that the maintainer kept it as a home video.
 func titleKept(t string) string {
 	// The answer names one of the title's origins; the row's own origin may be another file's.
-	return `EXISTS (SELECT 1 FROM library_answers a WHERE a.kept = TRUE
-		AND ((a.origin_authority = ` + t + `.origin_authority AND a.origin_key = ` + t + `.origin_key)
-			OR EXISTS (SELECT 1 FROM inventory_item_origins o WHERE o.item_id = ` + t + `.id
-				AND o.authority_id = a.origin_authority AND o.external_item_id = a.origin_key)))`
+	// CROSS JOIN keeps the title's origins first, so each answer is found by its key.
+	return `(EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = ` + t + `.origin_authority
+			AND a.origin_key = ` + t + `.origin_key AND a.kept = TRUE)
+		OR EXISTS (SELECT 1 FROM inventory_item_origins o CROSS JOIN library_answers a
+			WHERE o.item_id = ` + t + `.id AND a.origin_authority = o.authority_id
+				AND a.origin_key = o.external_item_id AND a.kept = TRUE))`
 }
 
 // titleIdentified is memberReads for the movie or series t. Identified is read from the match

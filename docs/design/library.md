@@ -759,7 +759,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   …/answer` takes it back, and the title waits in Needs you again; "Wrong title?" replaces it with
   a link. A kept title is answered, so no scan or Matcher pass matches it or returns it to Needs
   you. The answer covers the whole title: a changed file, a new part and a new copy in the film's
-  folder are kept too, and nothing a sidecar, an app or a catalog says is read for it. It keeps the name its file or folder gives it, with the year when the name has one, and a
+  folder are kept too, and nothing a sidecar, an app or a catalog says is read for it. An answer you
+  give, and taking one back, is written to every scan origin of the title at once, so undoing,
+  ignoring or linking holds whichever file the title's row is read from. It keeps the name its file or folder gives it, with the year when the name has one, and a
   multi-part folder is one title with parts. Its genre is "Home videos", so the genre filter and
   search find it. Members read it like any other title, a show's episodes included. The list and
   detail reads mark it `homeVideo`. The list read also marks `unidentified` a title that is waiting

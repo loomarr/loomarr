@@ -41,17 +41,16 @@ func (s *Store) KeepLibraryNeed(ctx context.Context, itemID string, at time.Time
 // KeptLibraryTitle reports whether a file belongs to a title kept as a home video: the answer is
 // for origin itself, or for the title that reports origin or holds one of the group ids.
 func (s *Store) KeptLibraryTitle(ctx context.Context, kind string, origin LibraryOrigin, groups []LibraryID) (bool, error) {
-	holds := `i.id IN (SELECT item_id FROM inventory_item_origins WHERE authority_id = ? AND external_item_id = ?)`
+	items := `SELECT item_id FROM inventory_item_origins WHERE authority_id = ? AND external_item_id = ?`
 	args := []any{kind, origin.Authority, origin.Key, origin.Authority, origin.Key}
 	for _, g := range groups {
-		holds += ` OR i.id IN (SELECT item_id FROM inventory_external_ids WHERE namespace = ? AND external_id = ?)`
+		items += ` UNION SELECT item_id FROM inventory_external_ids WHERE namespace = ? AND external_id = ?`
 		args = append(args, g.Namespace, g.Value)
 	}
 	var n int
-	if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_answers a
-		WHERE a.kept = TRUE AND a.kind = ? AND ((a.origin_authority = ? AND a.origin_key = ?)
-		OR EXISTS (SELECT 1 FROM inventory_item_origins i0 JOIN library_items i ON i.id = i0.item_id
-			WHERE i0.authority_id = a.origin_authority AND i0.external_item_id = a.origin_key AND (`+holds+`)))`),
+	if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_answers
+		WHERE kept = TRUE AND kind = ? AND (origin_authority, origin_key) IN (SELECT CAST(? AS TEXT), CAST(? AS TEXT)
+			UNION SELECT authority_id, external_item_id FROM inventory_item_origins WHERE item_id IN (`+items+`))`),
 		args...).Scan(&n); err != nil {
 		return false, fmt.Errorf("kept library title: %w", err)
 	}
@@ -62,13 +61,13 @@ func (s *Store) RestoreLibraryIgnored(ctx context.Context, itemIDs []string) ([]
 	return s.answerEach(ctx, "restore ignored library titles", ErrNotIgnored, itemIDs,
 		`SELECT i.origin_authority, i.origin_key FROM library_items i WHERE i.id = ?`,
 		func(ctx context.Context, tx execer, o LibraryOrigin, _ string) (sql.Result, error) {
-			return tx.ExecContext(ctx, s.ph(`DELETE FROM library_answers
-				WHERE origin_authority = ? AND origin_key = ? AND ignored = TRUE`), o.Authority, o.Key)
+			return s.deleteTitleAnswers(ctx, tx, o, true)
 		})
 }
 
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 // answerEach reads each title's origin and writes its answer in one transaction. A title find
@@ -99,8 +98,12 @@ func (s *Store) answerEach(ctx context.Context, what string, refused error, item
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", what, err)
 		}
-		if changed != 1 {
+		if changed == 0 {
 			return nil, refused
+		}
+		// A new answer goes to the title's other origins too; a restore left none to copy.
+		if err := s.spreadAnswer(ctx, tx, t.Origin); err != nil {
+			return nil, fmt.Errorf("%s: %w", what, err)
 		}
 		out = append(out, t)
 	}

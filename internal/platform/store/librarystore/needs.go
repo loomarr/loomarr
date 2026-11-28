@@ -334,23 +334,39 @@ func (s *Store) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error {
 	}
 	// A search never replaces the maintainer's answer (decision 58), even one given between the
 	// Matcher's look and this write.
-	if _, err := s.h.ExecContext(ctx, s.ph(`INSERT INTO library_answers
-		(origin_authority, origin_key, kind, namespace, external_id, ignored, kept, answered_at_ms, answered_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, namespace = excluded.namespace,
-		external_id = excluded.external_id, ignored = excluded.ignored, kept = excluded.kept,
-		answered_at_ms = excluded.answered_at_ms, answered_by = excluded.answered_by
-		WHERE excluded.answered_by = ? OR library_answers.answered_by <> ?`),
-		a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.Kept, a.AnsweredAt.UnixMilli(), string(a.By),
-		string(AnsweredByYou), string(AnsweredByYou)); err != nil {
+	insert := func(tx execer) (sql.Result, error) {
+		return tx.ExecContext(ctx, s.ph(`INSERT INTO library_answers
+			(origin_authority, origin_key, kind, namespace, external_id, ignored, kept, answered_at_ms, answered_by)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, namespace = excluded.namespace,
+			external_id = excluded.external_id, ignored = excluded.ignored, kept = excluded.kept,
+			answered_at_ms = excluded.answered_at_ms, answered_by = excluded.answered_by
+			WHERE excluded.answered_by = ? OR library_answers.answered_by <> ?`),
+			a.Origin.Authority, a.Origin.Key, a.Kind, a.ID.Namespace, a.ID.Value, a.Ignored, a.Kept, a.AnsweredAt.UnixMilli(),
+			string(a.By), string(AnsweredByYou), string(AnsweredByYou))
+	}
+	var err error
+	if a.By == AnsweredByYou {
+		err = s.replaceTitleAnswer(ctx, a.Origin, insert)
+	} else {
+		_, err = insert(s.h)
+	}
+	if err != nil {
 		return fmt.Errorf("save library answer: %w", err)
 	}
 	return nil
 }
 
 func (s *Store) DeleteLibraryAnswer(ctx context.Context, origin LibraryOrigin) error {
-	if _, err := s.h.ExecContext(ctx, s.ph(`DELETE FROM library_answers WHERE origin_authority = ? AND origin_key = ?`),
-		origin.Authority, origin.Key); err != nil {
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("delete library answer: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := s.deleteTitleAnswers(ctx, tx, origin, false); err != nil {
+		return fmt.Errorf("delete library answer: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("delete library answer: %w", err)
 	}
 	return nil
