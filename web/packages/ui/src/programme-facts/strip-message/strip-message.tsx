@@ -1,5 +1,4 @@
-import { Surface, Text, ThemeScope } from "@loomarr/design-system";
-import { View } from "react-native";
+import { Stack, Surface, Text, ThemeScope } from "@loomarr/design-system";
 
 interface StripMessageProps {
   /** The words to say; empty draws nothing, and the live region stays to announce the next one. */
@@ -8,7 +7,7 @@ interface StripMessageProps {
 
 /** A message raised over the picture or the Guide, on ink: when a later programme starts, say. */
 const StripMessage = ({ message }: StripMessageProps) => (
-  <View aria-live="polite" role="status" style={{ alignItems: "center" }}>
+  <Stack align="center" aria-live="polite" flexShrink={0} position="relative" role="status" zIndex={0}>
     {message ? (
       <ThemeScope theme="dark">
         <Surface
@@ -24,7 +23,7 @@ const StripMessage = ({ message }: StripMessageProps) => (
         </Surface>
       </ThemeScope>
     ) : null}
-  </View>
+  </Stack>
 );
 
 export type { StripMessageProps };
