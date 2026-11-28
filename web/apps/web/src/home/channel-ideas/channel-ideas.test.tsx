@@ -159,7 +159,7 @@ describe("Channel ideas on a member's Home (#1659)", () => {
   });
 
   // "Edit first" and "Describe your own channel" (#1817, #1872) both open the Guide's manual
-  // builder — the shipped grid used to name these as waiting on the mock.
+  // builder.
   it("links Edit first and Describe your own channel into the Guide's manual builder", async () => {
     stub({ me: MEMBER });
     onAir();

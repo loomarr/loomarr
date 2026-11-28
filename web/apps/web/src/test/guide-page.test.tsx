@@ -16,7 +16,7 @@ import {
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -264,8 +264,8 @@ describe("Guide", () => {
     expect(screen.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
   });
 
-  // A failed refetch (the SSE bus invalidating every window) used to swap the whole page for an
-  // error. The Guide on screen stays, and a Notice says it may be stale until a refresh lands.
+  // A failed refetch (the SSE bus invalidates every window) must not swap the page for an error.
+  // The Guide on screen stays, and a Notice says it may be stale until a refresh lands.
   it("keeps the Guide on screen and says so when a refresh fails", async () => {
     const user = userEvent.setup();
     stubGuide();
@@ -603,8 +603,8 @@ describe("Guide", () => {
     });
 
     // TanStack v5 shows placeholder data only while a query is pending, so a NEW window that fails
-    // has no data at all. The page used to give itself to the error then, taking the controls (and
-    // the way back to a window that works) with it.
+    // has no data at all. A page given over to the error then would take the controls (and the way
+    // back to a window that works) with it.
     describe("that fails to load", () => {
       // The first windows answer (the opened one and its prefetched neighbours); `fail()` then makes
       // the server error for everything not already cached.
@@ -931,9 +931,15 @@ describe("Guide", () => {
     const preview = await view.findByRole("tooltip");
     expect(within(preview).getByText("Scheduled")).toBeInTheDocument();
     expect(within(preview).getByText("Harbour Mystery")).toBeInTheDocument();
-    await user.hover(preview);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(preview).toBeInTheDocument();
+    // Moving onto the preview leaves the programme, which would start a close; fake time runs past it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await user.hover(preview);
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(preview).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
     await user.keyboard("{Escape}");
     await waitFor(() => expect(view.queryByRole("tooltip")).not.toBeInTheDocument());
     expect(within(next).getByText("Harbour Mystery")).toBeInTheDocument();

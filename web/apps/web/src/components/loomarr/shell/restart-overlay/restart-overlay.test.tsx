@@ -7,8 +7,7 @@ describe("RestartOverlay", () => {
   // ⚠ THE POINT: while the server is down every request fails, so the app must not accept
   // clicks that were never going to work. The progress cursor marks it busy; the fixed
   // full-screen layer is what actually swallows the input.
-  // ⚠ `status`, not `alertdialog`. This used to claim `role="alertdialog" aria-modal="true"` with
-  // none of the behaviour behind it (V50b). It is a status message: no focusable content in any
+  // ⚠ `status`, not `alertdialog` (V50b). It is a status message: no focusable content in any
   // state, and no response required — the two things `alertdialog` is defined for.
   it("covers the app and blocks interaction while restarting", () => {
     render(<RestartOverlay restarting />);

@@ -22,9 +22,9 @@ import { useCatalogSelection } from "./use-catalog-selection";
 import { useClipSplit } from "./use-clip-split";
 
 // FillerPage — the §10 clip catalog: browse, search, tag and (on the filler image) download.
-// ⚠ No longer "sync": V38c removed the whole-catalog Sync and AI-tag buttons, because both run
-// on their own schedule and a button for work that already happens invites the reading that it
-// does not happen unless pressed. Filtering is client-driven but server-executed: the store indexes
+// ⚠ There is no whole-catalog Sync or AI-tag button (V38c): both run on their own schedule, and a
+// button for work that already happens invites the reading that it does not happen unless pressed.
+// Filtering is client-driven but server-executed: the store indexes
 // these columns, so a query per filter change is cheaper and always correct, versus
 // holding thousands of clips in memory to filter locally (§7.2 — no client index).
 // The catalog is mounted only for `/filler/library`. Its filters remain URL-driven, deep-linkable,

@@ -406,18 +406,6 @@ type ClipStore interface {
 	// UpdateClipClassification edits the non-taxonomy classifier facts — the tag editor (§10).
 	// Taxonomy writes exclusively own category. Returns ErrNotFound if absent.
 	UpdateClipClassification(ctx context.Context, libraryItemID string, era int, audience string, updatedAt time.Time) error
-	// UpdateClipRole corrects a clip's role (§10). Separate from UpdateClipClassification because
-	// the AI tagging job never sets the role — it classifies era/audience from text signals,
-	// while the role is detected at sync and only a human corrects it (a trailer scanned as a
-	// commercial being the likely case).
-	UpdateClipRole(ctx context.Context, tunarrProgramID, role string, updatedAt time.Time) error
-	// RenameClip records a name an operator gave a clip, with its provenance (#1990). Hash-keyed;
-	// the caller validates the name and writes the sidecar so a rescan keeps it. Returns ErrNotFound
-	// if absent.
-	RenameClip(ctx context.Context, hash, name string, source clips.NameSource, updatedAt time.Time) error
-	// UpdateClipGeography records grounded broadcast applicability and context. It is hash-keyed;
-	// callers validate scope/country/date and provide the evidence attribution.
-	UpdateClipGeography(ctx context.Context, hash, scope, country, network, station, airDate, evidence string, updatedAt time.Time) error
 	// DeleteClipsNotIn removes clips whose id isn't in the given set — the sync's
 	// prune step (a clip removed from the media server's filler library is gone).
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)

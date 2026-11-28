@@ -558,9 +558,8 @@ describe("feature-gated panels mount when their flag is on", () => {
     // oversight.
     ["/settings/access", /does not create an account here/i, "the SSO scope note"],
     ["/people", /import from emby\/jellyfin/i, "the §11 import dialog trigger"],
-    // ⚠ The ingest panel moved to INCOMING (V35). Discover was retired as a tab — finding
-    // clips is now something you do to a source — and the download tooling went with the tab
-    // that is about how clips ARRIVE. Keeping this pointed at a real URL is what stops a tab
+    // ⚠ The ingest panel lives on INCOMING (V35): finding clips is something you do
+    // to a source, and the download tooling belongs to the tab that is about how clips ARRIVE. Keeping this pointed at a real URL is what stops a tab
     // nobody can navigate to from passing as "reachable".
     //
     // ⚠ The ingest panel's assertion was here and is DELETED with it (V38b, retired-ok). This
@@ -621,7 +620,7 @@ describe("feature-gated panels mount when their flag is on", () => {
   //
   // ⚠ The assertion is the search's downloads-nothing promise, not merely the input. That line
   // is a behaviour claim — it is why an operator dares to browse a collection at all — and it
-  // previously sat in a card that was always mounted. Behind a click it needs a click to guard,
+  // sits behind a click, so the test has to make that click,
   // or the promise could silently stop rendering with every test still green.
   it("/filler/sources opens an archive source workspace onto its downloads-nothing promise", async () => {
     stubReachable();
@@ -778,8 +777,8 @@ describe("feature-gated panels mount when their flag is on", () => {
     await waitFor(() => expect(reconciled).toBe("ch-1"));
   });
 
-  // The channel header carries Watch and the media-server hand-off (#2088), which replaced the Watch
-  // tab and its footer. The hand-off opens the configured front door in a new tab.
+  // The channel header carries Watch and the media-server hand-off (#2088). The hand-off opens the
+  // configured front door in a new tab.
   it("/channels/ch-1 offers Watch and the media-server hand-off in its header", async () => {
     stubReachable();
     renderAt("/channels/ch-1/info");

@@ -460,53 +460,6 @@ func exposureTime(ms int64) time.Time {
 	return time.UnixMilli(ms).UTC()
 }
 
-// UpdateClipRole corrects a clip's role (§10). The role decides where a clip sits in a pod — a
-// bumper bookends a pod while a commercial fills it — so a mis-detected role produces
-// structurally wrong pods, not merely a mis-tagged clip.
-func (s *Store) UpdateClipRole(ctx context.Context, id, role string, updatedAt time.Time) error {
-	res, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`UPDATE clips SET role = ?, updated_at = ? WHERE hash = ?`),
-		role, epoch(updatedAt), id)
-	if err != nil {
-		return fmt.Errorf("update clip role %s: %w", id, err)
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// RenameClip sets a clip's name and its provenance together (#1990): name_source travels with
-// name, as in UpsertClip.
-func (s *Store) RenameClip(ctx context.Context, hash, name string, source clips.NameSource, updatedAt time.Time) error {
-	res, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`UPDATE clips SET name = ?, name_source = ?, updated_at = ? WHERE hash = ?`),
-		name, string(source), epoch(updatedAt), hash)
-	if err != nil {
-		return fmt.Errorf("rename clip %s: %w", hash, err)
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-func (s *Store) UpdateClipGeography(ctx context.Context, hash, scope, country, network, station, airDate, evidence string, updatedAt time.Time) error {
-	res, err := s.h.ExecContext(ctx, s.h.Rebind(`UPDATE clips SET geographic_scope = ?, country = ?,
-		network = ?, station = ?, air_date = ?, geo_evidence = ?, updated_at = ? WHERE hash = ?`),
-		scope, country, network, station, airDate, evidence, epoch(updatedAt), hash)
-	if err != nil {
-		return fmt.Errorf("update clip geography %s: %w", hash, err)
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 // DeleteClip removes ONE clip by identity. Used by split confirm: the
 // compilation's identity is a path that after the cut means twenty clips, not
 // one (§10 V34). ErrNotFound for an unknown path.

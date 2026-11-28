@@ -3,10 +3,9 @@ import { describe, expect, it } from "vitest";
 import { render } from "@/test/render";
 import { WatchLine } from "./watch-line";
 
-// ⚠ The HEALTH RULE is not tested here, because it is not here. It briefly lived in a
-// `watchHealth()` helper beside this component and was moved to the server (`GET
+// ⚠ The HEALTH RULE is not tested here, because it is not here. The server owns it (`GET
 // /v1/filler/watch`, §10 V38c): the sources listing is admin-only, so a client-side derivation
-// left members with a permanently grey dot, and the rule itself is domain logic worth testing
+// would leave members with a permanently grey dot, and the rule itself is domain logic worth testing
 // against the store rather than against a hand-built array of fake rows. `fillerwatch_test.go`
 // owns those cases — all-sources-off, empty-catalog, never-fetched-is-not-stale, and the rest.
 //

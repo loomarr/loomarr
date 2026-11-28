@@ -24,7 +24,7 @@ type PodEntry = NonNullable<TimelineAiring["pod"]>["entries"][number];
 
 const MINUTE = 60_000;
 
-/** The seekable past the stream still holds behind live (`playout.DVRHorizon`). */
+/** The seekable past the stream still holds behind live (the playout DVR horizon). */
 const PLAYBAR_PAST_MS = 15 * MINUTE;
 /** How far ahead the playbar previews: about two hours (§9.3). */
 const PLAYBAR_AHEAD_MS = 120 * MINUTE;

@@ -282,7 +282,7 @@ describe("the phone app", () => {
     expect(key("Play")).toBeNull();
   });
 
-  // Back with a sheet open used to leave the app, and the sheet was still open on return.
+  // An open sheet takes Back first: leaving the app would keep the sheet open for the return.
   it("closes an open sheet with Android's Back before Back leaves Watching", async () => {
     await launch();
     await eventually(() => expect(label("Watch ")).not.toBeNull());

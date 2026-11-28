@@ -306,26 +306,36 @@ describe("ManualChannelBuilder resume banner", () => {
     expect(screen.queryByText("AI is connected now")).not.toBeInTheDocument();
 
     const reads = features.reads;
-    act(() => FakeEventSource.broadcast("settings", {}));
-    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
-    expect(features.reads).toBe(reads);
-    expect(screen.getByText("Autumn Market")).toBeInTheDocument();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      act(() => FakeEventSource.broadcast("settings", {}));
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(features.reads).toBe(reads);
+      expect(screen.getByText("Autumn Market")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a member never reads the admin-only signal", async () => {
     const features = stubFeatures(false);
-    renderWithTheme(
-      <ManualChannelBuilder
-        isAdmin={false}
-        initialIdea={comedyIdea}
-        onCancel={vi.fn()}
-        onSubmitted={vi.fn()}
-        onAiSubmitted={vi.fn()}
-        onDescribeWithAi={vi.fn()}
-      />,
-    );
-    act(() => FakeEventSource.broadcast("settings", {}));
-    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
-    expect(features.reads).toBe(0);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderWithTheme(
+        <ManualChannelBuilder
+          isAdmin={false}
+          initialIdea={comedyIdea}
+          onCancel={vi.fn()}
+          onSubmitted={vi.fn()}
+          onAiSubmitted={vi.fn()}
+          onDescribeWithAi={vi.fn()}
+        />,
+      );
+      act(() => FakeEventSource.broadcast("settings", {}));
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(features.reads).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

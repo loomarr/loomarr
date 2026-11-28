@@ -25,6 +25,7 @@ const refuse = (method: "get" | "post", path: string) =>
 
 const stops: (() => void)[] = [];
 afterEach(() => {
+  vi.useRealTimers();
   for (const stop of stops.splice(0)) stop();
 });
 
@@ -62,6 +63,7 @@ describe("watchSessionExpiry", () => {
       if (new URL(request.url).pathname === "/v1/auth/me") me();
     });
 
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     await queryClient
       .getMutationCache()
       .build(queryClient, { mutationFn: () => customFetch("/v1/auth/password", { method: "POST" }) })
@@ -69,7 +71,7 @@ describe("watchSessionExpiry", () => {
       .catch(() => undefined);
 
     await waitFor(() => expect(me).toHaveBeenCalled());
-    await new Promise((settle) => setTimeout(settle, 20));
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(onSignedOut).not.toHaveBeenCalled();
     expect(queryClient.getQueryData(meQueryOptions().queryKey)).toMatchObject({ status: 200 });
     server.events.removeAllListeners();
@@ -81,8 +83,9 @@ describe("watchSessionExpiry", () => {
     stops.push(watchSessionExpiry(queryClient, onSignedOut));
     server.use(refuse("get", "/v1/channels"), refuse("get", "/v1/auth/me"));
 
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     await failingRead(queryClient);
-    await new Promise((settle) => setTimeout(settle, 20));
+    await vi.advanceTimersByTimeAsync(1_000);
 
     expect(onSignedOut).not.toHaveBeenCalled();
   });

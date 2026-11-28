@@ -41,7 +41,7 @@ describe("Request a channel", () => {
     expect(screen.getAllByText("Request a channel")).toHaveLength(1);
   });
 
-  // The page lives under Requests, so the nav keeps Requests lit (it used to light Guide).
+  // The page lives under Requests, so the nav keeps Requests lit, not Guide.
   it("keeps Requests highlighted in the nav", async () => {
     stub({ me: ADMIN });
     renderAt("/requests/new");

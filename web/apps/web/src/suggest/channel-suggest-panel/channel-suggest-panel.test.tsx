@@ -420,9 +420,9 @@ describe("ChannelSuggestPanel", () => {
     expect(screen.queryByRole("link", { name: /connect TMDB/i })).not.toBeInTheDocument();
   });
 
-  // Moved here when `/suggest` folded into the Guide header (§12) and its route-level suite
-  // went away. Worth keeping as its own case: `runtimeTargetMin` was in the shared schema and
-  // consumed by the scorer for a long time with NO way to set it, so this pins that the
+  // The panel is the Guide header's suggest surface (§12). Worth its own case: `runtimeTargetMin`
+  // is in the shared schema and consumed by the scorer, which is no use without a way to set it, so
+  // this pins that the
   // constraints disclosure actually reaches the wire — under the wire's field names.
   it("submits the constraints behind the disclosure, under the wire's field names", async () => {
     const user = userEvent.setup();

@@ -968,20 +968,25 @@ describe("ChannelWatch switch readout", () => {
   // The tune only dresses a wait that already exists (§9.4): a switch that is ready inside 960 ms is
   // the quiet flip, with the chrome up and none of the signature; only a slow one earns it.
   it("never shows the full signature for a switch that is ready inside 960 ms", async () => {
-    hls.status = "playing";
-    const view = render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, {
-      wrapper: makeWrapper(),
-    });
-    await screen.findByRole("button", { name: "More" });
-    hls.status = "loading";
-    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
-    expect(wash()).toBeNull();
-    // The band stays up and names the new channel through the flip.
-    await waitFor(() => expect(screen.queryAllByText("Saturday Cartoons").length).toBeGreaterThan(0));
-    hls.status = "playing";
-    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
-    expect(wash()).toBeNull();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      hls.status = "playing";
+      const view = render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, {
+        wrapper: makeWrapper(),
+      });
+      await screen.findByRole("button", { name: "More" });
+      hls.status = "loading";
+      view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
+      expect(wash()).toBeNull();
+      // The band stays up and names the new channel through the flip.
+      await waitFor(() => expect(screen.queryAllByText("Saturday Cartoons").length).toBeGreaterThan(0));
+      hls.status = "playing";
+      view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
+      await act(() => vi.advanceTimersByTimeAsync(1_100));
+      expect(wash()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("holds on the programme's fanart, contained, once a wait runs past 1.5 s", async () => {

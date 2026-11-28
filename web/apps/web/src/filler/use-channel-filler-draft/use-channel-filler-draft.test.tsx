@@ -23,7 +23,7 @@ const makeWrapper = () => {
 };
 
 // ⚠ The DRAFT preview carries its own coverage since V51f — one selection answers both the pod
-// and the meter, so the two can no longer describe different things during an edit.
+// and the meter, so the two describe the same thing during an edit.
 const previewBody: PreviewDraftPodsOutputBody = {
   coverage: {
     level: "exact",

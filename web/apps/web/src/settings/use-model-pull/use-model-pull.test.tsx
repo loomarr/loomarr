@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { delay, HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { server } from "@/test/msw/server";
@@ -116,14 +116,19 @@ describe("useModelPull", () => {
   });
 
   it("reads the operation once and leaves the rest to its frames", async () => {
-    const backend = serve(operation({ percent: 10 }));
-    const { result } = renderPull();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const backend = serve(operation({ percent: 10 }));
+      const { result } = renderPull();
 
-    act(() => result.current.start("qwen3:8b"));
-    await waitFor(() => expect(result.current.pulling?.percent).toBe(10));
-    await new Promise((resolve) => setTimeout(resolve, 1_200));
+      act(() => result.current.start("qwen3:8b"));
+      await waitFor(() => expect(result.current.pulling?.percent).toBe(10));
+      await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
 
-    expect(backend.reads).toBe(1);
+      expect(backend.reads).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("leaves the download alone when another download's frame arrives", async () => {
