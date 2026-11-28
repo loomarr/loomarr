@@ -92,8 +92,20 @@ describe("FilmStrip", () => {
 
 const style = (element: Element) => getComputedStyle(element);
 const block = (name: RegExp) => screen.getByRole("button", { name });
+// The layer around a block's button places and sizes it.
+const placed = (button: Element) => style(button.parentElement as Element);
 const key = (name: string) =>
   act(() => void fireEvent.keyDown(document.activeElement as Element, { key: name }));
+
+describe("FilmStrip's picture", () => {
+  it("fills the block's still with its artwork", () => {
+    const { container } = strip();
+    // react-native-web draws an Image as a box, the caller's style on it, holding the img.
+    const box = style(container.querySelector('img[src="/now.webp"]')?.parentElement as Element);
+    expect([box.position, box.top, box.left]).toEqual(["absolute", "0px", "0px"]);
+    expect([box.width, box.height]).toEqual(["100%", "100%"]);
+  });
+});
 
 describe("FilmStrip's two sizing rules", () => {
   const long = [airing(0, 1), airing(1, 180)];
@@ -101,18 +113,18 @@ describe("FilmStrip's two sizing rules", () => {
 
   it("draws a short airing at the minimum width under the picture, and a long one at the maximum", () => {
     strip({ airings: long, nowMs: at(0), window });
-    expect(style(block(/Film 0/)).width).toBe("150px");
-    expect(style(block(/Film 1/)).width).toBe("330px");
+    expect(placed(block(/Film 0/)).width).toBe("150px");
+    expect(placed(block(/Film 1/)).width).toBe("330px");
     cleanup();
     strip({ airings: long, maxBlockWidth: 200, minBlockWidth: 100, nowMs: at(0), window });
-    expect(style(block(/Film 0/)).width).toBe("100px");
-    expect(style(block(/Film 1/)).width).toBe("200px");
+    expect(placed(block(/Film 0/)).width).toBe("100px");
+    expect(placed(block(/Film 1/)).width).toBe("200px");
   });
 
   it("keeps a Guide row true to the clock, with a 44px ring on a focused or pointed sliver", async () => {
     strip({ airings: [airing(0, 179), airing(179, 180)], layout: "row", nowMs: at(0), window });
     const sliver = block(/Film 179/);
-    expect(Number.parseFloat(style(sliver).width)).toBeCloseTo(100 / 180, 2);
+    expect(Number.parseFloat(placed(sliver).width)).toBeCloseTo(100 / 180, 2);
     expect(screen.queryByTestId("film-strip-target")).toBeNull();
 
     // jsdom does not model `:focus-visible`; the KeyboardFocus story holds the browser to it.
@@ -127,7 +139,7 @@ describe("FilmStrip's two sizing rules", () => {
     await user.keyboard("{ArrowRight}");
     expect(document.activeElement).toBe(sliver);
     expect(style(screen.getByTestId("film-strip-target")).minWidth).toBe("44px");
-    expect(Number.parseFloat(style(sliver).width)).toBeCloseTo(100 / 180, 2);
+    expect(Number.parseFloat(placed(sliver).width)).toBeCloseTo(100 / 180, 2);
     expect(sliver.getAttribute("aria-label")).toBe("T179 Film 179");
 
     act(() => sliver.blur());
@@ -307,7 +319,7 @@ describe("FilmStrip's edges", () => {
 
   it("puts the playhead halfway along a block drawn at the minimum width, under the picture", () => {
     renderUi(view([airing(0, 10)], at(5)));
-    expect(style(screen.getByRole("button")).width).toBe("150px");
+    expect(placed(screen.getByRole("button")).width).toBe("150px");
     expect(style(screen.getByTestId("film-strip-playhead")).left).toBe("75px");
   });
 
@@ -319,16 +331,19 @@ describe("FilmStrip's edges", () => {
       window: { startMs: at(0), stopMs: at(120) },
     };
     const words = () => style(screen.getByTestId("film-strip-words"));
+    // The room for the Live word is padding on the box inside the words' layer.
+    const inset = () =>
+      style(screen.getByTestId("film-strip-words").firstElementChild as Element).paddingLeft;
     strip(row);
-    expect(words().paddingLeft).toBe("0px");
+    expect(inset()).toBe("0px");
     cleanup();
     strip({ ...row, playheadMs: at(50) });
     expect(words().left).toBe("50%");
-    expect(words().paddingLeft).toBe("48px");
+    expect(inset()).toBe("48px");
     cleanup();
     // Too little left to move the words at all.
     strip({ ...row, nowMs: at(110), playheadMs: at(100) });
-    expect(words().paddingLeft).toBe("0px");
+    expect(inset()).toBe("0px");
   });
 });
 
