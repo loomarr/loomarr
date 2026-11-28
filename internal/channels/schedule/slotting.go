@@ -431,7 +431,7 @@ func seriesKeyOf(s Slot) provision.Key { return s.Key }
 // # Per unit, not per title
 //
 // Keyed by library item id, so an aired episode moves back and its unaired siblings do not.
-// Keyed by the series, one tune-in would push every episode of the watched (#1674)
+// Keyed by the series (#1674), one tune-in would push every episode of the watched
 // show behind everything else. A multi-part or franchise super-slot carries its first part's id,
 // which is the part that starts the airing.
 func byRecency(slots []Slot, lastAired map[string]time.Time) []Slot {
