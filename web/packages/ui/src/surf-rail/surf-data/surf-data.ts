@@ -1,3 +1,4 @@
+import { createChannelLineup, lastChannelId } from "@loomarr/core/channel-lineup";
 import {
   formatGuideEpisode,
   formatGuideTime,
@@ -85,29 +86,6 @@ const surfChannelData = (
   };
 };
 
-const orderedKnownChannels = (
-  ids: readonly string[],
-  byId: ReadonlyMap<string, SurfChannelData>,
-  excludedId?: string,
-): SurfChannelData[] => {
-  const seen = new Set<string>();
-  return ids.flatMap((id) => {
-    if (id === excludedId || seen.has(id)) return [];
-    seen.add(id);
-    const channel = byId.get(id);
-    return channel ? [channel] : [];
-  });
-};
-
-const surfPreviousChannel = (
-  currentChannelId: string | undefined,
-  recentChannelIds: readonly string[],
-  playableChannelIds: readonly string[],
-): string | undefined => {
-  const playable = new Set(playableChannelIds);
-  return recentChannelIds.find((id) => id !== currentChannelId && playable.has(id));
-};
-
 const surfGroupsFromGuide = ({
   currentChannelId,
   favoriteChannelIds,
@@ -117,20 +95,33 @@ const surfGroupsFromGuide = ({
   recentChannelIds,
 }: SurfGroupsArgs): SurfGroupData[] => {
   const playable = new Set(playableChannelIds);
-  const all = layout.channels
-    .filter((channel) => playable.has(channel.source.channelId))
-    .map((channel) => surfChannelData(channel, nowMs, layout.timezone));
+  const lineup = createChannelLineup({
+    channels: layout.channels.map((channel) => ({
+      channel,
+      id: channel.source.channelId,
+      name: channel.source.name,
+      number: channel.source.number,
+      playable: playable.has(channel.source.channelId),
+    })),
+    recentIds: recentChannelIds,
+  });
+  const all = lineup.channels
+    .filter((entry) => entry.playable)
+    .map((entry) => surfChannelData(entry.channel, nowMs, layout.timezone));
   const byId = new Map(all.map((channel) => [channel.id, channel]));
   const favorites = favoriteChannelIds ? new Set(favoriteChannelIds) : undefined;
 
   return [
     {
+      // The shipped rail lists favourites in number order, not the order starred.
       channels: favorites ? all.filter((channel) => favorites.has(channel.id)) : [],
       kind: "favourites",
       label: "Favorites",
     },
     {
-      channels: orderedKnownChannels(recentChannelIds, byId, currentChannelId),
+      channels: lineup
+        .group("recent")
+        .channels.flatMap(({ id }) => (id === currentChannelId ? [] : (byId.get(id) ?? []))),
       kind: "recent",
       label: "Recent",
     },
@@ -166,9 +157,9 @@ const restoreSurfSelection = (
 };
 
 export {
+  lastChannelId as surfPreviousChannel,
   restoreSurfSelection,
   surfChannelData,
   surfGroupsFromGuide,
-  surfPreviousChannel,
   watchingScheduleFromGuide,
 };

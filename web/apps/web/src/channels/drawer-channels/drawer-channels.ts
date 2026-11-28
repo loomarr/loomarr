@@ -1,6 +1,7 @@
 import { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
 import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import { GuideChannelTimelineStatus } from "@loomarr/api/models/guideChannelTimelineStatus";
+import { createChannelLineup } from "@loomarr/core/channel-lineup";
 import { formatProgrammeTitle } from "@loomarr/core/guide";
 import type { DrawerChannel } from "../channel-drawer";
 
@@ -16,49 +17,56 @@ const DRAWER_NOW_PERCENT = (STRIP_BEFORE_MS / (STRIP_BEFORE_MS + STRIP_AFTER_MS)
 const drawerChannels = (timelines: GuideChannelTimeline[], nowMs: number): DrawerChannel[] => {
   const from = nowMs - STRIP_BEFORE_MS;
   const to = nowMs + STRIP_AFTER_MS;
-  return [...timelines]
-    .sort((a, b) => a.number - b.number || a.channelId.localeCompare(b.channelId))
-    .map((timeline) => {
-      const offAir =
-        timeline.status === GuideChannelTimelineStatus.paused
-          ? "paused"
-          : timeline.status === GuideChannelTimelineStatus.building ||
-              timeline.status === GuideChannelTimelineStatus.empty
-            ? "building"
-            : undefined;
-      const current = offAir
-        ? undefined
-        : timeline.airings.find(
+  const lineup = createChannelLineup({
+    channels: timelines.map((timeline) => ({
+      id: timeline.channelId,
+      name: timeline.name,
+      number: timeline.number,
+      playable: timeline.status === GuideChannelTimelineStatus.live,
+      timeline,
+    })),
+  });
+  return lineup.channels.map(({ timeline }) => {
+    const offAir =
+      timeline.status === GuideChannelTimelineStatus.paused
+        ? "paused"
+        : timeline.status === GuideChannelTimelineStatus.building ||
+            timeline.status === GuideChannelTimelineStatus.empty
+          ? "building"
+          : undefined;
+    const current = offAir
+      ? undefined
+      : timeline.airings.find(
+          (airing) =>
+            airing.kind === GuideAiringKind.program && airing.startMs <= nowMs && nowMs < airing.stopMs,
+        );
+    const blocks = offAir
+      ? []
+      : timeline.airings
+          .filter(
             (airing) =>
-              airing.kind === GuideAiringKind.program && airing.startMs <= nowMs && nowMs < airing.stopMs,
-          );
-      const blocks = offAir
-        ? []
-        : timeline.airings
-            .filter(
-              (airing) =>
-                airing.stopMs > from && airing.startMs < to && airing.kind !== GuideAiringKind.pending,
-            )
-            .map((airing) => {
-              const pod = airing.kind !== GuideAiringKind.program;
-              return {
-                key: airing.scheduleBlockId,
-                label: pod ? undefined : (airing.series ?? airing.title),
-                minutes: (Math.min(airing.stopMs, to) - Math.max(airing.startMs, from)) / 60_000,
-                pod,
-              };
-            });
-      return {
-        id: timeline.channelId,
-        number: timeline.number,
-        name: timeline.name,
-        // The one name an airing goes by everywhere: "Series · Title" (#2748).
-        now: current ? formatProgrammeTitle(current) : undefined,
-        minutesLeft: current ? Math.max(1, Math.round((current.stopMs - nowMs) / 60_000)) : undefined,
-        offAir,
-        blocks,
-      };
-    });
+              airing.stopMs > from && airing.startMs < to && airing.kind !== GuideAiringKind.pending,
+          )
+          .map((airing) => {
+            const pod = airing.kind !== GuideAiringKind.program;
+            return {
+              key: airing.scheduleBlockId,
+              label: pod ? undefined : (airing.series ?? airing.title),
+              minutes: (Math.min(airing.stopMs, to) - Math.max(airing.startMs, from)) / 60_000,
+              pod,
+            };
+          });
+    return {
+      id: timeline.channelId,
+      number: timeline.number,
+      name: timeline.name,
+      // The one name an airing goes by everywhere: "Series · Title" (#2748).
+      now: current ? formatProgrammeTitle(current) : undefined,
+      minutesLeft: current ? Math.max(1, Math.round((current.stopMs - nowMs) / 60_000)) : undefined,
+      offAir,
+      blocks,
+    };
+  });
 };
 
 export { DRAWER_NOW_PERCENT, drawerChannels };
