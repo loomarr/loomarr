@@ -384,11 +384,11 @@ func burnResolver(t *testing.T, works, decodes bool) (*Resolver, *SubtitleBurns,
 		files["film"]: {{Index: 2, Kind: "subtitle", Codec: "subrip", Language: "en"}, burnPGS},
 		files["next"]: {{Index: 5, Kind: "subtitle", Codec: "hdmv_pgs_subtitle", Language: "en"}},
 	}}
-	r.SetSubtitles(inventory, fakeCues{})
+	setSubtitles(r, inventory, fakeCues{})
 	p := &testkit.BurnInPreparer{}
 	s, owned := newTestBurns(t, works, p.Prepare)
 	s.decodes = decodes
-	r.SetSubtitleBurns(s)
+	r.burns = s
 	return r, s, p, owned, inventory
 }
 

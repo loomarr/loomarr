@@ -93,10 +93,6 @@ func NewSubtitleBurns(cfg SubtitleBurnsConfig) *SubtitleBurns {
 		jobs: make(chan burnJob, burnQueue), queued: map[string]bool{}, failed: map[string]time.Time{}}
 }
 
-// SetSubtitleBurns attaches the burn-in. Until it is set, nothing is burned in. It reads each
-// programme's tracks through the Library reader SetSubtitles attaches.
-func (r *Resolver) SetSubtitleBurns(burns *SubtitleBurns) { r.burns = burns }
-
 // burnTrack is the stream a channel burns in: the first image subtitle track inside the file
 // (not one beside it) in its language, however the file and the channel spell it.
 func burnTrack(streams []librarystore.LibraryStream, language string) (librarystore.LibraryStream, bool) {

@@ -114,7 +114,7 @@ func TestSubtitlesFollowAMovieInParts(t *testing.T) {
 	anchor := testPlayoutAnchor()
 	r, one, two := partsResolver(t, anchor)
 	en := []librarystore.LibraryStream{{Index: 2, Kind: "subtitle", Codec: "subrip", Language: "en"}}
-	r.SetSubtitles(fakeSubtitleTracks{one: en, two: en}, fakeCues{
+	setSubtitles(r, fakeSubtitleTracks{one: en, two: en}, fakeCues{
 		one: {{Start: 10 * time.Second, End: 12 * time.Second, Text: "one"}, {Start: 59 * time.Second, End: 61 * time.Second, Text: "end of one"}},
 		two: {{Start: 5 * time.Second, End: 7 * time.Second, Text: "two"}},
 	})

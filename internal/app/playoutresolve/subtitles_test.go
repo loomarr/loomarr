@@ -47,7 +47,7 @@ func TestSubtitles_PlacesCuesAcrossABreak(t *testing.T) {
 	if err := os.WriteFile(beside, []byte("1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r.SetSubtitles(fakeSubtitleTracks{film: {
+	setSubtitles(r, fakeSubtitleTracks{film: {
 		{Index: 2, Kind: "subtitle", Codec: "subrip", Language: "en", Title: "English"},
 		{Index: 3, Kind: "subtitle", Codec: "hdmv_pgs_subtitle", Language: "fr"},
 		{Index: 4, Kind: "subtitle", Codec: "subrip", Language: "en", HearingImpaired: true, ExternalRef: beside},
@@ -113,7 +113,7 @@ func TestSubtitles_EmptyWithoutTracksOrChoice(t *testing.T) {
 		t.Fatalf("unattached: %+v %v", window, err)
 	}
 	film := r.libraryFile.(fakeLibraryFiles)["film"]
-	r.SetSubtitles(fakeSubtitleTracks{film: {{Index: 2, Kind: "subtitle", Codec: "subrip", Language: "en"}}},
+	setSubtitles(r, fakeSubtitleTracks{film: {{Index: 2, Kind: "subtitle", Codec: "subrip", Language: "en"}}},
 		fakeCues{film: {{Start: time.Second, End: 2 * time.Second, Text: "hi"}}})
 	// No choice: the tracks are listed, and no cues are read.
 	window, err = r.Subtitles(context.Background(), "ch1", anchor, anchor.Add(time.Minute), "")

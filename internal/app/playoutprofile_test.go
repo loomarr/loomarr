@@ -37,19 +37,14 @@ func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
+	// Detection is lazy; install the result a real encoder trial would publish without running
+	// ffmpeg in a unit test. The configured 9 is deliberately above the measured 3.
+	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{PlayoutMaxChannels: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = application.Shutdown(context.Background()) })
 	h := application.Handler()
-	r := application.playoutResolver
-	if r == nil {
-		t.Fatal("Build wired no playout resolver")
-	}
-	// Detection is lazy; install the result a real encoder trial would publish without running
-	// ffmpeg in a unit test. The configured 9 is deliberately above the measured 3.
-	r.SetMaxChannels(3)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/playout/sessions", nil)
 	req.Header.Set("Authorization", "Bearer capacity-test-token")
