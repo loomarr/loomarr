@@ -292,17 +292,11 @@ esac`)
 		_, err := tools.NewFFmpegTools(probe, probe, "", "", "").MeasureConditioning(ctx, tools.ConditioningRequest{Path: artifact})
 		done <- err
 	}()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(framesReached); err == nil {
-			cancel()
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("bounded frame probe was not reached")
-		}
-		time.Sleep(time.Millisecond)
-	}
+	testkit.Eventually(t, 5*time.Second, "the bounded frame probe to be reached", func() bool {
+		_, err := os.Stat(framesReached)
+		return err == nil
+	})
+	cancel()
 	select {
 	case err := <-done:
 		if !errors.Is(err, context.Canceled) {
