@@ -40,6 +40,10 @@ type ChannelPolicy struct {
 	// revert it (§8.2). Bookkeeping only; rides policy_json, so it needs no migration.
 	// There are five pinnable fields (scope, audience, separation, ordering, seasonal).
 	OperatorSet []string `json:"operatorSet,omitempty" maxItems:"5"`
+	// AutomaticUnrated is what audience.unrated's unset value resolves to under this ceiling. The
+	// API fills it on read (WithAutomaticUnrated); enforcement never reads it and it is never
+	// stored.
+	AutomaticUnrated UnratedPolicy `json:"automaticUnrated,omitempty" readOnly:"true" enum:"allow,exclude" doc:"What the automatic unrated policy resolves to under this ceiling, whatever explicit choice is set. Ignored on write"`
 }
 
 // ProposalPolicy is the suggester-extracted half of ChannelPolicy (embedded, flattened).

@@ -117,6 +117,13 @@ func (p ChannelPolicy) Resolved(strategy Strategy, singleSeries bool) ResolvedPo
 	}
 }
 
+// WithAutomaticUnrated is the policy as the API reports it. The answer ignores an explicit choice:
+// it says what choosing automatic would do.
+func (p ChannelPolicy) WithAutomaticUnrated() ChannelPolicy {
+	p.AutomaticUnrated = resolveUnrated(AudiencePolicy{Ceiling: p.Audience.Ceiling})
+	return p
+}
+
 // resolveUnrated fills the unrated policy: explicit value wins; otherwise a kids
 // ceiling (TV-Y..TV-PG) defaults to exclude (fail-closed) and any other ceiling
 // (including none) defaults to allow (§4).
