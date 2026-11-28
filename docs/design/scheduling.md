@@ -374,6 +374,16 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   `60 / breaksPerHour` minute threshold. Breaks are inserted only when a filler pool exists; with
   none, programmes play back to back and the next reconcile re-inserts breaks once clips land.
   Positions are deterministic for a lineup and seed.
+- **The pool question belongs to the backend.** An internal channel has a pool when its pod holds
+  playable media: local files, with no Tunarr uuid needed. A Tunarr channel has a pool when its
+  pod holds a clip its filler list can reference by uuid. Station material counts on both, because
+  the fallback ladder airs it before the bumper card. Reconcile and the forecast (the guide,
+  schedule diff, proposal outlook and internal playout's cycle lookups) assemble a channel's inputs
+  through one path, and each arranges from one reading of the settings, so the forecast shows
+  exactly the breaks that air. Three differences are
+  deliberate: only reconcile holds the window on air and turns it, only reconcile heals the
+  lineup's metadata (it persists), and only the forecast prewarms media-server durations. Only
+  reconcile's pool question records the pod-assembly metric.
 - **Rotation (V58, household-wide since #2017).** The history is the household's, not a channel's:
   a commercial seen on any channel rests on every channel. One row per watched airing
   (`filler_airings`: channel, clip, scheduled start, recorded at) keeps every airing younger than a

@@ -23,7 +23,9 @@ type recordingPlanner struct {
 func (p *recordingPlanner) BuildFillerList(context.Context, string, int64, pod.Selection) ([]string, bool) {
 	return nil, false
 }
-func (p *recordingPlanner) HasPool(context.Context, string, int64, pod.Selection) bool { return true }
+func (p *recordingPlanner) TunarrFillerIDs(context.Context, string, int64, pod.Selection) []string {
+	return nil
+}
 func (p *recordingPlanner) PlayableDurationMs(context.Context, string, int64, pod.Selection) int64 {
 	return (10 * time.Minute).Milliseconds()
 }

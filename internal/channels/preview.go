@@ -51,10 +51,10 @@ type CycleResult struct {
 // episodes. A detached/paused channel is still previewable — the preview is a what-if, not a
 // management action.
 //
-// Break interleaving mirrors reconcile: breaks appear only when the channel actually has a
-// filler pool (else there'd be nothing to fill them), so the preview reflects the real guide.
-// We deliberately do NOT heal ratings/franchises here — those mutate the lineup and belong to
-// reconcile; the preview reads the channel exactly as the last reconcile left it.
+// Break interleaving is reconcile's: breaks appear only when the channel's backend has clips to
+// air in them, asked the way reconcile asks, so the preview reflects the real guide. It does NOT
+// heal ratings or franchises: those mutate the lineup and belong to reconcile, so the preview
+// reads the channel exactly as the last reconcile left it.
 func (e *Engine) CyclePreview(ctx context.Context, channelID string, at time.Time) (
 	resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution, window time.Duration, err error,
 ) {
@@ -100,40 +100,13 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch channelstore.Chan
 	}
 	lineup := ch.Lineup
 
-	// Mirror reconcile's chDomain assembly (reconcile.go step 2): break density only when a
-	// filler pool exists (drafted selection), and the settings-driven rolling-window horizon.
-	globalBackend, err := e.playoutBackendFor(ctx)
+	// The same assembly reconcile runs (inputs.go), so the forecast asks the filler question the
+	// channel's backend asks and shows only the breaks that air.
+	settings, err := e.settingsSnapshot(ctx)
 	if err != nil {
 		return CycleResult{}, fmt.Errorf("resolve playout backend for channel %s: %w", ch.ID, err)
 	}
-	playsInternally := schedule.PlaysInternally(ch.Policy, globalBackend)
-	hasFillerPool := false
-	var playableFillerMs int64
-	if e.pods != nil {
-		// Internal playout needs the pod's playable duration so its accepted break ends with
-		// the media. Tunarr needs only the backend-independent pool predicate here; its
-		// projection builds the remote filler-list during reconcile (§9.1).
-		seed, selection := PodSeed(ch.ID), SelectionForChannel(ch)
-		if playsInternally {
-			playableFillerMs = e.pods.PlayableDurationMs(ctx, ch.ID, seed, selection)
-			hasFillerPool = playableFillerMs > 0
-		} else {
-			hasFillerPool = e.pods.HasPool(ctx, ch.ID, seed, selection)
-		}
-	}
-	chDomain := ch.Channel
-	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
-	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
-	chDomain.DefaultWindow = e.defaultWindowFor()
-	chDomain = chDomain.WithCalendar(e.Calendar())
-	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
-	var accepted []schedule.Slot
-	if playsInternally {
-		accepted = ch.Desired // #1677: the accepted cycle's programmes count as aired, as in reconcile
-	}
-	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, at, accepted, ch.PlayoutAnchor)
-	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
-	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, at)
+	in := e.assemble(ctx, ch, at, settings, assembleForecast)
 
 	// Resolve every movie's runtime in ONE media-server call before the layout asks for them one
 	// at a time. ComputeDesiredAt calls Availability.Resolve per key (and walks the lineup several
@@ -161,18 +134,15 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch channelstore.Chan
 		pw.PrewarmDurations(ids)
 	}
 
-	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, lineup, availability, e.policy, ch.Policy, at)
+	desired, err := in.compute(ctx, availability)
 	if err != nil {
 		return CycleResult{}, fmt.Errorf("compute cycle for channel %s: %w", ch.ID, err)
-	}
-	if playsInternally {
-		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
 	}
 	return CycleResult{
 		At:     at,
 		Slots:  desired.Slots,
-		Active: schedule.ActiveRuleAt(ch.Policy.Rules, at, e.Calendar()),
-		Window: schedule.ResolveWindow(chDomain, ch.Policy, at),
+		Active: schedule.ActiveRuleAt(ch.Policy.Rules, at, settings.Calendar),
+		Window: schedule.ResolveWindow(in.Channel, ch.Policy, at),
 		// ⚠ Carried out rather than dropped. This is the ONLY place the exclusion report reaches
 		// a caller: reconcile computes the identical report and discards it.
 		Excluded:        desired.Excluded,

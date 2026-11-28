@@ -52,8 +52,8 @@ func TestPodSeedAt_DiffersPerChannelAtTheSameInstant(t *testing.T) {
 }
 
 // The channel-only seed stays available and unchanged: BuildFillerList attaches a POOL to
-// Tunarr (there is no break to seed from at attach time) and HasPool only asks whether
-// anything exists at all.
+// Tunarr (there is no break to seed from at attach time) and the forecast asks the same list
+// whether anything exists at all.
 func TestPodSeed_StillStableForTheChannelWidePool(t *testing.T) {
 	first := channels.PodSeed("ch_puddleford")
 	if got := channels.PodSeed("ch_puddleford"); got != first {

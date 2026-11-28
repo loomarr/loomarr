@@ -199,7 +199,7 @@ func PodSeed(channelID string) int64 {
 //
 //   - BuildFillerList attaches a Tunarr filler-list to the channel, and Tunarr picks from
 //     that pool itself. There is no break to seed from at attach time.
-//   - HasPool only asks "is there anything to play at all".
+//   - The forecast asks that same list whether there is anything to play at all.
 //
 // Internal playout and the guide, which both resolve A SPECIFIC BREAK, use this instead. The
 // two must agree — the hover card promises the clips that will actually air — and they do,

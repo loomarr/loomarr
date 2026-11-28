@@ -267,59 +267,19 @@ func (e *Engine) planReconcile(
 	ch.Lineup = schedule.ApplyLineup(ch.Lineup, nil, schedule.LineupHeal,
 		schedule.ApplyOpts{Enrich: e.healEntry(ctx)})
 
-	// 1b: decide whether the selected backend has clips to fill a break (§10). Internal
-	// playout asks the backend-independent HasPool question: its clips are local files and
-	// deliberately need no Tunarr uuid. Tunarr asks BuildFillerList once and carries those
-	// same ids to the projection below. This is the distinction PodFiller's two-method
-	// interface exists to preserve; using BuildFillerList on internal-only installs made a
-	// real local catalog look empty.
-	var fillerIDs []string
-	hasFillerPool := false
-	var playableFillerMs int64
-	if e.pods != nil {
-		seed, selection := PodSeed(ch.ID), SelectionForChannel(ch)
-		if playsInternally {
-			playableFillerMs = e.pods.PlayableDurationMs(ctx, ch.ID, seed, selection)
-			hasFillerPool = playableFillerMs > 0
-		} else if ids, ok := e.pods.BuildFillerList(ctx, ch.ID, seed, selection); ok && len(ids) > 0 {
-			fillerIDs, hasFillerPool = ids, true
-		}
-	}
-
 	// 2: recompute desired from the approved lineup + current availability under the
-	// channel's ChannelPolicy (programming-design §3–§7). ComputeDesiredAt resolves
-	// each entry against the library (a vanished title comes back a placeholder),
-	// applies the audience/scope/seasonal filters, and orders with separation. Apply
-	// the global commercial-break density (§10) so breaks are interleaved, and pass
-	// the wall-clock so seasonality (§6) evaluates against the container TZ.
-	//
-	// Breaks are only interleaved when the selected backend has a filler pool: inserting
-	// gaps with no clips is a promise of commercials we cannot keep. No pool means
-	// programs play back-to-back. Once clips land, the next reconcile re-inserts breaks.
-	chDomain := ch.Channel
-	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
-	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
-	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
-	chDomain = chDomain.WithCalendar(e.Calendar())
-	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
-	// Rolling-window carry-over (#1675): the accepted window stays on air until the programme
-	// crossing its boundary ends, and the next one is anchored at that end. Internal playout
-	// only: it walks the accepted cycle from the anchor. Tunarr loops the list it was given
-	// from its own clock and has no way to be told where a window starts (#1691).
-	turnAnchor := ch.PlayoutAnchor
-	var accepted []schedule.Slot
-	turned := false
-	if playsInternally {
-		window, zone := e.RollingWindow(ch.Policy, e.now())
-		chDomain.WindowOpened, turnAnchor, turned = timeline.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, e.now())
-		e.recordScheduled(ctx, ch, e.now()) // #1677: what the accepted cycle aired, watched or not
-		accepted = ch.Desired
-	}
-	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now(), accepted, ch.PlayoutAnchor)
-	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
-	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
+	// channel's ChannelPolicy (programming-design §3–§7), through the assembly the forecast
+	// shares (inputs.go). ComputeDesiredAt resolves each entry against the library (a vanished
+	// title comes back a placeholder), applies the audience/scope/seasonal filters, and orders
+	// with separation. Breaks are interleaved only when the backend has clips to fill them; a
+	// Tunarr channel's filler ids are carried to the projection below. Once clips land, the
+	// next reconcile re-inserts breaks.
+	now := e.now()
+	settings := e.settingsOn(globalBackend)
+	in := e.assemble(ctx, ch, now, settings, assembleReconcile)
+	chDomain, fillerIDs, turnAnchor, turned := in.Channel, in.Filler.TunarrIDs, in.TurnAnchor, in.Turned
 	avail, readFailed := e.reconcileAvailability(ctx)
-	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, avail, e.policy, ch.Policy, e.now())
+	desired, err := in.compute(ctx, avail)
 	if err != nil {
 		return nil, fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
 	}
@@ -332,23 +292,22 @@ func (e *Engine) planReconcile(
 	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
 	acceptedSlots, acceptedAnchor := ch.Desired, ch.PlayoutAnchor
 	if playsInternally {
-		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
-		dealtFrom := e.dealtFrom(ch, chDomain.BreaksPerHour, desired.Slots)
+		from := dealtFrom(ch, chDomain.BreaksPerHour, settings, desired.Slots)
 		// Nothing that has aired moves inside a window (#4140): a library change keeps the window
 		// and heals a vanished item in place, and an edit re-deals after the programme on air. A
 		// turned window starts a new slice from its own anchor, so there is nothing to hold.
 		if !acceptedAnchor.IsZero() && len(acceptedSlots) > 0 && !turned {
 			var windowEnds time.Time
-			if window, zone := e.RollingWindow(ch.Policy, e.now()); window > 0 {
+			if window, zone := settings.rollingWindow(ch.Policy, now); window > 0 {
 				windowEnds = schedule.NextWindowStart(acceptedAnchor, window, zone)
 			}
 			desired.Slots, turnAnchor = e.windowDeal(windowInputs{
-				accepted: acceptedSlots, anchor: acceptedAnchor, next: desired.Slots, now: e.now(),
+				accepted: acceptedSlots, anchor: acceptedAnchor, next: desired.Slots, now: now,
 				windowOpened: chDomain.WindowOpened, windowEnds: windowEnds,
-				acceptedFrom: ch.DealtFrom, dealtFrom: dealtFrom, eligible: desired.EligibleKeys, avail: avail,
+				acceptedFrom: ch.DealtFrom, dealtFrom: from, eligible: desired.EligibleKeys, avail: avail,
 			})
 		}
-		ch.DealtFrom = dealtFrom
+		ch.DealtFrom = from
 		desired.Slots = e.planWindowOnAir(ctx, ch, turnAnchor, desired.Slots)
 	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:
