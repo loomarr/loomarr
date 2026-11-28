@@ -13,6 +13,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 const (
@@ -89,20 +91,21 @@ type Boundary struct {
 	ConflictIDs    []string       `json:"conflictIds,omitempty"`
 }
 
-type Role string
+// Role is the closed segment-role vocabulary, owned by filler/structure.
+type Role = structure.Role
 
 const (
-	RoleCommercial        Role = "commercial"
-	RolePromo             Role = "promo"
-	RoleBumper            Role = "bumper"
-	RoleStationID         Role = "station_id"
-	RolePSA               Role = "psa"
-	RoleTrailer           Role = "trailer"
-	RoleInterstitial      Role = "interstitial"
-	RoleProgrammeFragment Role = "programme_fragment"
-	RoleNonFiller         Role = "non_filler"
-	RoleAmbiguous         Role = "ambiguous"
-	RoleUnusable          Role = "unusable"
+	RoleCommercial        = structure.RoleCommercial
+	RolePromo             = structure.RolePromo
+	RoleBumper            = structure.RoleBumper
+	RoleStationID         = structure.RoleStationID
+	RolePSA               = structure.RolePSA
+	RoleTrailer           = structure.RoleTrailer
+	RoleInterstitial      = structure.RoleInterstitial
+	RoleProgrammeFragment = structure.RoleProgrammeFragment
+	RoleNonFiller         = structure.RoleNonFiller
+	RoleAmbiguous         = structure.RoleAmbiguous
+	RoleUnusable          = structure.RoleUnusable
 )
 
 type RoleClaim struct {

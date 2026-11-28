@@ -112,7 +112,7 @@ func validAuthorityRoles(roles []Role) bool {
 		return false
 	}
 	for _, role := range roles {
-		if !validRole(role) || role == RoleAmbiguous || role == RoleUnusable {
+		if !ValidRole(role) || role == RoleAmbiguous || role == RoleUnusable {
 			return false
 		}
 	}
