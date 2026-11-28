@@ -99,7 +99,7 @@ describe("LibraryPage", () => {
       getLibraryStatusMockHandler({ ...libraryStatus(), needsYou: 1 }),
       getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
       getListLibraryNeedsMockHandler({
-        needs: [{ item: alpha, searched: true, candidates: [], files: [] }],
+        needs: [{ item: alpha, searched: true, candidates: [], files: [], folder: "Movies" }],
         orders: [],
         problems: [],
       }),
@@ -118,7 +118,7 @@ describe("LibraryPage", () => {
       http.get("*/v1/library/status", () => HttpResponse.json({ ...libraryStatus(), needsYou })),
       getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
       getListLibraryNeedsMockHandler({
-        needs: [{ item: alpha, searched: true, candidates: [], files: [] }],
+        needs: [{ item: alpha, searched: true, candidates: [], files: [], folder: "Movies" }],
         orders: [],
         problems: [],
       }),

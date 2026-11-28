@@ -1,9 +1,12 @@
+import type { LibraryItemFileDTO } from "@loomarr/api/models/libraryItemFileDTO";
 import { getGetLibraryItemMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -61,6 +64,11 @@ const renderPage = () => {
 // The wiring: the page shows the server's title, and Back returns to the grid as it was left, or
 // to the Library when the page was opened directly.
 describe("LibraryTitlePage", () => {
+  // The toaster's list outlives a test: without this, one test's toast is on the next one's page.
+  afterEach(() => {
+    toast.dismiss();
+  });
+
   beforeEach(() => {
     mocks.navigate.mockReset();
     mocks.back.mockReset();
@@ -236,5 +244,111 @@ describe("LibraryTitlePage", () => {
     renderPage();
 
     expect(await screen.findByRole("button", { name: /try again/i })).toBeInTheDocument();
+  });
+
+  // #4476 D3: the removal can be undone from its toast.
+  const removeCopy = async (restore: () => Response, press: "once" | "double" = "once") => {
+    const restored = vi.fn();
+    const copy: LibraryItemFileDTO = {
+      path: "/media/movies/Echo/Echo DVD.mkv",
+      size: 500_000,
+      ready: true,
+      subtitles: [],
+      extra: true,
+      streams: [],
+      chapters: [],
+    };
+    // jsdom has no pointer capture, which the toast asks for when its Undo is pressed.
+    Element.prototype.setPointerCapture ??= () => {};
+    server.use(
+      getGetLibraryItemMockHandler({ ...echo, files: [...echo.files, copy] }),
+      http.post("*/v1/library/items/:id/remove-copy", () => HttpResponse.json({ undo: "token-1" })),
+      http.post("*/v1/library/items/:id/restore-copy", async ({ request }) => {
+        restored(await request.json());
+        return restore();
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <LibraryTitlePage id="90000003" />
+        <AppToaster />
+      </QueryClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Remove Echo DVD.mkv" }));
+    expect(await screen.findByText("Moved Echo DVD.mkv to the trash")).toBeInTheDocument();
+    const undo = screen.getByRole("button", { name: "Undo" });
+    await (press === "double" ? userEvent.dblClick(undo) : userEvent.click(undo));
+    return restored;
+  };
+
+  it("undoes removing an extra copy with the token the removal answered with", async () => {
+    const restored = await removeCopy(() => new HttpResponse(null, { status: 204 }));
+    expect(await screen.findByText("Put Echo DVD.mkv back")).toBeInTheDocument();
+    expect(restored).toHaveBeenCalledWith({ undo: "token-1" });
+  });
+
+  // A refusal is permanent and says why in the server's words (restore-copy's problems).
+  it.each([
+    [400, "Can't undo this any more", "If you still want the file, it's in the .loomarr-trash folder."],
+    [409, "Something is already there", "Move it away, then put the copy back by hand."],
+    [410, "The file isn't in the trash", "It may have been emptied or moved."],
+  ])("shows the server's words when undo answers %i", async (status, title, detail) => {
+    await removeCopy(() => HttpResponse.json({ status, title, detail }, { status }));
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(screen.getByText(detail)).toBeInTheDocument();
+    // Nothing to try again: the removal's own Undo is gone with its toast.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument());
+  });
+
+  it("sends one restore for a double press on Undo", async () => {
+    const restored = await removeCopy(() => new HttpResponse(null, { status: 204 }), "double");
+    expect(await screen.findByText("Put Echo DVD.mkv back")).toBeInTheDocument();
+    expect(restored).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["the server fails", () => HttpResponse.json({ status: 500, title: "boom" }, { status: 500 })],
+    ["the network drops", () => HttpResponse.error()],
+  ])("offers Undo again with the same token when %s", async (_what, failure) => {
+    const answers = [failure, () => new HttpResponse(null, { status: 204 })];
+    const restored = await removeCopy(() => (answers.shift() ?? failure)());
+    expect(await screen.findByText("Couldn't put Echo DVD.mkv back")).toBeInTheDocument();
+    expect(screen.getByText("Try again in a moment.")).toBeInTheDocument();
+    // The first toast's button leaves with it; the one that stays is the retry.
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1));
+    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Put Echo DVD.mkv back")).toBeInTheDocument();
+    expect(restored.mock.calls).toEqual([[{ undo: "token-1" }], [{ undo: "token-1" }]]);
+  });
+
+  it("reads an open episode's file again after the title is read again", async () => {
+    const episodeRead = vi.fn();
+    const series = {
+      ...echo,
+      item: { ...echo.item, kind: "series" as const },
+      files: [],
+      seasons: [{ number: 1, episodes: [{ id: "90000004", name: "Pilot", number: 1, ready: true }] }],
+    };
+    server.use(
+      http.get("*/v1/library/items/:id", ({ params }) => {
+        if (params.id !== "90000004") return HttpResponse.json(series);
+        episodeRead();
+        return HttpResponse.json({ ...echo, seasons: [] });
+      }),
+      http.post("*/v1/library/items/:id/check", () => new HttpResponse(null, { status: 204 })),
+    );
+    // A cache that would otherwise hand the same answer back.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
+    render(
+      <QueryClientProvider client={client}>
+        <LibraryTitlePage id="90000003" />
+      </QueryClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /1\. Pilot/ }));
+    await waitFor(() => expect(episodeRead).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole("button", { name: "Fix" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Check files again" }));
+    await waitFor(() => expect(episodeRead).toHaveBeenCalledTimes(2));
   });
 });

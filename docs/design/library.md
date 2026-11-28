@@ -738,6 +738,18 @@ step 5). Nothing reads the scanner's origins until the cutover.
   with no folder of its own is listed by its title. A title with no present file is left out until a file of it is back. It is its own
   read, paged by `limit` and `offset` with a `total`, because the set only grows and the Needs you
   read, with its guesses, files and posters, is refetched on every library change.
+- **Ignoring a folder** (#4476, admin only). Each card in `GET /v1/library/needs` has a `folder`,
+  the same label as the Ignored list's, and the cards come grouped by it, by name within a folder.
+  A heading's action ignores the cards shown under it at that moment, each title as one item, so a
+  series counts as one. `POST /v1/library/needs/ignore` takes those cards' ids, never a folder
+  path, so files that arrive in the folder later still need the household. It ignores all of them
+  or none: an id that is unknown, or not waiting in Needs you, refuses the whole request (409). It
+  returns the ids it ignored, and `POST /v1/library/ignored/restore` takes them back in one step,
+  again all or none: an id that isn't ignored refuses the whole request (409), so a link answer is
+  never removed. Once either is saved it answers success, so the ids are there to undo with:
+  queuing the files to be read again is best-effort, carries on if the request is dropped, is
+  bounded to a minute, and only logs a failure. Episode order and "needs a look" cards are not in
+  folder groups.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
@@ -837,13 +849,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Extra copies** (step 10e, decision 37). When a movie has several files, one plays in each
   edition: the file its arr lists (each file origin's extension notes `managed`), else the
   sharpest picture, else the biggest file. Each other file is an extra copy: a warning card on the title's page ("An
-  extra copy is taking 4.0 GB") with Remove extra copy (`POST …/remove-copy`, 409 for the copy
+  extra copy is taking 4.0 GB") with Remove <file name> (`POST …/remove-copy`, 409 for the copy
   that plays). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
   same share, so it is a rename; the trash holds a `.ignore`, so walks and watches skip it.
   Loomarr marks the file missing at once, so no removal guard holds it. A complete walk of the
   folder deletes each day's trash 30 days on; a folder there that isn't a date is left alone. A
   read-only folder answers 409, and the card says Loomarr may not be allowed to change it.
-- **Undo for Remove extra copy** (#4476). The removal answers with an `undo` token, and
+- **Undo for removing an extra copy** (#4476). The removal answers with an `undo` token, and
   `POST …/restore-copy` (admin only) takes it to rename the file from the trash back to where it
   was, then passes over its folder as for a file that appeared, so the title has its extra copy
   again. The token names the title, media folder, file and trash day, signed with a key the
@@ -855,8 +867,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   a file written there at the same moment is safe. It also never leaves the media folder: a folder
   on the way that is a symlink to somewhere outside is refused. When something is at the file's
   old place, or the file can't be moved this safely, it answers 409 and the file stays in the
-  trash. The card's undo follows in U3: offered only right after removing, with the card saying
-  that afterwards the way back is the trash folder, for the 30 days it keeps the file.
+  trash. The title's page offers Undo only right after removing, in a toast ("Moved <file name> to
+  the trash") that stays 30 seconds and is also reached with the toaster's Alt+T shortcut. One
+  press sends one restore. A refusal (4xx) shows the server's own title and detail. When the
+  server fails or can't be reached, the toast says to try again and offers Undo with the same
+  token. The card says that after the Undo the way back is the `.loomarr-trash` folder inside the
+  media folder, for the 30 days it keeps the file.
 - **Titles that need a look** (step 10f, decision 24). A title with a file whose header failed
   (`unplayable`) or a movie with an extra copy is a problem: `ListLibraryItems{Problems: true}`
   finds them per title through the file indexes, an extra copy being a `library_sources` row no

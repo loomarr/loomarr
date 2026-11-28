@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"maps"
 	"slices"
 	"strings"
@@ -332,6 +333,8 @@ type Library struct {
 	Search    Searcher
 	// Orders keeps which order each show's episode files follow (nil: no show is asked about).
 	Orders librarystore.LibraryEpisodeOrderStore
+	// Log hears of work that fails after an answer is saved (nil: the default logger).
+	Log *slog.Logger
 	// CollectionStore keeps the household's collections; Records reads cached catalog records: the
 	// ready-made sets' own (nil: none are listed), whose movies Keys places by their catalog rows,
 	// and a show's episode orders.

@@ -15,7 +15,9 @@ import {
   LibraryWizardStep,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect } from "storybook/test";
+import { expect, screen, waitFor } from "storybook/test";
+import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
+import { toastRemoved, toastRestoreRefused } from "@/library/extra-copy-toasts";
 
 // The Library (#2151, design/library variant D): the poster grid in each scan state and a title's
 // page. Stories load no remote images: a title with artwork gets a flat stand-in in its own colour.
@@ -970,6 +972,66 @@ const FactsWrapped: Story = {
   },
 };
 
+// A movie with an extra copy, whose removal shows the toast the app shows. Its Undo is refused,
+// as it is once the undo has run out.
+const ExtraCopyRemoved: Story = {
+  render: () => (
+    <>
+      <LibraryTitle
+        fix={{
+          ...titleFixes,
+          onRemoveExtra: async () => {
+            toastRemoved("Paper Kites DVD.mkv", () =>
+              toastRestoreRefused(
+                "The file isn't in the trash",
+                "It may have been emptied or moved. Check that its drive is connected.",
+              ),
+            );
+          },
+        }}
+        onBack={() => {}}
+        title={{
+          kind: "movie",
+          name: "Paper Kites",
+          year: 1996,
+          backdrop: art("#6b3a2e"),
+          genres: ["Crime"],
+          files: [
+            {
+              path: "/media/movies/Paper Kites (1996)/Paper Kites DVD.mkv",
+              size: 4_300_000_000,
+              subtitles: [],
+              extra: true,
+            },
+          ],
+          unplayable: 0,
+          seasons: [],
+          match: { by: "app", app: "Radarr" },
+          detailsFrom: {},
+          channels: [],
+        }}
+      />
+      <AppToaster />
+    </>
+  ),
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Remove Paper Kites DVD.mkv" }));
+    const undo = await screen.findByRole("button", { name: "Undo" });
+    // A toast fades in.
+    await waitFor(() => expect(undo).toBeVisible());
+  },
+};
+
+const ExtraCopyUndoRefused: Story = {
+  ...ExtraCopyRemoved,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole("button", { name: "Remove Paper Kites DVD.mkv" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    const said = await screen.findByText("The file isn't in the trash");
+    await waitFor(() => expect(said).toBeVisible());
+  },
+};
+
 export default meta;
 export {
   Adding,
@@ -982,6 +1044,8 @@ export {
   Collections,
   CollectionsNoneYet,
   EpisodeMore,
+  ExtraCopyRemoved,
+  ExtraCopyUndoRefused,
   FactsWrapped,
   FiltersOpen,
   FiltersPhone,

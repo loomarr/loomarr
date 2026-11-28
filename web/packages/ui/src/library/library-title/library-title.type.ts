@@ -181,6 +181,8 @@ interface LibraryTitleFix {
   onCheckFiles: () => Promise<void>;
   /** An episode's own files, for its opened row; rejects when they couldn't be read. */
   onEpisodeFiles?: (episodeId: string) => Promise<readonly LibraryTitleFile[]>;
+  /** Changes each time the title is read again, so an open episode's file is read again too. */
+  episodeFilesAt?: number;
   /** Opens the title's page in the app that decides; absent when it has none. */
   onOpenApp?: () => void;
   /** Wrong title? when the household's answer, or nothing, decides: searches for the title. */
