@@ -1,26 +1,46 @@
 import { Surface } from "@loomarr/design-system";
-import { QuietRow, type QuietRowProps } from "@loomarr/ui";
+import { QuietRow, type QuietRowProps, WatchScrim } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, userEvent, within } from "storybook/test";
 
 // The quiet row of The Cross (frontend-design §9.3, target), per device. A window and an upright
-// phone draw it on the page's own ground; elsewhere it brings its own ink over the picture.
+// phone draw it on the page's own ground; over the picture it stands on the watching screen's foot
+// scrim, as the screen draws it. The picture is a CSS stand-in.
+
+const beside = (device: QuietRowProps["device"]) => device === "portrait" || device === "window";
 
 const meta = {
   title: "Loomarr Components/Quiet Row",
   component: QuietRow,
   args: { device: "full", onPress: () => undefined },
-  render: (args: QuietRowProps) => (
-    <Surface
-      backgroundColor="surfaceCanvas"
-      borderWidth={0}
-      justifyContent="flex-end"
-      minHeight={220}
-      width={args.device === "portrait" ? 390 : 844}
-    >
-      <QuietRow {...args} />
-    </Surface>
-  ),
+  render: (args: QuietRowProps) =>
+    beside(args.device) ? (
+      <Surface
+        backgroundColor="surfaceCanvas"
+        borderWidth={0}
+        justifyContent="flex-end"
+        minHeight={220}
+        width={args.device === "portrait" ? 390 : 844}
+      >
+        <QuietRow {...args} />
+      </Surface>
+    ) : (
+      <div
+        style={{
+          backgroundImage: "linear-gradient(120deg, #1d2b3a, #0b0c0e)",
+          display: "flex",
+          flexDirection: "column",
+          height: 220,
+          justifyContent: "flex-end",
+          padding: 16,
+          position: "relative",
+          width: 844,
+        }}
+      >
+        <WatchScrim edge="foot" />
+        <QuietRow {...args} ownInk={false} />
+      </div>
+    ),
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof QuietRow>;
 

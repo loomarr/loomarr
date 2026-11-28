@@ -6,7 +6,7 @@ import { act, cleanup, renderUi } from "@loomarr/test-support";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { RequestsJourney } from "../index";
+import { RequestsJourney } from "../requests";
 
 const doc = document;
 

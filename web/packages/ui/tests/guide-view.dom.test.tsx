@@ -323,6 +323,34 @@ describe("GuideView", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("does not pull focus back after a press outside, on something that takes none", () => {
+    let send: (event: GuideViewEvent) => void = () => undefined;
+    renderUi(
+      <>
+        <p>Outside</p>
+        <Harness
+          group="favourites"
+          outside={(next) => {
+            send = next;
+          }}
+        />
+      </>,
+    );
+    // The browser drops focus to the body on such a press, and says nothing of where it went.
+    fireEvent.pointerDown(screen.getByText("Outside"));
+    act(() => (document.activeElement as HTMLElement).blur());
+    act(() => send({ channelId: "game", type: "tuned" }));
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("leaves focus where it was on a click on a row's channel", async () => {
+    const user = userEvent.setup();
+    renderUi(<Harness />);
+    const before = document.activeElement;
+    await user.click(screen.getByRole("button", { name: "9 Game Night, watch channel" }));
+    expect(document.activeElement).toBe(before);
+  });
+
   it("takes keys a caller feeds it, and leaves one already taken", () => {
     const handle = createRef<GuideViewHandle>();
     renderUi(<Harness autoFocus={false} handle={handle} />);

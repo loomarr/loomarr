@@ -43,6 +43,13 @@ interface Root {
   querySelector: (selector: string) => { focus: () => void } | null;
 }
 
+type PointerListener = (event: { target: unknown }) => void;
+
+interface Page {
+  addEventListener: (type: "pointerdown", listener: PointerListener, capture: boolean) => void;
+  removeEventListener: (type: "pointerdown", listener: PointerListener, capture: boolean) => void;
+}
+
 interface KeyEvent {
   altKey: boolean;
   ctrlKey: boolean;
@@ -115,10 +122,24 @@ const Ready = <C extends GuideViewEntry>({
   const root = useRef<Root | null>(null);
   const holding = useRef(false);
   const shown = `${view.notice ?? ""}|${view.rows.map((channel) => channel.id).join(",")}`;
+  // A press outside the Guide leaves it, even on something that takes no focus.
+  useEffect(() => {
+    const page = (globalThis as { document?: Page }).document;
+    if (!page) return;
+    const leave = (event: { target: unknown }) => {
+      if (root.current?.contains(event.target)) return;
+      holding.current = false;
+      // Nor does a cursor that moves later, as when its programme ends, call focus back.
+      setKeys(false);
+    };
+    page.addEventListener("pointerdown", leave, true);
+    return () => page.removeEventListener("pointerdown", leave, true);
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `shown` is when a control may have left.
   useEffect(() => {
     // A native client has no document, and its focus engine does this by itself.
     const page = (globalThis as { document?: { activeElement: unknown; body: unknown } }).document;
-    if (!shown || !holding.current || !page) return;
+    if (!holding.current || !page) return;
     if (page.activeElement && page.activeElement !== page.body) return;
     // A compact block has a handle; the strip's cursor block is its one Tab stop.
     const block = keys
@@ -167,7 +188,6 @@ const Ready = <C extends GuideViewEntry>({
         cursor={cursor.kind === "tab" ? cursor : { channelId: cursor.channelId, kind: "row" }}
         group={state.group}
         onEvent={onTab}
-        onMouseDown={(event) => event.preventDefault()}
         query={null}
         // The Guide has no find of its own.
         television
@@ -253,6 +273,7 @@ const Ready = <C extends GuideViewEntry>({
           // The name leads with the words on screen (WCAG 2.5.3).
           accessibilityLabel={`${channel.number} ${channel.name}, watch channel`}
           onPress={() => press({ channelId: channel.id, type: "pressChannel" })}
+          pointerTakesNoFocus
           // A row with nothing drawn has no block for the cursor, so its channel holds the focus.
           ref={hold(`${channel.id}/undefined`)}
           size={size.row}

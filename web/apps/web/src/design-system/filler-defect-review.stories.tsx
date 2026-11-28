@@ -1,5 +1,5 @@
 import type { FillerDefectReportDTO } from "@loomarr/core/filler-defects";
-import { DefectReview } from "@loomarr/ui";
+import { DefectReview } from "@loomarr/ui/filler";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // The host's clip player stands in as a plain 4:3 frame: stories load no remote media.

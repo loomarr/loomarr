@@ -6,6 +6,7 @@ import {
   type RingedPressableHandle,
   Surface,
   Text,
+  ThemeScope,
   VisuallyHidden,
 } from "@loomarr/design-system";
 import { type ReactNode, useEffect, useRef } from "react";
@@ -19,6 +20,11 @@ import { behindWords, type LowerThirdState, summaryOf, wholeMinutes } from "./su
 interface LowerThirdProps {
   channelName: string;
   channelNumber: number;
+  /**
+   * False draws the words alone, with no Go live or upright phone's controls, for a slot that is a
+   * control itself, such as the channel list's pinned row.
+   */
+  controls?: boolean;
   /** The decade the watched channel plays, 1980 for the 1980s. */
   decade?: number;
   /** `full` is a desktop at full screen, `window` a desktop window, `portrait` an upright phone. */
@@ -29,6 +35,13 @@ interface LowerThirdProps {
    * head of the quiet row (`QuietRow`'s `focusHead`).
    */
   onGoLiveDropped?: () => void;
+  /** Go live took the keyboard's or the remote's focus (`true`), or let it go. A pointer's is not said. */
+  onGoLiveFocus?: (focused: boolean) => void;
+  /**
+   * Over the picture the lower third stands on a scrim of its own. A screen that draws one scrim
+   * under it and the quiet row together passes `false`; the words stay in the dark theme.
+   */
+  ownInk?: boolean;
   /** An upright phone's More. */
   onMore?: () => void;
   /** An upright phone's Pause, or Play while paused. */
@@ -65,12 +78,15 @@ const joined = (...parts: (string | undefined)[]) => parts.filter(Boolean).join(
 const LowerThird = ({
   channelName,
   channelNumber,
+  controls = true,
   decade,
   device,
   onGoLive,
   onGoLiveDropped,
+  onGoLiveFocus,
   onMore,
   onTogglePause,
+  ownInk = true,
   state,
 }: LowerThirdProps) => {
   const portrait = device === "portrait";
@@ -78,7 +94,7 @@ const LowerThird = ({
   const typing = state.kind === "typing";
   const behind = state.kind === "on" && !state.paused ? Math.floor(state.behindSeconds ?? 0) : 0;
   const paused = state.kind === "on" && Boolean(state.paused);
-  const goLive = behind > 0 && device !== "tv";
+  const goLive = controls && behind > 0 && device !== "tv";
 
   // Go live leaves from under the focus once it has been pressed. Focus goes to Pause where the
   // lower third has one, and otherwise the screen is told, to send it to the quiet row.
@@ -192,8 +208,13 @@ const LowerThird = ({
                 onFocus={() => {
                   goLiveFocused.current = true;
                 }}
+                {...(onGoLiveFocus ? { onKeyboardFocus: onGoLiveFocus } : {})}
                 onPress={onGoLive}
+                // A pointer takes no focus, so a key after a click is the picture's.
+                pointerTakesNoFocus
                 size={touch ? 44 : 28}
+                // A desktop's key for it: the live edge is the end of what has aired.
+                tip={device === "full" || device === "window" ? "Go live (End)" : undefined}
               >
                 <Dot />
                 <Text textRole="label" tone="live">
@@ -220,7 +241,7 @@ const LowerThird = ({
           </Line>
         ) : null}
       </Box>
-      {portrait ? (
+      {portrait && controls ? (
         <Box flexDirection="row">
           <RingedPressable
             accessibilityLabel={paused ? "Play" : "Pause"}
@@ -238,11 +259,8 @@ const LowerThird = ({
     </Box>
   );
 
-  return device === "full" || device === "tv" || device === "landscape" ? (
-    <PictureInk edge="side">{body}</PictureInk>
-  ) : (
-    body
-  );
+  if (device !== "full" && device !== "tv" && device !== "landscape") return body;
+  return ownInk ? <PictureInk edge="side">{body}</PictureInk> : <ThemeScope theme="dark">{body}</ThemeScope>;
 };
 
 export type { LowerThirdProps };

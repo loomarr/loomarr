@@ -1,7 +1,8 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { DefectReview, StatePanel } from "@loomarr/ui";
+import { StatePanel } from "@loomarr/ui";
+import { DefectReview } from "@loomarr/ui/filler";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";

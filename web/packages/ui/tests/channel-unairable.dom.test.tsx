@@ -3,7 +3,7 @@
 import { cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ChannelUnairable } from "../index";
+import { ChannelUnairable } from "../channels";
 
 afterEach(cleanup);
 

@@ -6,6 +6,7 @@ import {
   type LowerThirdState,
   QuietRow,
   type QuietRowDevice,
+  WatchScrim,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { ReactNode } from "react";
@@ -38,6 +39,7 @@ const Frame = ({
   device: QuietRowDevice;
 }) =>
   overPicture(device) ? (
+    // Over the picture the parts stand on the watching screen's one foot scrim, as it draws them.
     <div
       style={{
         backgroundImage: bright ? BRIGHT_PICTURE : DARK_PICTURE,
@@ -45,9 +47,12 @@ const Frame = ({
         flexDirection: "column",
         gap: 16,
         justifyContent: "flex-end",
+        padding: 16,
+        position: "relative",
         ...SIZE[device],
       }}
     >
+      <WatchScrim edge="foot" />
       {children}
     </div>
   ) : (
@@ -74,11 +79,12 @@ const meta = {
   render: ({ bright, hint, ...args }: Args) => (
     <Frame bright={bright ?? false} device={args.device}>
       {hint ? <FirstRunHint device={args.device} /> : null}
-      <LowerThird {...args} />
+      <LowerThird {...args} ownInk={false} />
       <QuietRow
         behindLive={args.state.kind === "on" && Boolean(args.state.behindSeconds)}
         device={args.device}
         onPress={() => undefined}
+        ownInk={false}
       />
     </Frame>
   ),
@@ -110,7 +116,14 @@ const measures =
 const Settled: Story = { args: { hint: true }, play: measures(false) };
 const SettledLight: Story = { ...Settled, globals: light };
 const NoDecade: Story = { args: { decade: undefined } };
-const Bright: Story = { args: { bright: true } };
+// Over a washed-out frame the words stand on the foot scrim: no plate, box or hard edge around them.
+const Bright: Story = {
+  args: { bright: true },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector('[data-testid^="picture-ink"]')).toBeNull();
+    await expect(within(canvasElement).getByTestId("watch-scrim-foot")).toBeVisible();
+  },
+};
 
 const TuningIn: Story = { args: { state: { kind: "tuning" } } };
 const InABreak: Story = {

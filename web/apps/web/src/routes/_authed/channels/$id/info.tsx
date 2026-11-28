@@ -2,7 +2,7 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
 import { channelNumber, pluralize } from "@loomarr/core/format";
 import { Action, Card, Disclosure, Stack, Text } from "@loomarr/design-system";
-import { ChannelUnairable } from "@loomarr/ui";
+import { ChannelUnairable } from "@loomarr/ui/channels";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";

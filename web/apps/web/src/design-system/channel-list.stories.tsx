@@ -1,7 +1,7 @@
 import { createChannelLineup, type LineupChannel } from "@loomarr/core/channel-lineup";
 import { type ChannelListState, channelListReduce, createChannelListState } from "@loomarr/core/channel-list";
 import { Surface, Text, ThemeScope } from "@loomarr/design-system";
-import { ChannelList, type ChannelListLayout } from "@loomarr/ui";
+import { ChannelList, type ChannelListLayout } from "@loomarr/ui/channels";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, fireEvent, userEvent, waitFor, within } from "storybook/test";

@@ -3,7 +3,7 @@
 import { act, cleanup, renderUi } from "@loomarr/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ChannelAudioSection } from "../index";
+import { ChannelAudioSection } from "../channels";
 
 afterEach(cleanup);
 

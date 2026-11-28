@@ -47,6 +47,7 @@ cd "$ROOT"
 
 WEIGHTS="${GO_SHARD_WEIGHTS:-$ROOT/scripts/go-race-weights.tsv}"
 CERTIFICATION="${GO_SHARD_CERTIFICATION:-$ROOT/scripts/go-certification-lanes.tsv}"
+SPLIT="${GO_SHARD_SPLIT:-$ROOT/scripts/go-split-lanes.tsv}"
 RACE_POLICY="${GO_SHARD_RACE_POLICY:-$ROOT/scripts/go-race-policy.sh}"
 MAX_IMBALANCE_PERCENT=125
 # The serial lanes hold a handful of indivisible packages from 45s to over 400s, and no assignment of
@@ -136,13 +137,67 @@ certification_lane_paths() {
   certification_rows | awk -v target="$lane" '$1 == target { print $2 }'
 }
 
+# The split manifest as `name<TAB>import-path<TAB>race-slices` rows.
+split_rows() {
+  local module name path slices extra
+  module="$(go list -m)" || return
+  while read -r name path slices extra || [[ -n "$name" ]]; do
+    [[ -z "$name" || "$name" == \#* ]] && continue
+    if [[ -n "$extra" || -z "$path" || ! "$slices" =~ ^[1-9]$ ]]; then
+      echo "go-shard: invalid split lane row: $name $path $slices $extra" >&2
+      return 2
+    fi
+    printf '%s\t%s/%s\t%s\n' "$name" "$module" "$path" "$slices"
+  done < "$SPLIT"
+}
+
+split_paths() {
+  local rows
+  rows="$(split_rows)" || return
+  [[ -z "$rows" ]] || printf '%s\n' "$rows" | cut -f2
+}
+
+# Every split job as `lane<TAB>mode<TAB>import-path<TAB>slice`, where slice is `k/n` for a race job
+# and `-` for the plain job. Both phases come from the race policy, as they do for every other lane.
+split_jobs() {
+  local rows name path slices race plain k
+  rows="$(split_rows)" || return
+  [[ -n "$rows" ]] || return 0
+  while IFS=$'\t' read -r name path slices; do
+    # Assigned first: a failure inside a condition would silently drop the race jobs.
+    race="$(printf '%s\n' "$path" | "$RACE_POLICY" --race)" || return
+    if [[ -n "$race" ]]; then
+      for ((k = 1; k <= slices; k++)); do
+        printf '%s-race-%s/%s\trace\t%s\t%s/%s\n' "$name" "$k" "$slices" "$path" "$k" "$slices"
+      done
+    fi
+    plain="$(printf '%s\n' "$path" | "$RACE_POLICY" --no-race)" || return
+    [[ -z "$plain" ]] || printf '%s-plain\tplain\t%s\t-\n' "$name" "$path"
+  done <<< "$rows"
+}
+
+# The weight-file key of each split job.
+split_weight_keys() {
+  local module jobs lane mode path slice
+  module="$(go list -m)" || return
+  jobs="$(split_jobs)" || return
+  [[ -n "$jobs" ]] || return 0
+  while IFS=$'\t' read -r lane mode path slice; do
+    if [[ "$mode" == race ]]; then
+      printf '%s@race-%s\n' "${path#"$module"/}" "$slice"
+    else
+      printf '%s@plain\n' "${path#"$module"/}"
+    fi
+  done <<< "$jobs"
+}
+
 ordinary_packages() {
-  local all certified
+  local all elsewhere
   # Captured first: a failure inside `<(...)` reaches no exit status, so comm would subtract from
   # an empty list and succeed.
   all="$(packages | sort)" || return
-  certified="$(certification_paths | sort -u)" || return
-  comm -23 <(printf '%s\n' "$all") <(printf '%s\n' "$certified")
+  elsewhere="$({ certification_paths && split_paths; } | sort -u)" || return
+  comm -23 <(printf '%s\n' "$all") <(printf '%s\n' "$elsewhere")
 }
 
 # Assign the largest measured package to the currently lightest shard. Ties are deterministic:
@@ -340,7 +395,7 @@ worker_plan() {
 }
 
 usage() {
-  echo "usage: go-shard.sh [i/n | --certification i/n | --plan n | --worker-plan n | --verify n | --budgets]" >&2
+  echo "usage: go-shard.sh [i/n | --certification i/n | --split name | --split-lanes | --plan n | --worker-plan n | --verify n | --budgets]" >&2
   exit 2
 }
 
@@ -353,7 +408,7 @@ if [ "${1:-}" = "--verify" ]; then
 
   CERTIFICATION_LANES="$(certification_lane_count)"
   all="$(packages | sort)"
-  union="$( { for ((i = 1; i <= total; i++)); do slice "$i" "$total" || exit; done; certification_paths || exit; } | sort)"
+  union="$( { for ((i = 1; i <= total; i++)); do slice "$i" "$total" || exit; done; certification_paths || exit; split_paths || exit; } | sort)"
 
   # Compare the SORTED UNION against the full list. `comm` needs sorted input and reports
   # both directions, so a package that went missing and one that got duplicated into two
@@ -377,6 +432,15 @@ if [ "${1:-}" = "--verify" ]; then
     echo "$oversized" >&2
     exit 1
   fi
+
+  # A split job with no weight row has no model at all, so the cap above would pass it unseen.
+  split_keys="$(split_weight_keys)"
+  for key in $split_keys; do
+    if ! awk -v key="$key" '$1 == key { found = 1 } END { exit !found }' "$WEIGHTS"; then
+      echo "go-shard: split lane has no measured weight row: $key" >&2
+      exit 1
+    fi
+  done
 
   modeled="$(plan "$total")"
   if ! printf '%s\n' "$modeled" | awk -v max="$MAX_ORDINARY_AGGREGATE_SECONDS" -v ratio="$MAX_IMBALANCE_PERCENT" '
@@ -431,6 +495,26 @@ if [ "${1:-}" = "--verify" ]; then
   while read -r lane seconds budget; do
     printf 'go-shard: modeled certification lane %s/%s = %ss (budget %ss)\n' "$lane" "$CERTIFICATION_LANES" "$seconds" "$budget"
   done <<< "$certification_modeled"
+  for key in $split_keys; do
+    awk -v key="$key" -v budget="$LANE_TEST_SECONDS" '$1 == key { printf "go-shard: modeled split lane %s = %ss (budget %ss)\n", key, $2, budget }' "$WEIGHTS"
+  done
+  exit 0
+fi
+
+# --split-lanes: every split job name. --split NAME: that job's `mode import-path slice`.
+if [ "${1:-}" = "--split-lanes" ]; then
+  split_jobs | cut -f1
+  exit 0
+fi
+if [ "${1:-}" = "--split" ]; then
+  [ "$#" -eq 2 ] || usage
+  jobs="$(split_jobs)"
+  out="$(printf '%s\n' "$jobs" | awk -F '\t' -v lane="$2" '$1 == lane { print $2, $3, $4 }')"
+  if [ -z "$out" ]; then
+    echo "go-shard: no split lane named $2" >&2
+    exit 2
+  fi
+  echo "$out"
   exit 0
 fi
 

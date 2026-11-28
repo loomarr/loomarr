@@ -153,9 +153,9 @@ go-shard-verify: ## Go test lanes must cover every package within their latency 
 	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
 
 .PHONY: go-race-weights
-go-race-weights: ## regenerate the race-lane package weights from hosted merge-group runs (RUNS="run-id ...")
-	@test -n "$(RUNS)" || { echo 'usage: make go-race-weights RUNS="merge-group run ids"' >&2; exit 2; }
-	@./scripts/go-race-weights-refresh.sh $(RUNS) > scripts/go-race-weights.tsv.tmp
+go-race-weights: ## regenerate the race-lane package weights from hosted runs (RUNS="run-id ..."; ONLY=package replaces just its rows)
+	@test -n "$(RUNS)" || { echo 'usage: make go-race-weights RUNS="merge-group run ids" [ONLY=package]' >&2; exit 2; }
+	@GO_RACE_WEIGHTS_ONLY="$(ONLY)" ./scripts/go-race-weights-refresh.sh $(RUNS) > scripts/go-race-weights.tsv.tmp
 	@mv scripts/go-race-weights.tsv.tmp scripts/go-race-weights.tsv
 	@./scripts/go-shard.sh --verify 2
 
