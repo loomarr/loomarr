@@ -221,6 +221,8 @@ const Ready = <C extends GuideViewEntry>({
           // The name leads with the words on screen (WCAG 2.5.3).
           accessibilityLabel={`${channel.number} ${channel.name}, watch channel`}
           onPress={() => press({ channelId: channel.id, type: "pressChannel" })}
+          // A row with nothing drawn has no block for the cursor, so its channel holds the focus.
+          ref={hold(`${channel.id}/undefined`)}
           size={size.row}
           tabIndex={-1}
         >

@@ -49,8 +49,8 @@ const Looking = ({
     programme.startMs > nowMs
       ? `${formatTime(programme.startMs)} to ${formatTime(programme.stopMs)}`
       : `on now until ${formatTime(programme.stopMs)}`;
-  // A television's header is one line, beside a small picture.
-  if (layout === "television") {
+  // A television's header is one line beside a small picture; a phone's facts stand under the rows.
+  if (layout !== "desktop") {
     return (
       <Text numberOfLines={1} textRole="cardLabel">
         {`${heading} · ${programme.title} · ${when}${airing.rating ? ` · ${airing.rating}` : ""}`}

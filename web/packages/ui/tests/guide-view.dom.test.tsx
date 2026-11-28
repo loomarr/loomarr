@@ -63,10 +63,8 @@ const context: GuideViewContext<GuideViewEntry> = {
 const onTune = vi.fn();
 const onClose = vi.fn();
 
-const Harness = ({ layout = "desktop" as const }) => {
-  const [state, setState] = useState<GuideViewState>(() =>
-    createGuideViewState({ watchedId: "coast" }, context),
-  );
+const Harness = ({ layout = "desktop" as const, watchedId = "coast" }) => {
+  const [state, setState] = useState<GuideViewState>(() => createGuideViewState({ watchedId }, context));
   const [message, setMessage] = useState<string>();
   return (
     <GuideView
@@ -176,6 +174,14 @@ describe("GuideView", () => {
     expect(screen.getByText("No favourites yet.")).toBeTruthy();
     await user.keyboard("{ArrowDown}");
     expect(focused()).toContain("Opening");
+  });
+
+  it("keeps the keys working when the watched channel has nothing scheduled", async () => {
+    const user = userEvent.setup();
+    renderUi(<Harness watchedId="quiet" />);
+    expect(focused()).toBe("11 Quiet, watch channel");
+    await user.keyboard("{ArrowUp}");
+    expect(focused()).toContain("Quiz");
   });
 
   it("says it is loading before the schedule arrives", () => {
