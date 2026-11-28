@@ -2,8 +2,8 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { createFileRoute } from "@tanstack/react-router";
 import { AdminOnly } from "@/auth/admin-only";
 import { viewerIsAdmin } from "@/auth/me-query";
+import { useChannelDetail } from "@/channels/channel-detail";
 import { ChannelFiller } from "@/filler/channel-filler";
-import { useChannelDetail } from "./-channel-detail-context";
 
 type ChannelFillerSearch = { from?: "filler" };
 

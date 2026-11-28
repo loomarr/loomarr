@@ -2,7 +2,7 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { createFileRoute } from "@tanstack/react-router";
 import { AdminOnly } from "@/auth/admin-only";
 import { viewerIsAdmin } from "@/auth/me-query";
-import { useChannelDetail } from "./-channel-detail-context";
+import { useChannelDetail } from "@/channels/channel-detail";
 import { ChannelProgramming } from "./-channel-programming";
 
 // Programming — admin-only (a member gets AdminOnly's no-access state, #1977). Lineup,

@@ -238,7 +238,7 @@
     "apps/web/src/queue/request-detail/request-detail.tsx": {
       "inlineStyle": 1
     },
-    "apps/web/src/routes/_authed/channels/$id/route.tsx": {
+    "apps/web/src/channels/channel-detail/channel-detail-page.tsx": {
       "inlineStyle": 5
     },
     "apps/web/src/routes/_authed/requests/_tabs.tsx": {

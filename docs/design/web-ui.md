@@ -103,6 +103,11 @@ mechanics are in [`config-design.md`](../config-design.md).
 - Secrets in the database are masked after save, never logged, excluded from `/v1/setup/status`, and
   backups are therefore secret material.
 
+## Route files
+
+A route file keeps its params, search validation, loader and component wiring. Page bodies and domain
+logic live in feature folders such as `channels/channel-detail/`.
+
 ## Operator first run
 
 Every route sends an unbootstrapped install to the wizard, decided by the unauthenticated

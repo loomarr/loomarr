@@ -1,6 +1,6 @@
 import type { ChannelDTO } from "@loomarr/api";
 import { describe, expect, it } from "vitest";
-import { airStateOf, headerAirLine } from "./route";
+import { airStateOf, headerAirLine } from "./channel-air-state";
 
 // A minimal channel — only the fields airStateOf reads. Cast partial per this suite's
 // convention (see -channel-advanced.test.tsx): the DTO is large and status/tunarrId/

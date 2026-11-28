@@ -1,6 +1,6 @@
 // Decision X2 (redesign-map critique roll-up row 5, maintainer-clarified 2026-10-03): the four
 // routes an admin edits a channel through, in SECTIONS order
-// (web/apps/web/src/routes/_authed/channels/$id/route.tsx).
+// (web/apps/web/src/channels/channel-detail/channel-detail-page.tsx).
 const CHANNEL_MANAGEMENT_SECTIONS = ["info", "programming", "filler", "danger"] as const;
 
 const isWatchRoute = (pathname: string): boolean => /^\/watch\/[^/]+$/.test(pathname);

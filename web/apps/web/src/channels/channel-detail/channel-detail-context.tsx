@@ -3,7 +3,7 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import type { ChannelEdit } from "@/channels/use-channel-save";
-import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
+import type { AirState } from "./channel-air-state";
 
 // The channel-detail layout's shared state (V-nav-paths), read by each section route
 // (`info.tsx`, `programming.tsx`, `filler.tsx`, `danger.tsx`). Previously all of this lived
@@ -12,17 +12,15 @@ import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator"
 // re-fetching or re-deriving them — the same reasoning `SettingsEditsProvider` hoists the
 // edit buffer above Settings' `<Outlet/>`.
 //
-// ⚠ The layout (`route.tsx`) gates loading/error BEFORE rendering `<Outlet/>`, so every
-// consumer of this context can assume `channel` is the loaded ChannelDTO, never undefined.
-// `buildSchedule` marks the No schedule yet state, which offers an admin Build schedule (#2728).
-type AirState = { dot: OnAirState; label: string; detail: string; buildSchedule?: boolean };
+// ⚠ The layout (`channel-detail-page.tsx`) gates loading/error BEFORE rendering `<Outlet/>`, so
+// every consumer of this context can assume `channel` is the loaded ChannelDTO, never undefined.
 
 type ChannelDetailValue = {
   id: string;
   channel: ChannelDTO;
   isAdmin: boolean;
   air: AirState;
-  /** Titles actually in the library — see route.tsx for why this counts titles, not slots. */
+  /** Titles actually in the library — see channel-detail-page.tsx for why this counts titles, not slots. */
   ready: number;
   total: number;
   invalidate: () => void;
