@@ -880,6 +880,46 @@ web's Channel-change sound switch decides that).
 - **Covers.** Off air, not started, the server unreachable and the stream stopped are covers over the
   picture, with a **white** Retry where there is one.
 
+#### The channel list (The Cross, target, not shipped yet; #4729)
+
+It replaces the shipped Channels sheet once the build lands. One list for every device, for looking:
+moving through it never tunes. Choosing a row (OK, Enter, a click or a tap) tunes it and leaves the
+list open; choosing the channel you are watching closes it. Back and Esc go one step: out of find,
+then off the tabs back to the list, then closed. Nothing closes it on a timer.
+
+- **Rows** are channel number, name, what is on now and the minutes left, or "in a break". At least
+  44 px on touch, no text under 12 px, never faded. The wheel scrolls and never changes channel.
+- **The watched channel is always listed**, whatever the group, and pinned: its slot (drawn as the
+  lower third) stays in view at both ends of the scroll. There is room above the first row and below
+  the last so any channel can rest where the caller puts it, and scrolling stops at the list's ends.
+  The pinned slot relies on sticky positioning on the web; on native it is moved by the scroll
+  position, which is untried. Every group is in number order (Favourites too, whatever order they were starred in) except Recent,
+  newest first, and By decade, by decade then number. A watched channel outside Favourites takes its
+  place by number; one outside Recent or By decade leads.
+- **Words.** An empty group says "Channels you watch collect here." (Recent), "No favourites yet."
+  or "No channels have a decade yet.", the last two with "Show all channels".
+- **Tabs** are Favourites, All, Recent, By decade; By decade is headed by its decades, each heading
+  in its decade's tint and never on the selection fill. Find is at the head of the tabs
+  ([`design/web-ui.md`](design/web-ui.md)).
+- **Keys.** The cursor starts on the watched channel. Up from the first row reaches the tabs; Left
+  and Right move between tabs; OK chooses one and the cursor stays on it, so Left and Right can go on
+  stepping; Down returns to the list on the watched channel. In the list, Left and Right change the
+  group directly, and Home and End go to the first and last row.
+- **Find.** Focus and its ring stay in the query while Up and Down move the cursor over the rows,
+  from the moment find opens. The row it rests on takes the selected fill, not a second amber ring,
+  as a combobox's highlighted option does. Left, Right, Home and End move the caret. Enter or a click on a result tunes it, closes find and leaves the list
+  open with the cursor on the new channel; choosing the watched channel only closes find.
+- **Focus** is one amber ring, on the cursor's row, the pinned channel or a tab. A pointer draws a
+  plain highlight, which goes when the list scrolls or changes under it, and is not drawn while a
+  press there would not count. In a desktop window a pointer resting on a row is "looking" at it, which ends as
+  soon as it leaves or the list scrolls. After a click the list re-centres, so a further click or tap
+  counts only after the pointer has moved about 14 px or, on touch, after a short gap. Only keyboard
+  focus scrolls a row into view.
+- **A television rests on whole rows.** At rest the list shows only whole rows: the pinned channel
+  rests a whole number of rows below the tabs, and the list's box ends a whole number of rows below
+  the pinned channel, so neither the tabs nor the screen's edge cuts a row. A decade heading is the
+  height of a row there. Moving away from rest may cut a row at the bottom, as scrolling does.
+
 ### 9.6 Amber discipline, type and the watermark
 
 - **Amber** is the channel block (or its decade colour) and focus rings, nothing else. The play key,
