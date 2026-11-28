@@ -38,8 +38,18 @@ const useWatchPlayer = ({
   // Timing marks follow the controller's attempts: one is begun as each tune is published and
   // completed as its phases arrive.
   const attempts = useRef(new Map<number, TuneAttempt>());
+  // A flip is a tune to the channel beside the last one, whoever asked: the controller's step, or
+  // the watching screen, which flips by naming the next row's channel.
+  const catalogRef = useRef<readonly { id: string }[]>([]);
+  const lastTuned = useRef<string | undefined>(undefined);
   const onTune = useCallback((report: PlayerTuneReport) => {
-    const attempt = beginTune(report.reason === "step", report.warm);
+    const catalog = catalogRef.current;
+    const from = catalog.findIndex((channel) => channel.id === lastTuned.current);
+    const to = catalog.findIndex((channel) => channel.id === report.channel.id);
+    const beside =
+      from >= 0 && to >= 0 && (Math.abs(from - to) === 1 || Math.abs(from - to) === catalog.length - 1);
+    lastTuned.current = report.channel.id;
+    const attempt = beginTune(report.reason === "step" || beside, report.warm);
     attempts.current.set(report.attemptId, attempt);
     for (const stale of [...attempts.current.keys()].slice(0, -REMEMBERED_ATTEMPTS)) {
       attempts.current.delete(stale);
@@ -78,6 +88,7 @@ const useWatchPlayer = ({
     source: channelSourcePort,
   });
   const { snapshot } = player;
+  catalogRef.current = snapshot.catalog;
   const { goLive, pause, play, retry, seek, tuneChannel } = player.controls;
 
   const lineupKnown = channels !== undefined;

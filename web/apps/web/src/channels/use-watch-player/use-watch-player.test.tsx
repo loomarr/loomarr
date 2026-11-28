@@ -33,6 +33,7 @@ vi.mock("@loomarr/player/browser", () => ({
 }));
 vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: vi.fn() } }));
 
+import * as tunerTiming from "../tuner-timing";
 import { useWatchPlayer } from "./use-watch-player";
 
 const channel = (id: string, number: number, extra: Partial<ChannelDTO> = {}) =>
@@ -259,6 +260,17 @@ describe("useWatchPlayer", () => {
       browser.options?.onTune?.({ attemptId: 7, channel: twenty, reason: "retry", warm: true });
       expect(onTune).toHaveBeenCalledWith({ attemptId: 7, channelId: "twenty", reason: "retry", warm: true });
       expect(result.current.attemptId).toBe(1);
+    });
+
+    it("marks a tune to the channel beside the last one as a flip, however it was asked", () => {
+      const begin = vi.spyOn(tunerTiming, "beginTune");
+      browser.snapshot = snapshot("playing", ten);
+      render({ channelId: "ten", channels: lineup });
+      browser.options?.onTune?.({ attemptId: 1, channel: ten, reason: "channel", warm: false });
+      browser.options?.onTune?.({ attemptId: 2, channel: twenty, reason: "channel", warm: true });
+      browser.options?.onTune?.({ attemptId: 3, channel: ten, reason: "number", warm: false });
+      browser.options?.onTune?.({ attemptId: 4, channel: thirty, reason: "channel", warm: false });
+      expect(begin.mock.calls.map(([adjacent]) => adjacent)).toEqual([false, true, true, true]);
     });
 
     it("says when the controller holds the picture paused, which status reads as playing", () => {
