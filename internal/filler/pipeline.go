@@ -250,11 +250,6 @@ type Pipeline struct {
 	// markers make the data self-healing across restarts; this bool merely avoids re-reading a
 	// settled queue every pass.
 	splitReviewsResumed bool
-	// doubtsRejudged gates the once-per-process re-judge of reviews held under the rule before
-	// "doubt means drop" (rejudgeDoubtfulReviews) and the retirement of running rows whose clip
-	// was removed (retireRemovedRows). Each leaves the rows it settles terminal, so the data is
-	// settled after one successful run; the bool only spares the re-read.
-	doubtsRejudged bool
 	// nextDedupRecheck is when reviews holding an unchecked duplicate comparison are next offered
 	// back to the split stage (see dedupRecheckEvery).
 	nextDedupRecheck time.Time
@@ -372,23 +367,6 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 		}
 	} else if measured > 0 && p.log != nil {
 		p.log.Info("filler pipeline: measured air windows", "clips", measured)
-	}
-	if !p.doubtsRejudged {
-		n, rejudgeErr := p.rejudgeDoubtfulReviews(ctx)
-		res.Rejected += n
-		retired, retireErr := p.retireRemovedRows(ctx)
-		res.Rejected += retired
-		rejudgeErr = errors.Join(rejudgeErr, retireErr)
-		if rejudgeErr != nil {
-			if p.log != nil {
-				p.log.Warn("filler pipeline: re-judging held reviews failed", "err", rejudgeErr)
-			}
-		} else {
-			p.doubtsRejudged = true
-			if n > 0 && p.log != nil {
-				p.log.Info("filler pipeline: clips held for a person under the old rule are rejected as undecided", "clips", n)
-			}
-		}
 	}
 	if !p.splitReviewsResumed {
 		n, resumeErr := p.requeueResumableSplitReviews(ctx)
