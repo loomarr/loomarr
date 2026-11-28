@@ -164,40 +164,6 @@ export type { ProgrammeFactsProps, StripMessageProps } from "./src/programme-fac
 export { ProgrammeFacts, StripMessage } from "./src/programme-facts";
 export type { QuietRowDevice, QuietRowHandle, QuietRowKey, QuietRowProps } from "./src/quiet-row";
 export { QuietRow } from "./src/quiet-row";
-export type {
-  ApprovalBulkGroupProps,
-  ApprovalBulkRow,
-  ApprovalConsequenceDialogProps,
-  ApprovalGroupProps,
-  ApprovalRow,
-  BriefState,
-  BulkApproveConsequences,
-  BulkApproveOutcome,
-  ChannelRequestConsequence,
-  FillerDownloadConsequence,
-  RequestCardProps,
-  RequestChannelProps,
-  RequestDetailBodyProps,
-  RequestDetailProps,
-  RequestsJourneyProps,
-  RequestsListProps,
-  ReviewSheetProps,
-  ReviewState,
-} from "./src/requests";
-export {
-  ApprovalBulkGroup,
-  ApprovalConsequenceDialog,
-  ApprovalGroup,
-  initialReview,
-  RequestCard,
-  RequestChannel,
-  RequestDetail,
-  RequestDetailBody,
-  RequestsJourney,
-  RequestsList,
-  ReviewSheet,
-  reviewReducer,
-} from "./src/requests";
 export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header";
 export { ScreenHeader } from "./src/screen-header";
 export type { SearchButtonProps } from "./src/search-button";

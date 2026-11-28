@@ -17,7 +17,7 @@ import {
   RequestsList,
   ReviewSheet,
   type ReviewState,
-} from "@loomarr/ui";
+} from "@loomarr/ui/requests";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useEffect, useMemo, useState } from "react";
 
