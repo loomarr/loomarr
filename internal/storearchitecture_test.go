@@ -123,8 +123,7 @@ func aggregateStoreReferences(t *testing.T, packages map[string]*build.Package) 
 	return refs
 }
 
-// clusterPackages are the store's cluster packages. The store re-exports their types and
-// sentinels by alias so its own Store contract can name them unqualified.
+// clusterPackages are the store's cluster packages, which own their row types and sentinels.
 var clusterPackages = map[string]bool{
 	modulePath + "/internal/platform/store/identitystore":    true,
 	modulePath + "/internal/platform/store/clipstore":        true,
