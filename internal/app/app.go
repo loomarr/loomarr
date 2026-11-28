@@ -149,7 +149,7 @@ func trackReplicaSettingsRefresh(
 
 func buildHandler(
 	rootCtx context.Context,
-	st records.Store,
+	st records.Combined,
 	log *slog.Logger,
 	ov Overrides,
 	owner *generationLifecycle,

@@ -14,7 +14,7 @@ import (
 )
 
 // openLedgerStore is the real, migrated store, so the ledger's behaviour is the shipped one.
-func openLedgerStore(t *testing.T) records.Store {
+func openLedgerStore(t *testing.T) records.Combined {
 	t.Helper()
 	db, err := records.Open(t.Context(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {

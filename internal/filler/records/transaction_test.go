@@ -85,7 +85,7 @@ func sampleChannel(id string, number int, deadline time.Time) channelstore.Chann
 	return ch
 }
 
-func mustSaveChannel(t *testing.T, s Store, ch channelstore.Channel) channelstore.Channel {
+func mustSaveChannel(t *testing.T, s Combined, ch channelstore.Channel) channelstore.Channel {
 	t.Helper()
 	saved, err := s.SaveChannel(context.Background(), ch)
 	if err != nil {

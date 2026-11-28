@@ -44,7 +44,7 @@ func renameFixture(t *testing.T) (*apiHarness, string) {
 	return h, dir
 }
 
-func seedFilenameNamedClip(t *testing.T, st records.Store) {
+func seedFilenameNamedClip(t *testing.T, st records.Combined) {
 	t.Helper()
 	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: clips.Clip{
 		Hash: "h-widgetmax", Path: "Widgetmax Ad 1991.mp4", Name: "Widgetmax Ad 1991",
@@ -178,7 +178,7 @@ func TestPatchClip_RenameWithAnUnreadableSidecarSavesNothing(t *testing.T) {
 // carries each clip's name and provenance into the pod.
 type storePods struct {
 	fakePods
-	st     records.Store
+	st     records.Combined
 	hashes []string
 }
 

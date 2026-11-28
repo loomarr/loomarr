@@ -18,7 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
-func completeSourceCheck(t *testing.T, st records.Store, id string, checkedAt time.Time) {
+func completeSourceCheck(t *testing.T, st records.Combined, id string, checkedAt time.Time) {
 	t.Helper()
 	claimAt, leaseUntil := checkedAt.Add(-time.Minute), checkedAt.Add(29*time.Minute)
 	claimed, err := st.ClaimFillerSourceCheck(t.Context(), id, time.Time{}, claimAt, leaseUntil)
@@ -98,7 +98,7 @@ type watchBody struct {
 	} `json:"autoFetch"`
 }
 
-func newFillerWatchServer(t *testing.T) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerWatchServer(t *testing.T) (*httptest.Server, records.Combined, *fakeFiller) {
 	t.Helper()
 	return newFillerServerWithConfig(t, nil, func(key string) string {
 		if key == "filler.home_country" {
@@ -125,7 +125,7 @@ func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
 }
 
 // seedHeldClip is a clip that arrived but has not been terminally admitted.
-func seedHeldClip(t *testing.T, st records.Store, id string) {
+func seedHeldClip(t *testing.T, st records.Combined, id string) {
 	t.Helper()
 	seedClip(t, st, id, clips.Commercial, 1992, clips.Kids, "toys")
 	// HoldClips is the ordinary one-way writer; terminal applied admission is the atomic release.

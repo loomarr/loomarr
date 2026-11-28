@@ -16,7 +16,7 @@ import (
 
 // PostgresStore opens one fresh migrated production Postgres store in a disposable
 // container. It is integration-tagged so ordinary unit tests remain offline.
-func PostgresStore(t testing.TB) records.Store {
+func PostgresStore(t testing.TB) records.Combined {
 	t.Helper()
 	return PostgresStores(t, 1)[0]
 }
@@ -24,7 +24,7 @@ func PostgresStore(t testing.TB) records.Store {
 // PostgresStores opens count independent production store adapters against one
 // migrated disposable database. Use it for replica tests: sharing one Store value
 // exercises a pool, while separate adapters exercise the cross-process database seam.
-func PostgresStores(t testing.TB, count int) []records.Store {
+func PostgresStores(t testing.TB, count int) []records.Combined {
 	t.Helper()
 	if count < 1 {
 		t.Fatalf("PostgresStores count = %d, want at least one", count)
@@ -47,7 +47,7 @@ func PostgresStores(t testing.TB, count int) []records.Store {
 	if err != nil {
 		t.Fatalf("Postgres connection string: %v", err)
 	}
-	stores := make([]records.Store, 0, count)
+	stores := make([]records.Combined, 0, count)
 	for i := range count {
 		st, openErr := records.Open(ctx, dsn, i == 0)
 		if openErr != nil {

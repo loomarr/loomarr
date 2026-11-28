@@ -75,7 +75,7 @@ func compilationGate(set resolved) acquisition.CompilationGate {
 }
 
 func buildFillerSubsystem(
-	st records.Store,
+	st records.Combined,
 	set resolved,
 	layout cliplibrary.Layout,
 	log *slog.Logger,
@@ -142,7 +142,7 @@ func buildFillerSubsystem(
 	fillerProgrammer := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 	wake := operator.NewChannelWake(st, channelService, log)
 	result.taxonomy = operator.NewTaxonomyEditor(st, wake, holidaysChanged)
-	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
+	syncer := buildSyncer(st, st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
 	if fetcher != nil {
 		// A download that fails or waits is remembered per item, so it retries on its own.
@@ -202,7 +202,7 @@ func buildFillerSubsystem(
 			return defectTools.Fingerprint(ctx, file, 0, durationMs)
 		}, defectJudge, layout.ClipDir(), time.Now, log,
 	)
-	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
+	pipeline, transcribeStage, visionStage := buildPipeline(st, st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom, playoutResolver,
 		defectFloor.CheckReplacement, interactiveLLM)
 	stations := station.NewLazy(st.ListBroadcastStations)

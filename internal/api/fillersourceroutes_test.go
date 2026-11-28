@@ -95,7 +95,7 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 // ⚠ Since V38c an operator can ADD folders and libraries too (§10), so this no longer means
 // "everything the operator added". A test about those kinds must read the whole table; see
 // TestAddFillerSource_AcceptsFoldersAndLibraries.
-func registeredSources(t *testing.T, st records.Store) []records.FillerSource {
+func registeredSources(t *testing.T, st records.Combined) []records.FillerSource {
 	t.Helper()
 	all, err := st.ListFillerSources(context.Background())
 	if err != nil {

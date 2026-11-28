@@ -101,7 +101,7 @@ func TestHomeVideoPoster(t *testing.T) {
 // needFrame is the fixture title's Needs you frame, "" for none or when it no longer waits.
 func needFrame(t *testing.T, p *titleFrames) string {
 	t.Helper()
-	needs, err := p.store.(records.Store).LibraryNeeds(context.Background())
+	needs, err := p.store.(records.Combined).LibraryNeeds(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestLibraryNeedFrame(t *testing.T) {
 
 	// What the scanner does after it saves a replaced file's rows.
 	saveHomeVideo(t, p, "stat:2:2")
-	if err := p.store.(records.Store).ClearStaleLibraryFrames(ctx); err != nil {
+	if err := p.store.(records.Combined).ClearStaleLibraryFrames(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if got := needFrame(t, p); got != "" {
@@ -161,11 +161,11 @@ func TestLibraryNeedFrame(t *testing.T) {
 	// Kept, it stops waiting: no card frame is asked for, the sweep drops the old one, and the
 	// poster is taken.
 	keep()
-	if err := p.store.(records.Store).ClearStaleLibraryFrames(ctx); err != nil {
+	if err := p.store.(records.Combined).ClearStaleLibraryFrames(ctx); err != nil {
 		t.Fatal(err)
 	}
 	pass(3)
-	owned, err := p.store.(records.Store).ImagesForOwner(ctx, librarystore.LibraryItemImageOwner, "90000001")
+	owned, err := p.store.(records.Combined).ImagesForOwner(ctx, librarystore.LibraryItemImageOwner, "90000001")
 	if err != nil || len(owned) != 1 || owned[0].Hash != item().Poster {
 		t.Fatalf("owned = %+v, %v; want only the poster", owned, err)
 	}

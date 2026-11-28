@@ -171,7 +171,7 @@ type provisioningStores struct {
 }
 
 // Housekeeping purges filler records too, so this one is filled from the filler extension.
-func newProvisioningStores(st records.Store) provisioningStores {
+func newProvisioningStores(st records.Combined) provisioningStores {
 	if st == nil {
 		return provisioningStores{}
 	}

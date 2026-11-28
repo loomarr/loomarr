@@ -16,7 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 )
 
-func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, records.Store) {
+func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, records.Combined) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })

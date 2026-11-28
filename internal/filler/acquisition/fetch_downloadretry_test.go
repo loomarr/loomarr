@@ -15,7 +15,7 @@ import (
 // clock the test moves.
 type retryFixture struct {
 	stub    *fetchStub
-	ledger  records.Store
+	ledger  records.Combined
 	fetcher *acquisition.Fetcher
 	now     time.Time
 	states  map[string]acquisition.ExistingRemoteState

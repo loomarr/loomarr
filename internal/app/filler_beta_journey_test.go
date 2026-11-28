@@ -92,7 +92,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		}
 		return tools.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
-	newPipeline := func(database records.Store, probe tools.Prober) *filler.Pipeline {
+	newPipeline := func(database records.Combined, probe tools.Prober) *filler.Pipeline {
 		clipStore := storeadapter.NewPipelineClips(database)
 		return filler.NewPipeline(database, clipStore, []filler.Stage{
 			filler.NewProbeStage(probe, clipStore, layout.ClipDir(), func() int64 { return 10_000 }, nil, func() time.Time { return clock }),
@@ -228,7 +228,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 }
 
-func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want acquisition.RunStatus) {
+func waitForAcquisition(t *testing.T, st records.Combined, id string, at time.Time, want acquisition.RunStatus) {
 	t.Helper()
 	var (
 		run acquisition.AcquisitionRun

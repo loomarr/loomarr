@@ -245,7 +245,7 @@ func seedFillerClips(t *testing.T, st store.Store) {
 	}
 	// A kids channel airs a kids or family clip only when its audience is backed (#3838 decision 7).
 	// The listing backs the first four, the way a fetched clip's item metadata does.
-	enriched, ok := st.(records.Store)
+	enriched, ok := st.(records.Combined)
 	if !ok {
 		t.Fatalf("store %T cannot record enrichment evidence", st)
 	}

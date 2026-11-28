@@ -12,11 +12,11 @@ import (
 
 // NewStoreFunc builds a fresh, migrated, empty extended store for one test. Like the core suite's,
 // it hides the backend, so every assertion below runs identically on SQLite and Postgres.
-type NewStoreFunc func(t *testing.T) Store
+type NewStoreFunc func(t *testing.T) Combined
 
 // saveMembers saves a member for each id. A pull's decided_by is a foreign key to users (#2793), so
 // a name that is no member reads back as no one.
-func saveMembers(t *testing.T, s Store, ids ...string) {
+func saveMembers(t *testing.T, s Combined, ids ...string) {
 	t.Helper()
 	for _, id := range ids {
 		if err := s.UpsertUser(context.Background(), identitystore.User{ID: id, Name: id, Role: identitystore.RoleMember}); err != nil {
@@ -120,7 +120,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 var reopenURLs sync.Map // Store -> string
 
 // openExtended is the production open path (fillerstore.Open), recording the URL it used.
-func openExtended(ctx context.Context, databaseURL string, autoMigrate bool) (Store, error) {
+func openExtended(ctx context.Context, databaseURL string, autoMigrate bool) (Combined, error) {
 	s, err := Open(ctx, databaseURL, autoMigrate)
 	if err == nil {
 		reopenURLs.Store(s, databaseURL)
@@ -128,7 +128,7 @@ func openExtended(ctx context.Context, databaseURL string, autoMigrate bool) (St
 	return s, err
 }
 
-func reopenURL(t *testing.T, s Store) string {
+func reopenURL(t *testing.T, s Combined) string {
 	t.Helper()
 	url, ok := reopenURLs.Load(s)
 	if !ok {
@@ -137,7 +137,7 @@ func reopenURL(t *testing.T, s Store) string {
 	return url.(string)
 }
 
-func checkpointSQLite(s Store) error {
+func checkpointSQLite(s Combined) error {
 	_, err := store.HandleOf(s).ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)")
 	return err
 }

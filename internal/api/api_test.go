@@ -141,7 +141,7 @@ func copyTemplate(t *testing.T, src, dst string) {
 // covers only 15 of ~462 tests here; the rest reach for a store through their own file-local
 // helper, and a site that opens a fresh file re-pays the whole 503ms migration run. Closing is
 // left to the caller so this drops into existing helpers without doubling their cleanup.
-func openTestStore(t *testing.T, path string) records.Store {
+func openTestStore(t *testing.T, path string) records.Combined {
 	t.Helper()
 	copyTemplate(t, migratedTemplate(t), path)
 	// autoMigrate stays true: goose reads the version the template already carries and no-ops,

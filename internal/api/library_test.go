@@ -71,7 +71,7 @@ func newScanHarness(t *testing.T, sonarrFolders ...string) (*apiHarness, *scan.L
 
 // newScanLibrary is the real scan.Library over st, with Sonarr naming sonarrFolders and Radarr
 // not set up.
-func newScanLibrary(t *testing.T, st records.Store, sonarrFolders ...string) *scan.Library {
+func newScanLibrary(t *testing.T, st records.Combined, sonarrFolders ...string) *scan.Library {
 	t.Helper()
 	resolver, err := precedence.New("US")
 	if err != nil {

@@ -13,7 +13,7 @@ import (
 // saveFillerSources registers an archive source for each id not yet registered, so a download run
 // that names it satisfies its foreign key to filler_sources (#2793). The package's twin of
 // testkit.SaveFillerSources, which it can't import.
-func saveFillerSources(t *testing.T, s Store, ids ...string) {
+func saveFillerSources(t *testing.T, s Combined, ids ...string) {
 	t.Helper()
 	ctx := context.Background()
 	existing, err := s.ListFillerSources(ctx)
@@ -39,7 +39,7 @@ func saveFillerSources(t *testing.T, s Store, ids ...string) {
 
 // saveAcquisitionRun stores a finished download run with no source, so a clip pipeline row or
 // ready event that names it satisfies its foreign key to filler_acquisition_runs.
-func saveAcquisitionRun(t *testing.T, s Store, id string) {
+func saveAcquisitionRun(t *testing.T, s Combined, id string) {
 	t.Helper()
 	at := time.Unix(1_900_000_000, 0).UTC()
 	if err := s.UpsertAcquisitionRun(context.Background(), acquisition.AcquisitionRun{
