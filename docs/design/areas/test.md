@@ -29,7 +29,7 @@ One area of the [package map](../package-map.md#start-here).
 - **`testkit/httpfixture`**
   Shared no-network HTTP test seams without importing any application adapter.
 - **`testkit/imagetestkit`** · → `media/images`, `testkit`
-  In-memory image store and a real image service over it, shared by the adapter tests of internal/app and internal/app/playoutresolve.
+  In-memory image store and a real image service over it, shared by the adapter tests of internal/app and internal/playout/resolve.
 - **`testkit/libraryfixture`** · → `channels/schedule`, `library/mediaserver`, `library/provision`
   No-network adapters for library-facing tests.
 - **`testkit/mediatool`**

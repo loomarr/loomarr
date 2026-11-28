@@ -57,7 +57,7 @@
 // internal/playout/timeline, pure functions over the schedule. Neither knows anything about
 // stores, media servers, settings, or HTTP handlers.
 //
-// The WIRING lives in internal/app/playoutresolve and internal/api. That split is why this
+// The WIRING lives in internal/playout/resolve and internal/api. That split is why this
 // package can be tested without a database or a network, and it is worth preserving: the moment
 // playout can reach a store, "what is on now" grows a second answer.
 //

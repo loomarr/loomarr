@@ -12,7 +12,6 @@ import (
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	proposalsapi "github.com/loomarr/loomarr/internal/api/proposals"
 	"github.com/loomarr/loomarr/internal/api/system"
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/edit"
 	"github.com/loomarr/loomarr/internal/channels/growth"
@@ -35,6 +34,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
@@ -102,7 +102,7 @@ func buildSuggestions(
 	result.imageFetcher = registerImageJobs(
 		rootCtx, registry, result.images, st, fillerLayout, set, activityRecorder, log,
 	)
-	result.timelineThumbs = playoutresolve.NewTimelineThumbs(rootCtx, tmdbClient, result.images, result.imageFetcher, log)
+	result.timelineThumbs = resolve.NewTimelineThumbs(rootCtx, tmdbClient, result.images, result.imageFetcher, log)
 	if engine, ok := channelService.(*channels.Engine); ok {
 		engine.WithFranchises(resolvers.NewFranchises(tmdbClient))
 	}

@@ -3,11 +3,11 @@ package app
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/resolve"
 	"github.com/loomarr/loomarr/internal/playout/timeline"
 )
 
@@ -29,7 +29,7 @@ func TestPackagerSourceWatermarksProgrammesOnly(t *testing.T) {
 		{"filler clip in a programme slot", timeline.Airing{Kind: schedule.SlotProgram, Source: "/filler/clip.mp4"}, true, false},
 		{"flex", timeline.Airing{Kind: schedule.SlotFlex}, true, false},
 	} {
-		s := playoutresolve.PackagerSource{Watermark: testWatermarks(t, ch, tc.gatePassed).For}
+		s := resolve.PackagerSource{Watermark: testWatermarks(t, ch, tc.gatePassed).For}
 		var wm *playout.Watermark
 		if resolve := s.WatermarkFor("ch", tc.airing); resolve != nil {
 			wm = resolve(t.Context(), encode.EncoderNVENC, 1920, 1080)
