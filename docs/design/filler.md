@@ -1087,6 +1087,18 @@ Split children are measured, not trusted (V64, V65). Structure decisions are in
 - Acquisition is not readiness: none of this weakens enablement, limits, grounding, required checks
   or the held-to-Ready transition.
 
+## Staged, not wired
+
+These packages are built and tested, and no install runs them. A guard test
+(`internal/stagedimports_architecture_test.go`) holds each to the importers it has, so wiring one
+updates this table in the same change.
+
+| Package | Imported by | Wiring seam | Needed before wiring |
+| --- | --- | --- | --- |
+| `filler/screening` | `filler/records` | register `SegmentScreeningStage` in `internal/app/buildfiller.go`; the `screen` rung is already on the ladder and records a skip | evaluators that can authorize each safety axis, and a release certification (without one, a child that passes is held) |
+| `filler/structure/assessment` | `filler/screening` | a window runtime in the split stage | a qualified long-source structure path |
+| `filler/structure/window` | `filler/records`, `filler/structure/assessment` | the same window runtime; `records` already keeps its call ledger | the same |
+
 ## AI assist
 
 Optional and opt-in, under the suggester's grounding rule (only clips that exist in the catalog):
