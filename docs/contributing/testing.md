@@ -31,8 +31,9 @@ The threshold never changes the command's exit status—test failures remain the
 affected local evidence. It reports locally executable gates separately from specialized and
 platform-dependent gates owned by protected CI, and its completion line names only local evidence
 that ran successfully. For Go changes, both golangci-lint and tests consume the affected
-reverse-dependency package closure. Pull-request CI runs the same selection and is the gate, so a
-push needs only the focused tests for each package and surface the diff touches. Run `make verify`
+reverse-dependency package closure. CI runs the same selection and is the gate (the pull request
+runs the fast checks, and the merge queue's `CI assurance` adds `-race` and Postgres), so a push
+needs only the focused tests for each package and surface the diff touches. Run `make verify`
 to reproduce a CI failure, when CI is unavailable, or when the diff changes the gate or classifier
 machinery, one run per machine at a time.
 

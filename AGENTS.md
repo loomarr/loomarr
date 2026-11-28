@@ -74,9 +74,11 @@ During implementation, run the smallest focused test that covers the edit. When 
 known, `make test-affected BASE=<base>` runs direct Go packages, related Vitest tests, and directly
 owned script/native/Rust unit suites as development feedback. It deliberately skips reverse dependants,
 lint, publication prerequisites, and protected integration gates. Before pushing, run the focused
-tests for each package and frontend surface the diff touches, once the diff is stable. CI is the gate:
-pull-request CI runs the complete affected evidence (lint, the reverse-dependant Go closure under
-`-race`, Postgres), and the merge queue the protected gates. `make verify BASE=<base>` reproduces that
+tests for each package and frontend surface the diff touches, once the diff is stable, with `-race`
+for a package whose concurrency the diff changes. CI is the gate: pull-request CI runs the fast
+affected checks (lint, Go contracts, frontend), and `CI assurance` in the merge queue runs the
+complete affected set, including the reverse-dependant Go closure under `-race` and Postgres, with a
+failure there reverted first. `make verify BASE=<base>` reproduces that
 selection locally at a workstation's cost, so run it only to reproduce a CI failure, when CI is
 unavailable, or when the diff changes the gate or classifier machinery, and keep it to one run per
 machine at a time. Reserve

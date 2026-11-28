@@ -34,8 +34,9 @@ They used to be restated here and in three other files, and the copies drifted a
 
 ## Before you open a PR
 
-Run the focused tests for each package and surface the change touches. Pull-request CI runs the
-complete affected evidence through a fail-closed impact policy and is the gate. `make verify
+Run the focused tests for each package and surface the change touches. CI selects affected evidence
+through a fail-closed impact policy and is the gate: pull-request CI runs the fast checks, and the
+merge queue runs the complete set, including `-race` and Postgres. `make verify
 BASE=origin/main` reproduces that selection locally; use it to reproduce a CI failure or when CI is
 unavailable. Run a specialized gate directly when the change needs that evidence:
 
