@@ -7037,6 +7037,9 @@ components:
         personId:
           description: The person, for the list's person= and /v1/library/people/{id}
           type: string
+        photo:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Their photo; absent when there is none, or while it is still being fetched
         role:
           enum:
             - actor
@@ -19325,6 +19328,7 @@ paths:
               - channel
               - library_item
               - library_candidate
+              - library_person
             type: string
         - description: The id of the thing it decorates
           explode: false

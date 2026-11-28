@@ -465,7 +465,8 @@ const movieExtras = {
   tagline: "Every plan has a loose thread.",
   score: 7.4,
   credits: [
-    { name: "Imelda Varge", character: "Agnes Fell", role: "actor" as const },
+    // One with an imported photo, one still on their initials.
+    { name: "Imelda Varge", character: "Agnes Fell", role: "actor" as const, photo: art("#6b4a3a") },
     { name: "Tobin Ashcroft", character: "Rafe Fell", role: "actor" as const },
     { name: "Lorna Pettigrew", role: "director" as const },
   ],

@@ -210,6 +210,11 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
 	deps.owner.goRunAfterBuild(hooks.Run)
+	if deps.images != nil {
+		photos := &scan.PersonPhotos{Store: st, Artwork: libraryArtwork{images: deps.images, refs: st},
+			Enabled: im.Enabled, Log: deps.log}
+		deps.owner.goRunAfterBuild(photos.Run)
+	}
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
 		Orders: st, CollectionStore: st, Records: st, Keys: keys, Log: deps.log}
 	if provider != nil {

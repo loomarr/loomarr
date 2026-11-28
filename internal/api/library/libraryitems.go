@@ -404,6 +404,8 @@ type libraryCreditDTO struct {
 	Name      string `json:"name"`
 	Role      string `json:"role" enum:"actor,director,writer,creator"`
 	Character string `json:"character,omitempty" doc:"An actor's part"`
+
+	Photo *httpcore.ImageDTO `json:"photo,omitempty" doc:"Their photo; absent when there is none, or while it is still being fetched"`
 }
 
 type libraryPictureDTO struct {
@@ -641,6 +643,9 @@ func (s *Handlers) pageImages(ctx context.Context, d scan.ItemDetail, admin bool
 			hashes = append(hashes, h)
 		}
 	}
+	for _, h := range d.CreditPhotos {
+		hashes = append(hashes, h)
+	}
 	for _, season := range d.Seasons {
 		for _, ep := range season.Episodes {
 			if ep.Still != "" && episodeShown(ep, admin) {
@@ -673,7 +678,9 @@ func libraryItemDetailOf(d scan.ItemDetail, images map[string]*httpcore.ImageDTO
 	}
 	for _, p := range d.Facts.People {
 		credit := librarystore.LibraryCredit{Name: p.Name, ID: librarystore.LibraryID{Namespace: p.ID.Namespace, Value: p.ID.Value}}
-		out.Credits = append(out.Credits, libraryCreditDTO{PersonID: credit.PersonID(), Name: p.Name, Role: p.Role, Character: p.Character})
+		id := credit.PersonID()
+		out.Credits = append(out.Credits, libraryCreditDTO{PersonID: id, Name: p.Name, Role: p.Role, Character: p.Character,
+			Photo: images[d.CreditPhotos[id]]})
 	}
 	for _, c := range d.Channels {
 		out.Channels = append(out.Channels, libraryChannelDTO{ID: c.ID, Name: c.Name, Number: c.Number})

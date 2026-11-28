@@ -23,6 +23,8 @@ type ItemDetail struct {
 	// premiere date, score, genres, studios, countries, rating, runtime, and People (each credit's
 	// name, role and character, in billing order).
 	Facts inventory.ItemFacts
+	// CreditPhotos is the image hash of each credited person's photo, by person id.
+	CreditPhotos map[string]string
 	// From is where its details came from.
 	From DetailsFrom
 	// EpisodeNamesFrom is where most of a series' episode names came from.
@@ -252,6 +254,12 @@ func (l *Library) Item(ctx context.Context, id string, member bool) (ItemDetail,
 	for _, c := range page.Credits {
 		detail.Facts.People = append(detail.Facts.People, inventory.Person{Name: c.Name, Role: c.Role, Character: c.Character,
 			ID: inventory.ExternalID{Namespace: c.ID.Namespace, Value: c.ID.Value}})
+		if c.PhotoHash != "" {
+			if detail.CreditPhotos == nil {
+				detail.CreditPhotos = map[string]string{}
+			}
+			detail.CreditPhotos[c.PersonID()] = c.PhotoHash
+		}
 	}
 	detail.From = detailsFrom(page.From)
 	detail.Still = page.Still

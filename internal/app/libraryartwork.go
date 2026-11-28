@@ -26,6 +26,7 @@ const artFileMax = 32 << 20
 type artRefs interface {
 	PutImageRef(ctx context.Context, ref clipstore.ImageRef) error
 	DeleteImageRefsByRole(ctx context.Context, ownerKind, ownerID, role string) error
+	PutLibraryPersonPhoto(ctx context.Context, personID, role, imageHash, source string) error
 }
 
 // artRoles is the image role each imported artwork kind takes (#2567): fanart is a title's
@@ -95,6 +96,19 @@ func (p libraryArtwork) Art(ctx context.Context, itemID, kind, ref string) error
 	return p.refs.PutImageRef(ctx, clipstore.ImageRef{
 		ImageHash: rec.Hash, OwnerKind: librarystore.LibraryItemImageOwner, OwnerID: itemID, Role: string(role),
 	})
+}
+
+// PersonPhoto adopts a person's photo (#4476), on the poster ladder and fetched in the bulk class,
+// after every title's artwork. The photo the person had stays until the new one's bytes are stored
+// (SettleLibraryPersonPhotos).
+func (p libraryArtwork) PersonPhoto(ctx context.Context, personID, source, fetch string) error {
+	rec, err := p.images.Adopt(ctx, fetch, images.IngestRequest{
+		Role: images.RolePoster, Visibility: images.VisibilityMember, FetchPriority: images.FetchBulk,
+	})
+	if err != nil {
+		return err
+	}
+	return p.refs.PutLibraryPersonPhoto(ctx, personID, string(images.RolePoster), rec.Hash, source)
 }
 
 // importFile reads an artwork file beside the media. It opens only a regular file, never through
