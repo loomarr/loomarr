@@ -12,8 +12,8 @@
 //   rawMenu      role="menu" written by hand
 //   flexStack    a className that makes an element a flex container (the design system's Stack)
 //   inlineStyle  a `style` attribute holding an object literal or a module-level object constant,
-//                directly, behind a TypeScript wrapper or as a branch of a condition (primitive
-//                props and tokens carry layout and colour). The web app's client-adapters own the
+//                directly, behind a TypeScript wrapper, as a branch of a condition or of a
+//                `Platform.select` (primitive props and tokens carry layout and colour). The web app's client-adapters own the
 //                raw elements, so they are exempt.
 //
 // The committed ledger (primitive-bypass.json) is a ratchet, like legacy-usage.json:
@@ -138,22 +138,28 @@ const WRAPPERS = new Set([
 
 const unwrap = (node) => (WRAPPERS.has(node?.type) ? unwrap(node.expression) : node);
 
-// moduleObjects maps each module-level `const name = {…}` to its object literal.
+// moduleObjects maps each module-level `const name = …` that holds an object (as holdsObject
+// reads it) to its unwrapped value.
 const moduleObjects = (program) => {
   const objects = new Map();
   for (const statement of program.body) {
     const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
     if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const") continue;
     for (const { id, init } of declaration.declarations) {
-      const value = unwrap(init);
-      if (id.type === "Identifier" && value?.type === "ObjectExpression") objects.set(id.name, value);
+      if (id.type === "Identifier" && holdsObject(init, objects)) objects.set(id.name, unwrap(init));
     }
   }
   return objects;
 };
 
+const isPlatformSelect = (call) =>
+  call.callee.type === "MemberExpression" &&
+  call.callee.object.name === "Platform" &&
+  call.callee.property.name === "select";
+
 // holdsObject reports whether a style value is an object written for this element: a literal, or a
-// module-level object literal named here, whole (`ROW`) or by one of its entries (`styles.row`).
+// module-level constant holding one, named here whole (`ROW`) or by one of its entries
+// (`styles.row`). A cast, a condition or a `Platform.select` around it does not hide it.
 const holdsObject = (node, objects) => {
   const value = unwrap(node);
   switch (value?.type) {
@@ -165,8 +171,16 @@ const holdsObject = (node, objects) => {
     case "OptionalMemberExpression": {
       const entry = objects
         .get(unwrap(value.object).name)
-        ?.properties.find((property) => !value.computed && property.key?.name === value.property.name);
-      return unwrap(entry?.value)?.type === "ObjectExpression";
+        ?.properties?.find((property) => !value.computed && property.key?.name === value.property.name);
+      return holdsObject(entry?.value, objects);
+    }
+    case "CallExpression": {
+      const [branches] = value.arguments;
+      return (
+        isPlatformSelect(value) &&
+        branches?.type === "ObjectExpression" &&
+        branches.properties.some((property) => holdsObject(property.value, objects))
+      );
     }
     case "JSXExpressionContainer":
       return holdsObject(value.expression, objects);
