@@ -101,6 +101,8 @@ interface LibraryTitlePerson {
   personId?: string;
   character?: string;
   role: "actor" | "director" | "writer" | "creator";
+  /** An actor's photo, drawn by the app; absent shows their initials. */
+  photo?: ReactNode;
 }
 
 /** What plays, for a member's one technical line. */

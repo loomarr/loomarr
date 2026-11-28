@@ -141,7 +141,10 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         ) : undefined,
         tagline: body.tagline,
         score: body.score,
-        credits: body.credits,
+        credits: body.credits.map(({ photo, ...credit }) => ({
+          ...credit,
+          photo: photo ? <ServedImage alt="" image={photo} sizes="64px" /> : undefined,
+        })),
         airings: body.nextAirings.flatMap((a) => {
           const when = airingWhen(a, timeZone);
           const episode = a.episode ? airingEpisode(a.episode) : undefined;

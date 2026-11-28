@@ -141,6 +141,20 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleFix> = {}, 
 };
 
 describe("LibraryTitle", () => {
+  it("shows a cast member's photo, and initials for one without", () => {
+    const { host } = render({
+      ...MOVIE,
+      credits: [
+        { name: "Imelda Varge", role: "actor", photo: <img alt="" data-testid="cast-photo" /> },
+        { name: "Tobin Ashcroft", role: "actor" },
+      ],
+    });
+    const cast = host.querySelectorAll('[aria-label="Cast"]')[0];
+    expect(cast?.querySelectorAll('[data-testid="cast-photo"]')).toHaveLength(1);
+    expect(cast?.textContent).not.toContain("IV");
+    expect(cast?.textContent).toContain("TA");
+  });
+
   it("shows a movie's facts in plain words and its file behind Technical details", () => {
     const { host, button, cleanup } = render(MOVIE);
     expect(host.textContent).toContain("1996·1 h 38 min");
