@@ -17,20 +17,19 @@ var aggregateStoreExceptions = map[string]string{
 	modulePath + "/cmd/loomarr":  "owns the process-lifetime store and its shutdown",
 	modulePath + "/internal/api": "retains complete HTTP dependency assembly outside this refactor",
 	modulePath + "/internal/app": "is the composition root that narrows the store for domain modules",
-	modulePath + "/internal/filler/records": "is the aggregate's filler half: it extends the core store.Store " +
-		"with filler persistence (#1747)",
+	modulePath + "/internal/filler/records": "declares records.Combined, the core store.Store beside the " +
+		"filler store (#1747)",
 	modulePath + "/internal/filler/storeadapter": "is where the aggregate store is narrowed to the persistence roles " +
 		"the filler seams declare, as the composition root did before these adapters moved here",
 	modulePath + "/internal/proposals/accept": "contains compile-time conformance assertions for its narrow store roles",
 	modulePath + "/internal/testkit":          "owns shared complete-store factories for tests",
 }
 
-// aggregateStorePackages export the aggregate. records.Store embeds store.Store, so naming it
-// is naming the aggregate; without it here, moving a package onto records.Store would hide its
-// aggregate reference from the allowlist.
-var aggregateStorePackages = map[string]bool{
-	modulePath + "/internal/platform/store": true,
-	modulePath + "/internal/filler/records": true,
+// aggregateStoreTypes names the aggregates each package exports. records.Store and
+// records.Combined embed store.Store, so naming either is naming the aggregate.
+var aggregateStoreTypes = map[string]map[string]bool{
+	modulePath + "/internal/platform/store": {"Store": true},
+	modulePath + "/internal/filler/records": {"Store": true, "Combined": true},
 }
 
 // Aggregate store references are deliberately rare. The full store exists for construction,
@@ -73,13 +72,14 @@ func aggregateStoreReferences(t *testing.T, packages map[string]*build.Package) 
 			if err != nil {
 				t.Fatalf("parse %s: %v", path, err)
 			}
-			aliases := map[string]bool{}
+			aliases := map[string]map[string]bool{}
 			for _, imp := range file.Imports {
 				importPath, err := strconv.Unquote(imp.Path.Value)
 				if err != nil {
 					t.Fatalf("unquote import in %s: %v", path, err)
 				}
-				if !aggregateStorePackages[importPath] {
+				typeNames, aggregate := aggregateStoreTypes[importPath]
+				if !aggregate {
 					continue
 				}
 				alias := filepath.Base(importPath)
@@ -92,7 +92,7 @@ func aggregateStoreReferences(t *testing.T, packages map[string]*build.Package) 
 					continue
 				}
 				if alias != "_" {
-					aliases[alias] = true
+					aliases[alias] = typeNames
 				}
 			}
 			if len(aliases) == 0 {
@@ -100,11 +100,11 @@ func aggregateStoreReferences(t *testing.T, packages map[string]*build.Package) 
 			}
 			ast.Inspect(file, func(node ast.Node) bool {
 				selector, ok := node.(*ast.SelectorExpr)
-				if !ok || selector.Sel.Name != "Store" {
+				if !ok {
 					return true
 				}
 				ident, ok := selector.X.(*ast.Ident)
-				if !ok || !aliases[ident.Name] {
+				if !ok || !aliases[ident.Name][selector.Sel.Name] {
 					return true
 				}
 				pos := fset.Position(selector.Pos())

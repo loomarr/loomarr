@@ -59,7 +59,7 @@ func writeClearLogo(t *testing.T, path string) {
 }
 
 // artworkFixture is a migrated store with one listed title, and its image service.
-func artworkFixture(t *testing.T) (context.Context, records.Store, *images.Service) {
+func artworkFixture(t *testing.T) (context.Context, records.Combined, *images.Service) {
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -75,7 +75,7 @@ func artworkFixture(t *testing.T) (context.Context, records.Store, *images.Servi
 	return ctx, st, svc
 }
 
-func libraryItem(t *testing.T, st records.Store) librarystore.LibraryItemSummary {
+func libraryItem(t *testing.T, st records.Combined) librarystore.LibraryItemSummary {
 	t.Helper()
 	it, err := st.LibraryItem(context.Background(), "90000001")
 	if err != nil {

@@ -327,23 +327,23 @@ func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments
 	return nil
 }
 
-func newFillerServer(t *testing.T) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServer(t *testing.T) (*httptest.Server, records.Combined, *fakeFiller) {
 	return newFillerServerWithImages(t, nil)
 }
 
-func newFillerServerWithImages(t *testing.T, imageService imagesapi.ImageService) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithImages(t *testing.T, imageService imagesapi.ImageService) (*httptest.Server, records.Combined, *fakeFiller) {
 	return newFillerServerWithConfig(t, imageService, nil)
 }
 
-func newFillerServerWithConfig(t *testing.T, imageService imagesapi.ImageService, liveConfig func(string) string) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithConfig(t *testing.T, imageService imagesapi.ImageService, liveConfig func(string) string) (*httptest.Server, records.Combined, *fakeFiller) {
 	return newFillerServerWithRuntimeConfig(t, imageService, stringSettings(liveConfig), nil)
 }
 
-func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, records.Combined, *fakeFiller) {
 	return newFillerServerWithRuntimeConfig(t, nil, mapSettings{"filler.incoming.ready_window": readyWindow}, func() time.Time { return now })
 }
 
-func newFillerServerWithRuntimeConfig(t *testing.T, imageService imagesapi.ImageService, live settings.Reader, now func() time.Time) (*httptest.Server, records.Store, *fakeFiller) {
+func newFillerServerWithRuntimeConfig(t *testing.T, imageService imagesapi.ImageService, live settings.Reader, now func() time.Time) (*httptest.Server, records.Combined, *fakeFiller) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -459,7 +459,7 @@ func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *test
 }
 
 // clearSeededSources drops whatever migrations pre-populated, so a test describes a state it built.
-func clearSeededSources(t *testing.T, st records.Store) {
+func clearSeededSources(t *testing.T, st records.Combined) {
 	t.Helper()
 	seeded, err := st.ListFillerSources(context.Background())
 	if err != nil {
@@ -472,7 +472,7 @@ func clearSeededSources(t *testing.T, st records.Store) {
 	}
 }
 
-func seedClip(t *testing.T, st records.Store, id string, kind clips.Role, era int, aud clips.Audience, cat string) {
+func seedClip(t *testing.T, st records.Combined, id string, kind clips.Role, era int, aud clips.Audience, cat string) {
 	t.Helper()
 	c := clipstore.Clip{}
 	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as

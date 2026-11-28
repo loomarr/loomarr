@@ -28,7 +28,7 @@ func (passStage) Run(context.Context, clipstore.Clip) (filler.StageResult, error
 // releasedClipRunningRow seeds the production shape from #1445: a clip an older path already
 // published (held=0, not removed, break_body) whose conveyor row was never settled and still sits
 // running at the score rung with every earlier rung complete.
-func releasedClipRunningRow(t *testing.T, st records.Store, hash string) {
+func releasedClipRunningRow(t *testing.T, st records.Combined, hash string) {
 	t.Helper()
 	ctx := context.Background()
 	at := time.Now().UTC().Add(-time.Hour)
@@ -51,7 +51,7 @@ func releasedClipRunningRow(t *testing.T, st records.Store, hash string) {
 	}
 }
 
-func releasedClipPipeline(st records.Store) *filler.Pipeline {
+func releasedClipPipeline(st records.Combined) *filler.Pipeline {
 	stages := make([]filler.Stage, 0, len(pipelinestate.StageOrder))
 	for _, id := range pipelinestate.StageOrder {
 		stages = append(stages, passStage{id: id})

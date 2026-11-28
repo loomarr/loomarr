@@ -286,7 +286,7 @@ func startedAt(now func() time.Time) time.Time {
 
 // storeFacts is the schema version and backend name GET /v1/system/version reports, read from st on
 // each call; nil on a store-less boot, which leaves both rows absent.
-func storeFacts(st records.Store) func() (int64, string) {
+func storeFacts(st records.Combined) func() (int64, string) {
 	if st == nil {
 		return nil
 	}

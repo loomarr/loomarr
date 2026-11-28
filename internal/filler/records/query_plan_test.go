@@ -13,7 +13,7 @@ var planRecorder = storetest.NewRecorder("sqlite-plan-recorder-filler")
 
 // openRecording is openExtended for the conformance factory, except that each cloned store runs
 // on the recording driver. The template build (autoMigrate) goes through the ordinary open.
-func openRecording(ctx context.Context, databaseURL string, autoMigrate bool) (Store, error) {
+func openRecording(ctx context.Context, databaseURL string, autoMigrate bool) (Combined, error) {
 	if autoMigrate {
 		return openExtended(ctx, databaseURL, true)
 	}

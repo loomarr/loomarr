@@ -36,7 +36,7 @@ func sourcesFrom(t *testing.T, srv *httptest.Server) []fillerapi.FillerSourceDTO
 }
 
 // addArchive registers one archive collection.
-func addArchive(t *testing.T, st records.Store, id, label string, fetched time.Time) {
+func addArchive(t *testing.T, st records.Combined, id, label string, fetched time.Time) {
 	t.Helper()
 	src := records.NewFillerSource(id, "archive", id, label, time.Unix(1_700_000_000, 0).UTC())
 	src.LastCheckedAt = fetched

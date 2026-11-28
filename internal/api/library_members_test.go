@@ -139,7 +139,7 @@ const (
 // copy that plays (its subtitle in a file beside it), an extra copy, a file whose header couldn't
 // be read and a held removal; an identified series with one episode in a season folder and one
 // still named by its file; and the titles waiting in Needs you, ignored, or answered (above).
-func seedMemberLibrary(t *testing.T, st records.Store) {
+func seedMemberLibrary(t *testing.T, st records.Combined) {
 	t.Helper()
 	ctx := context.Background()
 	at := time.UnixMilli(1_790_000_000_000).UTC()

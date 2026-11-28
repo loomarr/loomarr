@@ -99,7 +99,7 @@ func sampleClip(id, name string, kind clips.Role, era int, aud clips.Audience, c
 
 // putClip upserts a sample clip and asserts its category as a taxonomy leaf. Category is derived
 // from the tags on read (#2323), so a fixture's category exists only once it is tagged.
-func putClip(t *testing.T, s Store, c Clip) {
+func putClip(t *testing.T, s Combined, c Clip) {
 	t.Helper()
 	ctx := context.Background()
 	if err := s.UpsertClip(ctx, c); err != nil {
@@ -113,7 +113,7 @@ func putClip(t *testing.T, s Store, c Clip) {
 }
 
 // cachedClipFingerprint reads one clip's cached video frames under an algorithm.
-func cachedClipFingerprint(ctx context.Context, s Store, clipHash, algorithm string) ([]uint64, bool, error) {
+func cachedClipFingerprint(ctx context.Context, s Combined, clipHash, algorithm string) ([]uint64, bool, error) {
 	all, err := s.ListClipFingerprints(ctx, algorithm)
 	if err != nil {
 		return nil, false, err
@@ -141,7 +141,7 @@ func ids2(clips []Clip) []string {
 // fresh store can still express "not configured", which means `ListFillerSources(ctx)[0]` is no
 // longer the row a test just added — it is whichever seeded row sorts first. Every positional
 // read in this suite was rewritten through here after exactly that broke.
-func findSource(t *testing.T, s Store, id string) (FillerSource, bool) {
+func findSource(t *testing.T, s Combined, id string) (FillerSource, bool) {
 	t.Helper()
 	all, err := s.ListFillerSources(context.Background())
 	if err != nil {
@@ -157,7 +157,7 @@ func findSource(t *testing.T, s Store, id string) (FillerSource, bool) {
 
 // exposuresBefore is a break's rotation snapshot the way pod assembly reads it: the household's
 // stored airings, cut before `before` by the filler domain (a zero cutoff keeps everything).
-func exposuresBefore(ctx context.Context, s Store, before time.Time, settle time.Duration) (map[string]pod.Exposure, error) {
+func exposuresBefore(ctx context.Context, s Combined, before time.Time, settle time.Duration) (map[string]pod.Exposure, error) {
 	airings, err := s.FillerAirings(ctx)
 	if err != nil {
 		return nil, err
@@ -167,7 +167,7 @@ func exposuresBefore(ctx context.Context, s Store, before time.Time, settle time
 
 // src1 is the source this suite registers first, re-read. Fatals if it has gone missing, so a
 // caller can assert on its fields without a nil check at every use.
-func src1(t *testing.T, s Store) FillerSource {
+func src1(t *testing.T, s Combined) FillerSource {
 	t.Helper()
 	f, ok := findSource(t, s, "src-1")
 	if !ok {
@@ -2804,7 +2804,7 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 // testAtomicTaxonomyEdit pins the V55 contract: changing the graph re-derives every affected
 // clip's rollups before the semantic edit returns. There is no second public rebuild operation or
 // scheduled repair job that can expose two vocabulary generations.
-func testAtomicTaxonomyEdit(t *testing.T, s Store, ctx context.Context, now time.Time) {
+func testAtomicTaxonomyEdit(t *testing.T, s Combined, ctx context.Context, now time.Time) {
 	// Insert an intermediate parent above cereal. clipA already asserts cereal, so the graph edit
 	// itself must add breakfast to that existing clip while preserving its direct assertion.
 	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: taxonomy.Taxon{
@@ -2866,7 +2866,7 @@ func testAtomicTaxonomyEdit(t *testing.T, s Store, ctx context.Context, now time
 
 // mustList fetches the whole taxonomy or fails the test — a small helper for the reindex assertions
 // that rebuild a forest from the live graph.
-func mustList(t *testing.T, s Store, ctx context.Context) []taxonomy.Taxon {
+func mustList(t *testing.T, s Combined, ctx context.Context) []taxonomy.Taxon {
 	t.Helper()
 	taxa, err := s.ListTaxa(ctx)
 	if err != nil {
@@ -5637,7 +5637,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
-func restartConformanceStore(t *testing.T, s Store) Store {
+func restartConformanceStore(t *testing.T, s Combined) Combined {
 	t.Helper()
 	if err := s.Close(); err != nil {
 		t.Fatalf("close conformance store for restart: %v", err)
@@ -5651,7 +5651,7 @@ func restartConformanceStore(t *testing.T, s Store) Store {
 
 // reopenConformanceStore opens a new pool on s's database: SQLite through the full boot path
 // (migrations are already applied, so it only re-runs startup healing), Postgres as a bare pool.
-func reopenConformanceStore(t *testing.T, s Store) (Store, error) {
+func reopenConformanceStore(t *testing.T, s Combined) (Combined, error) {
 	t.Helper()
 	url := reopenURL(t, s)
 	return openExtended(t.Context(), url, store.DialectOf(s) != DialectPostgres)

@@ -51,7 +51,7 @@ func locatedInUS(key string) string {
 	return map[string]string{"filler.home_country": "US"}[key]
 }
 
-func seedSource(t *testing.T, st records.Store, id, uri string, enabled bool) {
+func seedSource(t *testing.T, st records.Combined, id, uri string, enabled bool) {
 	t.Helper()
 	ctx := context.Background()
 	src := records.NewFillerSource(id, "archive", uri, id, time.Now().UTC())
@@ -68,7 +68,7 @@ func seedSource(t *testing.T, st records.Store, id, uri string, enabled bool) {
 // seedPull persists a pending pull directly, bypassing the removed propose-filler-pull endpoint
 // (#1743): nothing calls it, so these tests seed the queue the way a pre-V66 or operator-composed
 // pull would already be stored, and exercise approve/dismiss — the operations that remain.
-func seedPull(t *testing.T, st records.Store, id string, plan []acquisition.PullPlanRow) acquisition.Pull {
+func seedPull(t *testing.T, st records.Combined, id string, plan []acquisition.PullPlanRow) acquisition.Pull {
 	t.Helper()
 	p := acquisition.Pull{ID: id, Status: acquisition.PullPending, CreatedAt: time.Now().UTC(), Plan: plan}
 	if err := st.UpsertPull(t.Context(), p); err != nil {

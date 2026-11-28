@@ -50,11 +50,11 @@ func (f *fakeTimelineThumbs) askedCount() int {
 	return len(f.asked)
 }
 
-func newTimelineServer(t *testing.T, g playoutapi.PlayoutGuide, thumbs guideapi.TimelineThumbResolver) (*httptest.Server, records.Store) {
+func newTimelineServer(t *testing.T, g playoutapi.PlayoutGuide, thumbs guideapi.TimelineThumbResolver) (*httptest.Server, records.Combined) {
 	return newTimelineServerWithImages(t, g, thumbs, nil)
 }
 
-func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs guideapi.TimelineThumbResolver, imageService imagesapi.ImageService) (*httptest.Server, records.Store) {
+func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs guideapi.TimelineThumbResolver, imageService imagesapi.ImageService) (*httptest.Server, records.Combined) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/timeline.db")
 	t.Cleanup(func() { _ = st.Close() })

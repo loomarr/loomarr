@@ -31,7 +31,7 @@ const (
 // row, and a secret outside the folder entirely. All three are load-bearing: the secret is what
 // makes a traversal assertion mean something, and the uncatalogued file is what proves the
 // catalog check is a real gate rather than a lookup.
-func newMediaServer(t *testing.T) (*httptest.Server, string, records.Store) {
+func newMediaServer(t *testing.T) (*httptest.Server, string, records.Combined) {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()

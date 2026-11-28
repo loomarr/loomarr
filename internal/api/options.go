@@ -40,7 +40,7 @@ import (
 // (the playout status header reads System.LLM, the channel routes read Proposals.Approver) takes it
 // from the owning struct rather than keeping a second copy.
 type Options struct {
-	Store   records.Store
+	Store   records.Combined
 	Auth    httpcore.Authorizer
 	Log     *slog.Logger
 	Metrics *metrics.Recorder

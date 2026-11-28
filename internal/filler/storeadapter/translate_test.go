@@ -25,7 +25,7 @@ type contextT = context.Context
 // rowStore serves canned rows and records writes. A method it does not override panics, so an
 // adapter that reaches for another one fails its test.
 type rowStore struct {
-	records.Store
+	records.Combined
 	err   error
 	calls []string
 	refs  []string
@@ -254,9 +254,9 @@ func TestDeletingASplitProposalDropsItsArtwork(t *testing.T) {
 	if err != nil || len(rows) != 1 || rows[0].ProposalID != "p" || rows[0].Segments != 2 {
 		t.Errorf("sweepable = %+v, %v", rows, err)
 	}
-	for name, remove := range map[string]func(records.Store) error{
-		"rewind": func(st records.Store) error { return storeadapter.NewRewind(st).DeleteSplitProposal(ctx, "p") },
-		"sweep":  func(st records.Store) error { return storeadapter.NewSweep(st).DeleteSplitProposal(ctx, "p") },
+	for name, remove := range map[string]func(records.Combined) error{
+		"rewind": func(st records.Combined) error { return storeadapter.NewRewind(st).DeleteSplitProposal(ctx, "p") },
+		"sweep":  func(st records.Combined) error { return storeadapter.NewSweep(st).DeleteSplitProposal(ctx, "p") },
 	} {
 		st := &rowStore{}
 		if err := remove(st); err != nil || !slices.Equal(st.refs, []string{storeadapter.SplitProposalArtworkOwner + "/p"}) {

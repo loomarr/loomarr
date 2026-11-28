@@ -48,7 +48,7 @@ func repairReason(state acquisition.ArtifactState) string {
 	return ""
 }
 
-func seedBoundaryRun(t *testing.T, db records.Store, at time.Time) {
+func seedBoundaryRun(t *testing.T, db records.Combined, at time.Time) {
 	t.Helper()
 	testkit.SaveFillerSources(t, db, "youtube:classic")
 	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: "acq-boundary", Trigger: acquisition.TriggerPull, SourceID: "youtube:classic", Status: acquisition.RunSuccess, Requested: 1, UpdatedAt: at}); err != nil {

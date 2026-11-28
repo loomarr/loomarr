@@ -19,7 +19,7 @@ import (
 type personPhotos struct {
 	t     *testing.T
 	ctx   context.Context
-	st    records.Store
+	st    records.Combined
 	photo *scan.PersonPhotos
 }
 

@@ -36,7 +36,7 @@ func (f *fakeNumberSource) TakenChannelNumbers(context.Context) (map[int]bool, e
 
 // newServerWithNumbers is newServerWithScheduler plus a Tunarr number source, so the create
 // and renumber paths can be exercised against numbers that exist ONLY in Tunarr.
-func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Server, records.Store) {
+func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Server, records.Combined) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
