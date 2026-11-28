@@ -18,7 +18,7 @@ func testLibraryHomeVideo(t *testing.T, newStore NewStoreFunc) {
 	origin := func(key string) librarystore.LibraryOrigin {
 		return librarystore.LibraryOrigin{Authority: "library:/media", Key: key}
 	}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "m1", Kind: "movie", Name: "Beach Day", Origin: origin("/media/a.mkv")},
 		{ID: "m2", Kind: "movie", Name: "Guessed Film", Origin: origin("/media/b.mkv")},
 	}, at); err != nil {

@@ -20,9 +20,9 @@ import (
 // Titles are ordered because the first candidate for a key wins: an in-library
 // available record precedes any acquisition copy of the same title.
 type ProposalApproval struct {
-	Proposal Proposal
+	Proposal proposalstore.Proposal
 	Titles   []provision.Record
-	Channel  Channel
+	Channel  channelstore.Channel
 }
 
 type encodedApprovalTitle struct {
@@ -121,7 +121,7 @@ func (s *sqlStore) commitProposalApproval(
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), commit.Proposal.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
-		return 0, fmt.Errorf("%w: proposal %s", ErrProposalRevisionActive, commit.Proposal.ID)
+		return 0, fmt.Errorf("%w: proposal %s", proposalstore.ErrProposalRevisionActive, commit.Proposal.ID)
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("approve proposal %s: read job status: %w", commit.Proposal.ID, err)
@@ -189,7 +189,7 @@ func (s *sqlStore) commitProposalApproval(
 		  LIMIT 1`), p.ID, commit.Channel.ID, commit.Channel.ID).Scan(&supersedingID)
 	if err == nil {
 		return 0, fmt.Errorf("%w: proposal %s is preceded by approved proposal %s",
-			ErrProposalSuperseded, p.ID, supersedingID)
+			proposalstore.ErrProposalSuperseded, p.ID, supersedingID)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("approve proposal %s: check supersession: %w", p.ID, err)
@@ -228,7 +228,7 @@ func (s *sqlStore) commitProposalApproval(
 	}
 	if _, err := channelstore.SaveChannelIn(ctx, s.channelCluster, tx, commit.Channel); err != nil {
 		if isConstraintViolation(err) {
-			return 0, fmt.Errorf("%w: %v", ErrChannelConflict, err)
+			return 0, fmt.Errorf("%w: %v", channelstore.ErrChannelConflict, err)
 		}
 		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
 	}
@@ -252,7 +252,7 @@ func (s *sqlStore) commitProposalApproval(
 	return enqueued, nil
 }
 
-func approvalOrderKey(p Proposal) string {
+func approvalOrderKey(p proposalstore.Proposal) string {
 	if p.CreatedBy != "" {
 		return "requester:" + p.CreatedBy
 	}
@@ -285,11 +285,11 @@ type proposalApprovalTxReader struct {
 	tx *sql.Tx
 }
 
-func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (User, error) {
+func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (identitystore.User, error) {
 	return identitystore.GetUserIn(ctx, r.tx, r.s.ph, id)
 }
 
-func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
+func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, userID string) ([]proposalstore.Proposal, error) {
 	creator, args := proposalstore.CreatorMatch("created_by", userID)
 	rows, err := r.tx.QueryContext(ctx, r.s.ph(proposalstore.ProposalSelect+` WHERE `+creator+` ORDER BY created_at DESC`), args...)
 	if err != nil {
@@ -312,7 +312,7 @@ func (r proposalApprovalTxReader) GetTitle(ctx context.Context, key provision.Ke
 // sites already use.
 func isConstraintViolation(err error) bool { return storedb.IsConstraintViolation(err) }
 
-func validateApprovalChannel(p Proposal, ch Channel) error {
+func validateApprovalChannel(p proposalstore.Proposal, ch channelstore.Channel) error {
 	if err := ch.Validate(); err != nil {
 		return fmt.Errorf("invalid channel: %w", err)
 	}
@@ -327,14 +327,14 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 // validateApprovalBinding checks, inside the approval transaction, that the planned channel is
 // the one the proposal's job belongs to: the channel a refine or re-curation job names, or the
 // channel the job originated. A job with no channel yet may only create one it originates.
-func (s *sqlStore) validateApprovalBinding(ctx context.Context, q channelstore.DB, p Proposal, ch Channel) error {
+func (s *sqlStore) validateApprovalBinding(ctx context.Context, q channelstore.DB, p proposalstore.Proposal, ch channelstore.Channel) error {
 	bound, err := channelstore.ChannelForJobIn(ctx, s.channelCluster, q, p.JobID)
 	switch {
 	case err == nil:
 		if bound.ID != ch.ID {
 			// The plan predates a competing approval that bound the job first. The caller
 			// reloads and replans, exactly as for a lost uniqueness race.
-			return fmt.Errorf("%w: proposal job %q belongs to channel %s, not %s", ErrChannelConflict, p.JobID, bound.ID, ch.ID)
+			return fmt.Errorf("%w: proposal job %q belongs to channel %s, not %s", channelstore.ErrChannelConflict, p.JobID, bound.ID, ch.ID)
 		}
 		if err := ch.Policy.ValidateKeeping(bound.Policy); err != nil {
 			return fmt.Errorf("invalid channel policy: %w", err)
@@ -378,7 +378,7 @@ func validateApprovalTitle(rec provision.Record) error {
 
 // CommitProposalDenial makes denial the other side of the same terminal-decision
 // race. It deliberately updates only decision-owned fields.
-func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
+func (s *sqlStore) CommitProposalDenial(ctx context.Context, p proposalstore.Proposal) error {
 	if p.Status != "denied" {
 		return fmt.Errorf("deny proposal %s: terminal status is %q", p.ID, p.Status)
 	}
@@ -391,7 +391,7 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), p.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
-		return fmt.Errorf("%w: proposal %s", ErrProposalRevisionActive, p.ID)
+		return fmt.Errorf("%w: proposal %s", proposalstore.ErrProposalRevisionActive, p.ID)
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("deny proposal %s: read job status: %w", p.ID, err)
@@ -445,5 +445,5 @@ func proposalDecisionResult(ctx context.Context, q proposalStatusReader, statusQ
 	if err != nil {
 		return fmt.Errorf("decide proposal %s: read status: %w", id, err)
 	}
-	return ErrProposalNotSubmitted
+	return proposalstore.ErrProposalNotSubmitted
 }

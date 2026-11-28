@@ -22,11 +22,11 @@ func testLibraryEpisodeOrders(t *testing.T, newStore NewStoreFunc) {
 	harbor := librarystore.LibraryOrigin{Authority: "scan:test", Key: "series:dir:harbor"}
 	other := librarystore.LibraryOrigin{Authority: "scan:test", Key: "series:dir:other"}
 	harborID, otherID := inventorySeries(t, st, harbor, at), inventorySeries(t, st, other, at)
-	episode := func(id string, season, number, end int, unnumbered bool) LibraryItem {
-		return LibraryItem{ID: id, Kind: "episode", Name: id, Series: harbor, Season: season, Episode: number,
+	episode := func(id string, season, number, end int, unnumbered bool) librarystore.LibraryItem {
+		return librarystore.LibraryItem{ID: id, Kind: "episode", Name: id, Series: harbor, Season: season, Episode: number,
 			EpisodeEnd: end, Unnumbered: unnumbered}
 	}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: harborID, Kind: "series", Name: "Harbor Show", Origin: harbor, Catalog: show},
 		episode("e1", 1, 1, 0, true),
 		episode("e2", 1, 2, 3, false),

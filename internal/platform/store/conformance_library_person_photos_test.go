@@ -33,7 +33,7 @@ func testLibraryPersonPhotos(t *testing.T, newStore NewStoreFunc) {
 	plain.Photo = "http://nas.example.org/6.jpg"
 	// Billed eleventh and after: an actor, a writer, a director, a creator.
 	credits = append(credits, person("2", "actor"), person("3", "writer"), person("4", "director"), person("5", "creator"), plain)
-	items := []LibraryItem{
+	items := []librarystore.LibraryItem{
 		{ID: "m1", Kind: "movie", Name: "One", Credits: credits},
 		{ID: "m2", Kind: "movie", Name: "No File", Credits: []librarystore.LibraryCredit{person("7", "director")}},
 	}
@@ -109,7 +109,7 @@ func testLibraryPersonPhotos(t *testing.T, newStore NewStoreFunc) {
 	changed := items[0]
 	changed.Credits = []librarystore.LibraryCredit{person("1", "actor")}
 	changed.Credits[0].Photo = "https://image.tmdb.org/t/p/original/new.jpg"
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{changed}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{changed}, at); err != nil {
 		t.Fatal(err)
 	}
 	if got := due("", 10); !slices.Equal(got, []string{"tmdb:1"}) {
@@ -117,7 +117,7 @@ func testLibraryPersonPhotos(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Removing a person lets their photo go.
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{{ID: "m1", Kind: "movie", Name: "One"}}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{{ID: "m1", Kind: "movie", Name: "One"}}, at); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.PruneLibraryPeople(ctx); err != nil {

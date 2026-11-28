@@ -18,7 +18,7 @@ import (
 )
 
 // #1534: seedLibraryChannels (SEED_LIBRARY_PICKS) hit the same bug as the
-// default seed — it wrote a done store.Job with no versioned Attempt, so
+// default seed — it wrote a done proposalstore.Job with no versioned Attempt, so
 // listing it through the real workflow (what GET /v1/proposal-jobs does)
 // failed with ErrInvalidState instead of 200.
 func TestSeedLibraryChannelsProposalJobsAreListableThroughTheProposalWorkflow(t *testing.T) {

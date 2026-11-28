@@ -18,7 +18,7 @@ func testLibraryNeedsBatch(t *testing.T, newStore NewStoreFunc) {
 	origin := func(key string) librarystore.LibraryOrigin {
 		return librarystore.LibraryOrigin{Authority: "library:/media", Key: key}
 	}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "m1", Kind: "movie", Name: "First Film", Origin: origin("/media/a.mkv")},
 		{ID: "s1", Kind: "series", Name: "Mystery Show", Origin: origin("/media/show")},
 		{ID: "m2", Kind: "movie", Name: "Linked Film", Origin: origin("/media/b.mkv")},

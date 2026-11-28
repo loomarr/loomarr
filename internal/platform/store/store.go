@@ -23,9 +23,15 @@ import (
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/jobstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/platform/store/operationstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -65,22 +71,22 @@ type TitleStore interface {
 
 // ChannelStore is the scheduler/channel surface (§9), including channel icons.
 type ChannelStore interface {
-	GetChannel(ctx context.Context, id string) (Channel, error)
-	GetChannelByNumber(ctx context.Context, number int) (Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
+	GetChannelByNumber(ctx context.Context, number int) (channelstore.Channel, error)
 	// GetChannelByIntentRef finds the channel a suggestion job originated (its intent_ref).
 	// Indexed (00037).
-	GetChannelByIntentRef(ctx context.Context, intentRef string) (Channel, error)
+	GetChannelByIntentRef(ctx context.Context, intentRef string) (channelstore.Channel, error)
 	// GetChannelForJob finds the channel a job's proposal changes: the one a refine or
 	// re-curation job names, else the one the job originated. ErrNotFound means a first
 	// approval creates it.
-	GetChannelForJob(ctx context.Context, jobID string) (Channel, error)
+	GetChannelForJob(ctx context.Context, jobID string) (channelstore.Channel, error)
 	// ChannelHasUnfinishedJob reports a refine or re-curation job of the channel that is
 	// queued, running, or done with a proposal still awaiting a decision.
 	ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error)
 	// SaveChannel is the one full-row channel write. Revision 0 inserts a new row
 	// at revision 1; a positive revision replaces the row only when it still
 	// matches, then returns the saved channel with its incremented revision.
-	SaveChannel(ctx context.Context, ch Channel) (Channel, error)
+	SaveChannel(ctx context.Context, ch channelstore.Channel) (channelstore.Channel, error)
 	// AttachTunarrChannel records the server-assigned id and the number actually used
 	// without replacing a concurrently edited channel snapshot. Both old values are
 	// compared; the targeted write advances and returns the row revision.
@@ -88,7 +94,7 @@ type ChannelStore interface {
 	// SetChannelBroadcastCodec updates ONLY the derived broadcast_codec column (§9.1 V50) —
 	// a targeted revision-checked write used after the lineup is bound.
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
-	ListChannels(ctx context.Context) ([]Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 	// GrowthReviews is the model's verdict on each title it reviewed for the channel (#4333);
 	// SaveGrowthReview replaces one.
 	GrowthReviews(ctx context.Context, channelID string) (map[provision.Key]channelstore.GrowthReview, error)
@@ -109,7 +115,7 @@ type ChannelStore interface {
 	// now+lease) so two replicas never reconcile one Tunarr channel at once
 	// (§18: single-leader / per-channel row claiming). SQLite: guarded UPDATE.
 	// Postgres: FOR UPDATE SKIP LOCKED. Detached channels are never claimed.
-	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Channel, error)
+	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]channelstore.Channel, error)
 }
 
 // ProposalRepository is the one persistence surface for proposals and the suggestion jobs that
@@ -117,8 +123,8 @@ type ChannelStore interface {
 // A proposal's body is the typed proposals.Proposal; the repository is the only place its JSON is
 // encoded or decoded.
 type ProposalRepository interface {
-	CreateJob(ctx context.Context, j Job) error
-	GetJob(ctx context.Context, id string) (Job, error)
+	CreateJob(ctx context.Context, j proposalstore.Job) error
+	GetJob(ctx context.Context, id string) (proposalstore.Job, error)
 	// ListProposalJobIDs returns user-submitted generation jobs newest-first.
 	// Re-curation jobs are operator maintenance and never appear in My requests.
 	ListProposalJobIDs(ctx context.Context, limit int) ([]string, error)
@@ -127,24 +133,24 @@ type ProposalRepository interface {
 	// proposal is hidden while a reused channel-refine job is queued/running/failed.
 	// A submitted proposal remains visible during its own revision so failure can
 	// return to the same review instead of erasing the operator's usable draft.
-	GetProposalJob(ctx context.Context, id string) (ProposalJob, error)
-	UpdateJob(ctx context.Context, j Job) error
+	GetProposalJob(ctx context.Context, id string) (proposalstore.ProposalJob, error)
+	UpdateJob(ctx context.Context, j proposalstore.Job) error
 	// ClaimDueJobs atomically claims up to limit queued jobs whose deadline is
 	// at/before now, for the worker pool (§8). The claim also moves each job to
 	// running and leases it (deadline → now+lease), so execution cannot race a
 	// separate queued → running write. SQLite uses a guarded UPDATE; Postgres uses
 	// FOR UPDATE SKIP LOCKED (§18).
-	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Job, error)
+	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]proposalstore.Job, error)
 	// ListProposalJobAttempts returns a job's execution history in attempt order. A job that
 	// was never claimed has no rows.
-	ListProposalJobAttempts(ctx context.Context, jobID string) ([]ProposalJobAttempt, error)
+	ListProposalJobAttempts(ctx context.Context, jobID string) ([]proposalstore.ProposalJobAttempt, error)
 	// FindJobByIntentHash returns the most recent successful job with the same
 	// intent hash (§8 proposal cache), or ErrNotFound. `since` bounds the cache
 	// TTL; incomplete and failed attempts do not shadow a reusable success.
-	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (Job, error)
+	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (proposalstore.Job, error)
 	// CommitSuggestionSuccess atomically inserts the generated proposal and moves
 	// its existing job from running to done. A lost transition rolls both back.
-	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p Proposal, updatedAt time.Time) error
+	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p proposalstore.Proposal, updatedAt time.Time) error
 	// CommitSuggestionFailure moves a running job to failed without rewriting
 	// stale intent or ownership fields. A lost transition leaves the newer
 	// lifecycle untouched.
@@ -156,18 +162,18 @@ type ProposalRepository interface {
 	// CloneSuggestionSuccess materializes cached proposal CONTENT into a fresh,
 	// caller-owned done job and submitted proposal. It never reuses the source
 	// request's identity, requester, or decision state.
-	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job Job, proposalID string) (Proposal, error)
+	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job proposalstore.Job, proposalID string) (proposalstore.Proposal, error)
 	// CreateSuggestionResult records a proposal that needed no generation (a library channel
 	// idea, #1720) as a done job, its succeeded Attempt 1 and the submitted proposal, atomically.
-	CreateSuggestionResult(ctx context.Context, job Job, p Proposal) error
+	CreateSuggestionResult(ctx context.Context, job proposalstore.Job, p proposalstore.Proposal) error
 	// PurgeFinishedJobs removes done/failed jobs older than `before` (§5 JOBS_RETENTION).
 	// In-flight jobs (queued/running) are never removed by age.
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 
 	// --- proposals ---
 
-	CreateProposal(ctx context.Context, p Proposal) error
-	GetProposal(ctx context.Context, id string) (Proposal, error)
+	CreateProposal(ctx context.Context, p proposalstore.Proposal) error
+	GetProposal(ctx context.Context, id string) (proposalstore.Proposal, error)
 	// CommitProposalApproval atomically wins the submitted -> approved decision,
 	// inserts title records that do not already exist, and creates or patches the
 	// intent-bound channel. Existing title lifecycle state is never overwritten.
@@ -180,13 +186,13 @@ type ProposalRepository interface {
 	// but has no guard, so deliberate admin spending is never quota-rejected.
 	CommitProposalApprovalGuarded(ctx context.Context, commit ProposalApproval, guard ProposalApprovalGuard) (int, error)
 	// CommitProposalDenial atomically wins the submitted -> denied decision.
-	CommitProposalDenial(ctx context.Context, p Proposal) error
-	ListProposalsByStatus(ctx context.Context, status string) ([]Proposal, error)
+	CommitProposalDenial(ctx context.Context, p proposalstore.Proposal) error
+	ListProposalsByStatus(ctx context.Context, status string) ([]proposalstore.Proposal, error)
 	// NewestProposalByStatusForJob is the binder's bind target: the most recent proposal for
 	// one job in one status. Newest wins because a refine produces a newer approved proposal
 	// for the same job and the channel must bind to THAT (§7). Indexed on job_id (00037).
-	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (Proposal, error)
-	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
+	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (proposalstore.Proposal, error)
+	ListProposalsByCreator(ctx context.Context, userID string) ([]proposalstore.Proposal, error)
 	// PurgeDiscardedProposals removes denied and superseded proposals older than `before` (§5
 	// PROPOSALS_RETENTION). Approved proposals are the audit trail and are kept
 	// indefinitely; submitted ones are still awaiting an answer.
@@ -197,8 +203,8 @@ type ProposalRepository interface {
 // unattended approval guard. Reads and the eventual approval commit use the same
 // transaction/connection, so losing a Postgres session loses both ordering and work.
 type ProposalApprovalReader interface {
-	GetUser(ctx context.Context, id string) (User, error)
-	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
+	GetUser(ctx context.Context, id string) (identitystore.User, error)
+	ListProposalsByCreator(ctx context.Context, userID string) ([]proposalstore.Proposal, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 }
 
@@ -219,32 +225,32 @@ type DiscoveryQualityStore interface {
 type ScheduledJobStore interface {
 	// UpsertScheduledJob writes a job's runtime state (last-run/result + next-run lease).
 	// ⚠ Never writes `paused` — see SetScheduledJobPaused.
-	UpsertScheduledJob(ctx context.Context, j ScheduledJob) error
+	UpsertScheduledJob(ctx context.Context, j jobstore.ScheduledJob) error
 	// SetScheduledJobPaused pauses or resumes a job (§18.1). The scheduler skips a paused job, so
 	// it simply does not run until resumed. Creates the row if the job has not run yet, so a task
 	// can be paused before its first execution.
 	SetScheduledJobPaused(ctx context.Context, name string, paused bool) error
 	// GetScheduledJob returns one job's state, or ErrNotFound.
-	GetScheduledJob(ctx context.Context, name string) (ScheduledJob, error)
+	GetScheduledJob(ctx context.Context, name string) (jobstore.ScheduledJob, error)
 	// ListScheduledJobs returns all job state rows for the Tasks page.
-	ListScheduledJobs(ctx context.Context) ([]ScheduledJob, error)
+	ListScheduledJobs(ctx context.Context) ([]jobstore.ScheduledJob, error)
 }
 
 // UserStore is the users & sessions surface (§11).
 type UserStore interface {
-	GetUser(ctx context.Context, id string) (User, error)
+	GetUser(ctx context.Context, id string) (identitystore.User, error)
 	// GetUserByName resolves a username to its allowlist row (§11 local login).
-	GetUserByName(ctx context.Context, name string) (User, error)
+	GetUserByName(ctx context.Context, name string) (identitystore.User, error)
 	// CreateUserUnlessInvited creates a new allowlist row only when no active
 	// invitation reserves its local username or exact Library account id.
-	CreateUserUnlessInvited(ctx context.Context, u User, now time.Time) error
-	UpsertUser(ctx context.Context, u User) error
-	ListUsers(ctx context.Context) ([]User, error)
+	CreateUserUnlessInvited(ctx context.Context, u identitystore.User, now time.Time) error
+	UpsertUser(ctx context.Context, u identitystore.User) error
+	ListUsers(ctx context.Context) ([]identitystore.User, error)
 	CountAdmins(ctx context.Context) (int, error)
-	CreateSession(ctx context.Context, sess Session) error
-	GetSession(ctx context.Context, tokenHash string, now time.Time) (Session, error)
-	ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]Session, error)
-	TouchSession(ctx context.Context, tokenHash string, seen SessionSeen) error
+	CreateSession(ctx context.Context, sess identitystore.Session) error
+	GetSession(ctx context.Context, tokenHash string, now time.Time) (identitystore.Session, error)
+	ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]identitystore.Session, error)
+	TouchSession(ctx context.Context, tokenHash string, seen identitystore.SessionSeen) error
 	// UserLastSeen maps each person seen (browser session or paired TV) to when (#1667).
 	UserLastSeen(ctx context.Context) (map[string]time.Time, error)
 	RevokeSession(ctx context.Context, tokenHash string) error
@@ -265,41 +271,41 @@ type UserStore interface {
 	// Device pairing (§11, Shield P1) — the credential class a keyboard-less client uses. Kept in
 	// this interface rather than a separate one because it is the same concern as sessions: who is
 	// allowed to act, and how that permission is revoked.
-	CreateDevicePairing(ctx context.Context, p DevicePairing) error
-	GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (DevicePairing, error)
-	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (DevicePairing, error)
+	CreateDevicePairing(ctx context.Context, p identitystore.DevicePairing) error
+	GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (identitystore.DevicePairing, error)
+	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (identitystore.DevicePairing, error)
 	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
-	RedeemDevicePairing(ctx context.Context, codeHash, tokenHash string, at time.Time) (DevicePairing, error)
+	RedeemDevicePairing(ctx context.Context, codeHash, tokenHash string, at time.Time) (identitystore.DevicePairing, error)
 	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error)
-	CreateDeviceToken(ctx context.Context, t DeviceToken) error
-	GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error)
+	CreateDeviceToken(ctx context.Context, t identitystore.DeviceToken) error
+	GetDeviceToken(ctx context.Context, tokenHash string) (identitystore.DeviceToken, error)
 	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
-	ListDeviceTokensForUser(ctx context.Context, userID string) ([]DeviceToken, error)
+	ListDeviceTokensForUser(ctx context.Context, userID string) ([]identitystore.DeviceToken, error)
 	DeleteDeviceToken(ctx context.Context, tokenHash, userID string) (bool, error)
 	SetDeviceCodeMode(ctx context.Context, tokenHash, userID string, on bool) (bool, error)
 }
 
 // ClipStore is the filler clip catalog (§10).
 type ClipStore interface {
-	UpsertClip(ctx context.Context, c Clip) error
+	UpsertClip(ctx context.Context, c clipstore.Clip) error
 	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
 	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
-	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
+	ReplaceClipIdentity(ctx context.Context, oldHash string, c clipstore.Clip) error
 	// ReplaceAiringClip re-keys a clip that stayed on air through its re-encode, and records the
 	// defect verdict its new bytes earned before the switch, in one transaction (#2121).
-	ReplaceAiringClip(ctx context.Context, oldHash string, c Clip, defects ClipDefectRecord) error
+	ReplaceAiringClip(ctx context.Context, oldHash string, c clipstore.Clip, defects clipstore.ClipDefectRecord) error
 	// AdoptConditionedClip is the exact owner-bound variant used after a conditioned target is
 	// visible. It atomically adopts a held Sync reconstruction, performs an ordinary source-only
 	// re-key, or recognizes the exact target-only post-rekey state (§10 V65). The filler store's
 	// CommitConditioningPublication proves ownership and calls it.
-	AdoptConditionedClip(ctx context.Context, sourceHash string, target Clip) error
-	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
+	AdoptConditionedClip(ctx context.Context, sourceHash string, target clipstore.Clip) error
+	GetClip(ctx context.Context, libraryItemID string) (clipstore.Clip, error)
 	// GetClipByPath looks a clip up by its location under FILLER_DIR, NOT by its identity.
 	//
 	// ⚠ The two stopped being the same string in V38c: identity is the content hash, the path is
 	// the sharded location. Routes whose URL carries a path (the byte-serving ones — `media`)
 	// must use this; `GetClip` matches nothing for them and fails as an ordinary not-found.
-	GetClipByPath(ctx context.Context, path string) (Clip, error)
+	GetClipByPath(ctx context.Context, path string) (clipstore.Clip, error)
 	// ListClips returns clips matching the filter (any zero-value field is a
 	// wildcard). Used by /v1/filler and by pod assembly's catalog load.
 	//
@@ -310,17 +316,17 @@ type ClipStore interface {
 	// ⚠ Sorted and pageable since V51d, and the same warning applies to the page size: `Limit == 0`
 	// means NO limit, because pod assembly's zero filter must keep loading the whole catalog. The
 	// operator-facing default of 100 lives in the API.
-	ListClips(ctx context.Context, filter ClipFilter) ([]Clip, error)
+	ListClips(ctx context.Context, filter clipstore.ClipFilter) ([]clipstore.Clip, error)
 	// CountClips is ListClips' question answered without the rows, for callers that only ever
 	// took len() of the result. Same filter, same predicate (they share the WHERE builder).
 	//
 	// ⚠ It IGNORES Limit/Offset/Sort by construction — those live outside the WHERE builder — so
 	// it answers "how many match?", which is what a pager's total means, not "how many are on this
 	// page". Sharing the predicate is why a page's total can never disagree with its rows.
-	CountClips(ctx context.Context, filter ClipFilter) (int, error)
+	CountClips(ctx context.Context, filter clipstore.ClipFilter) (int, error)
 	// CountClipsBySource returns the per-source clip count — a GROUP BY, not a catalog load
 	// tallied in Go. Keyed by `Clip.Source`; sources with no clips are simply absent.
-	CountClipsBySource(ctx context.Context, filter ClipFilter) (map[string]int, error)
+	CountClipsBySource(ctx context.Context, filter clipstore.ClipFilter) (map[string]int, error)
 	// SetClipsRemoved tombstones (or restores) clips by path — "Remove from catalog" (V35).
 	//
 	// ⚠ The ordinary tombstone writer; RetryClipPipeline is the only cross-table exception, so
@@ -367,17 +373,17 @@ type ClipStore interface {
 	SetClipArtworkImages(ctx context.Context, hash, thumbHash, hoverHash string, at time.Time) error
 	// ListClipsPendingArtworkAdoption is the adoption job's work list: clips with rendered
 	// artwork but no image-service identity for it yet. Paths are relative to the artwork cache.
-	ListClipsPendingArtworkAdoption(ctx context.Context, limit int) ([]ClipArtworkPending, error)
+	ListClipsPendingArtworkAdoption(ctx context.Context, limit int) ([]clipstore.ClipArtworkPending, error)
 	// --- Taxonomy (§10 V45a): the operator-editable tag vocabulary + a clip's denormalised tags. ---
 	// ListTaxa returns the whole taxonomy graph (axis-then-slug order).
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 	// ApplyTaxonomyEdit is the ONE operator-edit path. It validates the prospective graph and commits
 	// the row edit, closure rebuild, and catalog rollup rebuild atomically. Callers never choreograph
 	// those derived writes themselves.
-	ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at time.Time) error
+	ApplyTaxonomyEdit(ctx context.Context, edit clipstore.TaxonomyEdit, at time.Time) error
 	// PreviewTaxonomyEdit validates the same prospective graph and reports the stored/playable
 	// library facts whose derived taxonomy meaning may change, without mutating the graph.
-	PreviewTaxonomyEdit(ctx context.Context, edit TaxonomyEdit) (TaxonomyEditImpact, error)
+	PreviewTaxonomyEdit(ctx context.Context, edit clipstore.TaxonomyEdit) (clipstore.TaxonomyEditImpact, error)
 	// ListHolidays returns every stored holiday definition in display order (#2030). Each owns the
 	// seasonal taxon of its id; ApplyTaxonomyEdit keeps the two one-to-one.
 	ListHolidays(ctx context.Context) ([]holidayvocab.Holiday, error)
@@ -392,7 +398,7 @@ type ClipStore interface {
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	// TaxonomyUsage is the library-accounting read model: playable overall/per-axis coverage plus
 	// direct and descendant counts for every taxon. It is computed over the whole catalog, never a UI page.
-	TaxonomyUsage(ctx context.Context) (TaxonomyUsage, error)
+	TaxonomyUsage(ctx context.Context) (clipstore.TaxonomyUsage, error)
 	// HoldClips can only remove content from rotation. Releasing playable content belongs to the
 	// terminal-ready transaction; confirmed non-airable parents use ReleaseCompositeHolds.
 	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
@@ -430,24 +436,24 @@ type ClipStore interface {
 	// MergeInferiorCopy, LinkClipVariants, ListClipVariants and InferiorCopyHashes own creative
 	// identity's durable state (#2033): copies folded into their survivor, linked variants, and
 	// the identities of copies that lost.
-	MergeInferiorCopy(ctx context.Context, c InferiorCopy) error
+	MergeInferiorCopy(ctx context.Context, c clipstore.InferiorCopy) error
 	LinkClipVariants(ctx context.Context, a, b string) error
 	ListClipVariants(ctx context.Context) (map[string][]string, error)
 	InferiorCopyHashes(ctx context.Context) (map[string]bool, error)
 	// UpsertClipDefects/ListClipDefects own the defect floor's per-clip record (#2034): the latest
 	// measurement and its verdict. Corrupt rows are omitted with an error so they are measured again.
-	UpsertClipDefects(ctx context.Context, r ClipDefectRecord) error
-	ListClipDefects(ctx context.Context) (map[string]ClipDefectRecord, error)
-	GetClipDefects(ctx context.Context, clipHash string) (ClipDefectRecord, bool, error)
+	UpsertClipDefects(ctx context.Context, r clipstore.ClipDefectRecord) error
+	ListClipDefects(ctx context.Context) (map[string]clipstore.ClipDefectRecord, error)
+	GetClipDefects(ctx context.Context, clipHash string) (clipstore.ClipDefectRecord, bool, error)
 	// SetClipDefectLabel/ListClipDefectLabels own the maintainer's labels on those records, which
 	// the household report scores the floor against (#2034 step 4c). Upserting a record keeps its
 	// label; dropping the record drops it.
 	SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error
-	ListClipDefectLabels(ctx context.Context) (map[string]ClipDefectLabel, error)
+	ListClipDefectLabels(ctx context.Context) (map[string]clipstore.ClipDefectLabel, error)
 	// RetireDefectiveCopy and ListWantedCopies own enforcement (#2036): a copy that fails is
 	// tombstoned and reaped, and the reaped failures are the ads wanting a better copy.
 	RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error
-	ListWantedCopies(ctx context.Context) ([]WantedCopy, error)
+	ListWantedCopies(ctx context.Context) ([]clipstore.WantedCopy, error)
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
@@ -509,7 +515,7 @@ type AiringStore interface {
 	// RecordScheduledAirings stamps programmes a channel's schedule put on air, watched or not
 	// (#1677): the scheduled signal, kept apart from RecordAiring's watched one. Written from
 	// reconcile; idempotent per airing, so recording the same started programmes again is a no-op.
-	RecordScheduledAirings(ctx context.Context, channelID string, airings []ScheduledAiring, recordedAt time.Time) error
+	RecordScheduledAirings(ctx context.Context, channelID string, airings []channeldatastore.ScheduledAiring, recordedAt time.Time) error
 	// LastScheduledByChannel is LastAiredByChannel over the scheduled ledger: the latest scheduled
 	// airing per unit, counting only rows recorded strictly before `before`.
 	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
@@ -520,9 +526,9 @@ type ActivityStore interface {
 	// RecordActivity appends one Dashboard feed row. Best-effort by contract: callers log
 	// the error and carry on — recording that something happened must never be able to
 	// stop it happening.
-	RecordActivity(ctx context.Context, a Activity) error
+	RecordActivity(ctx context.Context, a activitystore.Activity) error
 	// ListActivity returns the newest feed rows first, capped at limit.
-	ListActivity(ctx context.Context, limit int) ([]Activity, error)
+	ListActivity(ctx context.Context, limit int) ([]activitystore.Activity, error)
 	// PurgeActivity deletes feed rows older than `before` (§18.1 housekeeping). The feed
 	// is the one append-only table here, so it is the one that needs a purge.
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
@@ -561,8 +567,8 @@ type InvitationStore interface {
 	RedeemInvitation(
 		ctx context.Context,
 		grantHash string,
-		user User,
-		session Session,
+		user identitystore.User,
+		session identitystore.Session,
 		at time.Time,
 	) (access.Invitation, error)
 }
@@ -709,7 +715,7 @@ type Store interface {
 	SettingStore
 	SecretProtectionStore
 	CountStore
-	ImageStore
+	clipstore.ImageStore
 	DiscoveryFeedbackStore
 	ChannelPreferenceStore
 	HiddenIdeaStore
@@ -717,24 +723,24 @@ type Store interface {
 	viewingstore.Role
 	DiscoveryQualityStore
 	InventoryStore
-	LibraryRootStore
-	LibraryFileStore
-	LibraryItemStore
+	librarystore.LibraryRootStore
+	librarystore.LibraryFileStore
+	librarystore.LibraryItemStore
 	LibraryProjection
-	LibraryCatalogStore
-	LibraryNeedsStore
-	LibraryEpisodeOrderStore
-	LibraryCollectionStore
-	LibraryPeopleStore
-	LibraryItemFactsReader
-	SeriesEpisodesReader
-	LibraryEvidenceReader
-	LibraryEpisodeReader
-	LibraryTitleReader
-	LibraryArtReader
+	librarystore.LibraryCatalogStore
+	librarystore.LibraryNeedsStore
+	librarystore.LibraryEpisodeOrderStore
+	librarystore.LibraryCollectionStore
+	librarystore.LibraryPeopleStore
+	librarystore.LibraryItemFactsReader
+	librarystore.SeriesEpisodesReader
+	librarystore.LibraryEvidenceReader
+	librarystore.LibraryEpisodeReader
+	librarystore.LibraryTitleReader
+	librarystore.LibraryArtReader
 	CatalogRetentionStore
-	LibraryTitleSearcher
-	MemberTitleReader
+	librarystore.LibraryTitleSearcher
+	librarystore.MemberTitleReader
 
 	// Close releases the underlying database handle.
 	Close() error

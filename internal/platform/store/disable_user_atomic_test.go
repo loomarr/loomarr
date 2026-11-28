@@ -17,16 +17,16 @@ func TestDisableUserIsAtomic(t *testing.T) {
 	ctx := context.Background()
 	now := time.Unix(1_700_000_000, 0).UTC()
 
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: identitystore.RoleMember}); err != nil {
+	if err := s.UpsertUser(ctx, identitystore.User{ID: "u1", Name: "Ada", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateSession(ctx, Session{TokenHash: "s1", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
+	if err := s.CreateSession(ctx, identitystore.Session{TokenHash: "s1", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "d1", UserID: "u1", DeviceName: "TV", CreatedAt: now}); err != nil {
+	if err := s.CreateDeviceToken(ctx, identitystore.DeviceToken{TokenHash: "d1", UserID: "u1", DeviceName: "TV", CreatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateDevicePairing(ctx, DevicePairing{DeviceCodeHash: "p1", UserCode: "AAAA-AAAA", CreatedAt: now, ExpiresAt: now.Add(10 * time.Minute)}); err != nil {
+	if err := s.CreateDevicePairing(ctx, identitystore.DevicePairing{DeviceCodeHash: "p1", UserCode: "AAAA-AAAA", CreatedAt: now, ExpiresAt: now.Add(10 * time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := s.ApproveDevicePairing(ctx, "AAAA-AAAA", "u1", now); err != nil || !ok {

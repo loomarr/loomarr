@@ -17,9 +17,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/viewingstore"
 )
 
-// Activity is one row in the Recent activity feed (activitystore.Activity).
-type Activity = activitystore.Activity
-
 // The cluster names. Every cluster package calls its type Store, and an embedded field takes its
 // type's name, so embedding two of them directly would collide on the field and make every method
 // they share ambiguous. An alias gives each embed its own field name and keeps method promotion,

@@ -4,8 +4,8 @@
 //
 // It is a cluster of the store, extracted so the catalog tables are owned by one package that
 // builds only on the persistence kernel (storedb). It imports storedb and never the store: the
-// store imports it, re-exports its types by alias, and embeds a Store in its aggregate, so every
-// caller of store.Store reaches it through the one aggregate.
+// store imports it and embeds a Store in its aggregate, so every caller of store.Store reaches it
+// through the one aggregate.
 // internal/architecture_test.go enforces the direction.
 //
 // # Seams
@@ -26,5 +26,5 @@
 //
 // Errors: ErrNotFound is storedb.ErrNotFound (the same value, so errors.Is matches either name);
 // ErrConditionedClipMismatch, ErrTaxonConflict, ErrCorruptClipDefects, ErrInferiorCopyMismatch and
-// ErrUnknownClipSort are defined here and re-exported by the store as the same values.
+// ErrUnknownClipSort are defined here.
 package clipstore

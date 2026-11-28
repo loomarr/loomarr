@@ -12,7 +12,7 @@ import (
 // LibraryProjector says how an inventory item is listed in the Library (#2151 decision 43): its
 // library_items row, or false when it has none. It is pure, and the scanner supplies it, since
 // only the scanner can read what it wrote in an origin's extension.
-type LibraryProjector func(inventory.Item) (LibraryItem, bool)
+type LibraryProjector func(inventory.Item) (librarystore.LibraryItem, bool)
 
 // LibraryProjection is how the Library's rows are kept in step with the inventory.
 type LibraryProjection interface {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Titles and provisioning (§4, §5): the record round-trip, the state machine's list
@@ -30,9 +31,9 @@ func sampleRecord(key provision.Key, state provision.State, deadline time.Time) 
 // this package can't import.
 func saveLibraryItems(t *testing.T, st Store, ids ...string) {
 	t.Helper()
-	items := make([]LibraryItem, 0, len(ids))
+	items := make([]librarystore.LibraryItem, 0, len(ids))
 	for _, id := range ids {
-		items = append(items, LibraryItem{ID: id, Kind: "movie", Name: id, SortName: id})
+		items = append(items, librarystore.LibraryItem{ID: id, Kind: "movie", Name: id, SortName: id})
 	}
 	if err := st.SaveLibraryItems(context.Background(), items, time.Unix(1, 0)); err != nil {
 		t.Fatalf("save library items %v: %v", ids, err)

@@ -21,7 +21,7 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 		return librarystore.LibraryOrigin{Authority: "library:/media", Key: key}
 	}
 
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "m1", Kind: "movie", Name: "Grounded Film", Origin: origin("/media/a/a.mkv"),
 			Match: librarystore.LibraryMatch{Basis: "manager", App: "radarr", Page: "http://radarr.invalid/movie/grounded-film"}},
 		{ID: "m2", Kind: "movie", Name: "Mystery Film", Origin: origin("/media/b/b.mkv")},
@@ -104,7 +104,7 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 	if err := st.NoticeLibraryNeeds(ctx, []string{"m2"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{{ID: "m2", Kind: "movie", Name: "Mystery Film",
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{{ID: "m2", Kind: "movie", Name: "Mystery Film",
 		Origin: origin("/media/b/b.mkv")}}, at); err != nil {
 		t.Fatal(err)
 	}

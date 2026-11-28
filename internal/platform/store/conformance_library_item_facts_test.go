@@ -31,7 +31,7 @@ func testLibraryItemFacts(t *testing.T, newStore NewStoreFunc) {
 	at := time.UnixMilli(1_800_000_000_000)
 	show := librarystore.LibraryOrigin{Authority: "scan:test", Key: "series:dir:show"}
 	showID := inventorySeries(t, st, show, at)
-	items := []LibraryItem{
+	items := []librarystore.LibraryItem{
 		{ID: "film", Kind: "movie", Name: "Film", Year: 1999, Overview: "A film.", Rating: "PG", RuntimeMs: 5_400_000,
 			Genres:  []string{"Drama", "Comedy"},
 			Sources: []librarystore.LibrarySource{{Path: "/m/film.mkv", Plays: true, DurationMs: 5_432_100}}},

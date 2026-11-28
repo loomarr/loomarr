@@ -63,7 +63,7 @@ func seedForMigration(t *testing.T, s Store) {
 	// A disabled user AND an enabled one, so the boolean coercion is exercised in BOTH
 	// directions — a converter that hardcodes `false` passes a single-row test. Same for
 	// AutoApprove, deliberately set opposite to Disabled so a transposition shows up.
-	for _, u := range []User{
+	for _, u := range []identitystore.User{
 		{ID: "u-alice", Name: "alice", Role: identitystore.RoleAdmin, Disabled: false, AutoApprove: true, PasswordHash: "hash-alice"},
 		{ID: "u-bob", Name: "bob", Role: identitystore.RoleMember, Disabled: true, AutoApprove: false, MediaServerLinked: true, PasswordHash: "hash-bob"},
 	} {
@@ -77,7 +77,7 @@ func seedForMigration(t *testing.T, s Store) {
 	// foreign key — and tables are copied in ALPHABETICAL order, which puts `sessions`
 	// before `users`. Without a row here the constraint is never exercised and the copy
 	// order looks fine. With one, an FK-enforcing copy fails outright.
-	if err := s.CreateSession(ctx, Session{
+	if err := s.CreateSession(ctx, identitystore.Session{
 		TokenHash: "hash-alice-session",
 		UserID:    "u-alice",
 		CreatedAt: time.Unix(1_700_000_000, 0).UTC(),

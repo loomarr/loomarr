@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
@@ -95,14 +96,14 @@ func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 	// A name the library has no row for refuses the save, which writes nothing.
 	for _, c := range []struct {
 		what   string
-		change func(*Channel)
+		change func(*channelstore.Channel)
 	}{
-		{"planned item", func(c *Channel) {
+		{"planned item", func(c *channelstore.Channel) {
 			c.Desired = append(c.Desired, schedule.Slot{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000003",
 				LibraryItemID: "90000899", DurationMs: 1})
 		}},
-		{"scope collection", func(c *Channel) { c.Policy.Scope.Collections = []string{"90000898"} }},
-		{"rule collection", func(c *Channel) {
+		{"scope collection", func(c *channelstore.Channel) { c.Policy.Scope.Collections = []string{"90000898"} }},
+		{"rule collection", func(c *channelstore.Channel) {
 			c.Policy.Rules = []schedule.SchedulingRule{{What: &schedule.ScopePolicy{Collections: []string{"90000897"}}}}
 		}},
 	} {
@@ -170,7 +171,7 @@ func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 	pick := func(id string) proposals.ProposalItem {
 		return proposals.ProposalItem{MediaType: provision.Movie, TMDBID: 90000001, Name: "Film", LibraryItemID: id}
 	}
-	for _, p := range []Proposal{
+	for _, p := range []proposalstore.Proposal{
 		{ID: "open", Status: "submitted", CreatedAt: at, Body: proposals.Proposal{
 			Lineup: []proposals.ProposalItem{pick("90000803")}, Alternates: []proposals.ProposalItem{pick("90000801")},
 			Refused: []proposals.RefusedPick{{Item: pick("90000804"), Reason: "over_ceiling"}},

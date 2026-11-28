@@ -4,44 +4,11 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // The clip catalog (clips and their tags, the taxonomy, holidays, images, broadcast stations, and
-// the defect, fingerprint and creative-identity tables) lives in internal/platform/store/clipstore. Its
-// types are re-exported here by alias, so importers of this package keep one import and see the
-// same types, not copies.
-type (
-	// Clip is the persisted form of a filler clip (§10) (clipstore.Clip).
-	Clip = clipstore.Clip
-	// ClipFilter narrows a ListClips query (clipstore.ClipFilter).
-	ClipFilter = clipstore.ClipFilter
-	// ClipTx writes a clip's columns and tags inside a caller's transaction (clipstore.ClipTx).
-	ClipTx = clipstore.ClipTx
-	// ClipArtworkPending is a clip whose artwork the service has not produced yet
-	// (clipstore.ClipArtworkPending).
-	ClipArtworkPending = clipstore.ClipArtworkPending
-	// WantedCopy is an ad whose only copy failed the defect floor (clipstore.WantedCopy).
-	WantedCopy = clipstore.WantedCopy
-	// InferiorCopy is one copy of an ad that lost to a better copy (clipstore.InferiorCopy).
-	InferiorCopy = clipstore.InferiorCopy
-	// ClipDefectRecord is one clip's latest defect measurement (clipstore.ClipDefectRecord).
-	ClipDefectRecord = clipstore.ClipDefectRecord
-	// ClipDefectLabel is the maintainer's label on a defect record (clipstore.ClipDefectLabel).
-	ClipDefectLabel = clipstore.ClipDefectLabel
-
-	// TaxonomyEdit is one semantic graph mutation (clipstore.TaxonomyEdit).
-	TaxonomyEdit = clipstore.TaxonomyEdit
-	// TaxonomyEditImpact is the durable-library half of a prospective graph edit
-	// (clipstore.TaxonomyEditImpact).
-	TaxonomyEditImpact = clipstore.TaxonomyEditImpact
-	// TaxonomyUsage is the clip accounting of a graph edit (clipstore.TaxonomyUsage).
-	TaxonomyUsage = clipstore.TaxonomyUsage
-
-	// ImageStore is the image half of the Store contract (clipstore.ImageStore).
-	ImageStore = clipstore.ImageStore
-)
+// the defect, fingerprint and creative-identity tables) lives in internal/platform/store/clipstore.
 
 // channelPolicies is clipstore.ChannelPolicies over the channels table, which programming owns.
 // The catalog rekeys clip hashes inside a policy and the SQL on channels stays here.

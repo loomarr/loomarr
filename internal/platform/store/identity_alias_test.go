@@ -11,8 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
-// The store re-exports the identity cluster by alias, and its not-found sentinel is the cluster's
-// value. errors.Is compares by identity, so a copy that merely prints the same text would make
+// The store's not-found sentinel is the identity cluster's value. errors.Is compares by identity, so a copy that merely prints the same text would make
 // every caller matching the other name silently false.
 func TestIdentitySentinelsAreTheIdentitystoreValues(t *testing.T) {
 	for _, c := range []struct {
@@ -67,20 +66,10 @@ func TestIdentityMissesMatchTheStoreSentinels(t *testing.T) {
 		t.Fatalf("GetSession miss = %v, want store.ErrNotFound", err)
 	}
 	// A write refused inside the cluster for an unknown person.
-	if err := st.CreateSession(ctx, Session{TokenHash: "h", UserID: "nobody", CreatedAt: time.Unix(1, 0), ExpiresAt: time.Unix(9, 0)}); !errors.Is(err, ErrNotFound) {
+	if err := st.CreateSession(ctx, identitystore.Session{TokenHash: "h", UserID: "nobody", CreatedAt: time.Unix(1, 0), ExpiresAt: time.Unix(9, 0)}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("CreateSession for an unknown user = %v, want store.ErrNotFound", err)
 	}
 }
-
-// Types are aliases: values built under either name need no conversion, and the aggregate store
-// returns the cluster's own types.
-var (
-	_ identitystore.User          = User{}
-	_ identitystore.Session       = Session{}
-	_ identitystore.SessionSeen   = SessionSeen{}
-	_ identitystore.DevicePairing = DevicePairing{}
-	_ identitystore.DeviceToken   = DeviceToken{}
-)
 
 // The embedded cluster is what satisfies the identity role interfaces: the aggregate store hands
 // out the same *identitystore.Store methods, with no forwarding layer in between.

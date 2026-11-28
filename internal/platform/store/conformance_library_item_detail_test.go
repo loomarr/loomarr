@@ -53,7 +53,7 @@ func testLibraryItemDetail(t *testing.T, newStore NewStoreFunc) {
 		{Name: "Ana Actor", Role: "director", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "1"}},
 		{Name: "Cy Writer", Role: "writer"},
 	}
-	items := []LibraryItem{
+	items := []librarystore.LibraryItem{
 		{ID: "film", Kind: "movie", Name: "Film", Overview: "A film.", Rating: "PG", RuntimeMs: 5_400_000,
 			OriginalTitle: "Le Film", Tagline: "One line.", PremiereDate: "2001-02-03", Score: 7.5,
 			Genres: []string{"Drama", "Comedy"}, Studios: []string{"North Studio", "South Studio"},

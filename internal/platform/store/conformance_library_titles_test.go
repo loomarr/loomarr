@@ -17,7 +17,7 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	old, recent := time.UnixMilli(1_800_000_000_000), time.UnixMilli(1_800_000_600_000)
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "film", Kind: "movie", Name: "Film", Rating: "PG", Genres: []string{"Drama", "Comedy"},
 			IDs:     []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000001"}, {Namespace: "imdb", Value: "tt90000001"}},
 			Sources: []librarystore.LibrarySource{{Path: "/m/film.mkv", Plays: true, SizeBytes: 4_000}, {Path: "/m/film.copy.mkv", SizeBytes: 9_000}}},
@@ -26,7 +26,7 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 	}, old); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "show", Kind: "series", Name: "Show", Rating: "TV-Y", IDs: []librarystore.LibraryID{{Namespace: "tvdb", Value: "90000002"}, {Namespace: "tmdb", Value: "90000003"}}},
 		{ID: "show-e1", Kind: "episode", Name: "Pilot"},
 	}, recent); err != nil {
@@ -125,7 +125,7 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 
 	// Search by name (#2151 step 15e): an exact name before one that only holds the term, the
 	// missing film never, LIKE's wildcards taken literally, and the limit kept.
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "showtime", Kind: "movie", Name: "Showtime 100%", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000005"}},
 			Sources: []librarystore.LibrarySource{{Path: "/m/showtime.mkv", Plays: true}}},
 	}, recent); err != nil {
@@ -152,7 +152,7 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Case is ignored in every script, not only ASCII: SQLite's own lower() leaves "Ä" as it is.
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "umlaut", Kind: "movie", Name: "Älpha Ömega", Sources: []librarystore.LibrarySource{{Path: "/m/umlaut.mkv", Plays: true}}},
 	}, recent); err != nil {
 		t.Fatal(err)

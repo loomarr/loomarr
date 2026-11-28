@@ -2,8 +2,7 @@
 // collections, people, episodes, episode orders and the needs that ask the household a question.
 //
 // It is a cluster of the store, built on the storedb kernel and never importing the store: the
-// store embeds a Store in its aggregate and re-exports every name here by alias, so every caller of
-// store.Store keeps working unchanged. The inventory projection (internal/platform/store) writes
+// store embeds a Store in its aggregate. The inventory projection (internal/platform/store) writes
 // library rows inside its own transaction through SaveItem.
 package librarystore
 

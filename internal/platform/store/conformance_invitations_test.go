@@ -18,7 +18,7 @@ func testInvitationReserveAndList(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	if err := s.UpsertUser(ctx, User{
+	if err := s.UpsertUser(ctx, identitystore.User{
 		ID: "existing-local", Name: "Ada", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func testInvitationReservationBlocksDirectCreation(t *testing.T, newStore NewSto
 	if err := s.CreateInvitation(ctx, local, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateUserUnlessInvited(ctx, User{
+	if err := s.CreateUserUnlessInvited(ctx, identitystore.User{
 		ID: "direct-local", Name: " grace ", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now,
 	}, now); !errors.Is(err, identitystore.ErrInvitationIdentityConflict) {
 		t.Fatalf("create reserved local user = %v, want ErrInvitationIdentityConflict", err)
@@ -75,14 +75,14 @@ func testInvitationReservationBlocksDirectCreation(t *testing.T, newStore NewSto
 	if err := s.CreateInvitation(ctx, linked, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateUserUnlessInvited(ctx, User{
+	if err := s.CreateUserUnlessInvited(ctx, identitystore.User{
 		ID: "library-user-1", Name: "Katherine", Role: identitystore.RoleMember, MediaServerLinked: true,
 		CreatedAt: now, UpdatedAt: now,
 	}, now); !errors.Is(err, identitystore.ErrInvitationIdentityConflict) {
 		t.Fatalf("create reserved Library user = %v, want ErrInvitationIdentityConflict", err)
 	}
 
-	if err := s.CreateUserUnlessInvited(ctx, User{
+	if err := s.CreateUserUnlessInvited(ctx, identitystore.User{
 		ID: "unreserved", Name: "Dorothy", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now,
 	}, now); err != nil {
 		t.Fatalf("create unreserved user: %v", err)
@@ -110,7 +110,7 @@ func testInvitationContactIsAtomicAndGloballyUnique(t *testing.T, newStore NewSt
 	ctx := context.Background()
 	s := newStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	if err := s.UpsertUser(ctx, User{
+	if err := s.UpsertUser(ctx, identitystore.User{
 		ID: "existing", Name: "Existing", Role: identitystore.RoleMember, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -299,10 +299,10 @@ func testInvitationGrantPreviewRejectsEveryUnusableState(t *testing.T, newStore 
 		t.Fatal(err)
 	}
 	redeemAt := now.Add(time.Minute)
-	if _, err := s.RedeemInvitation(ctx, consumedGrant.TokenHash, User{
+	if _, err := s.RedeemInvitation(ctx, consumedGrant.TokenHash, identitystore.User{
 		ID: "consumed-user", Name: consumed.Username, Role: identitystore.RoleMember,
 		PasswordHash: "$argon2id$prepared", CreatedAt: redeemAt, UpdatedAt: redeemAt,
-	}, Session{
+	}, identitystore.Session{
 		TokenHash: "consumed-session", UserID: "consumed-user",
 		CreatedAt: redeemAt, ExpiresAt: redeemAt.Add(time.Hour),
 	}, redeemAt); err != nil {
@@ -339,7 +339,7 @@ func testInvitationConcurrentRedemption(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	user := User{
+	user := identitystore.User{
 		ID: "redeemed-user", Name: "Mary", Role: identitystore.RoleMember, PasswordHash: "$argon2id$prepared",
 		CreatedAt: now.Add(time.Minute), UpdatedAt: now.Add(time.Minute),
 	}
@@ -349,7 +349,7 @@ func testInvitationConcurrentRedemption(t *testing.T, newStore NewStoreFunc) {
 		wg.Add(1)
 		go func(contender int) {
 			defer wg.Done()
-			_, err := s.RedeemInvitation(ctx, grant.TokenHash, user, Session{
+			_, err := s.RedeemInvitation(ctx, grant.TokenHash, user, identitystore.Session{
 				TokenHash: fmt.Sprintf("session-hash-%d", contender), UserID: user.ID,
 				CreatedAt: now.Add(time.Minute), ExpiresAt: now.Add(31 * 24 * time.Hour),
 			}, now.Add(time.Minute))

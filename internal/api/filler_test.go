@@ -1579,7 +1579,7 @@ func TestConfirmFillerSplit_Route(t *testing.T) {
 }
 
 // ⚠ **The default page size is an API concern, and this test is what pins it there** (§10 V51d).
-// `store.ClipFilter.Limit == 0` means "no LIMIT" because pod assembly loads the catalog through
+// `clipstore.ClipFilter.Limit == 0` means "no LIMIT" because pod assembly loads the catalog through
 // the zero filter; if the default ever migrates into the store, every channel's break pool
 // silently truncates to 100 clips with no error and no log line. Asserting it at the HTTP edge is
 // what keeps the two layers honest about which one owns the number.

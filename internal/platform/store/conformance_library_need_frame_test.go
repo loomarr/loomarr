@@ -21,11 +21,11 @@ func testLibraryNeedFrame(t *testing.T, newStore NewStoreFunc) {
 	source := func(path string, ms int64, plays bool, revision string) librarystore.LibrarySource {
 		return librarystore.LibrarySource{Path: path, DurationMs: ms, Plays: plays, Revision: revision}
 	}
-	waiting := func(revision string) LibraryItem {
-		return LibraryItem{ID: "w1", Kind: "movie", Name: "Clip One", Origin: origin("/media/w1.mkv"),
+	waiting := func(revision string) librarystore.LibraryItem {
+		return librarystore.LibraryItem{ID: "w1", Kind: "movie", Name: "Clip One", Origin: origin("/media/w1.mkv"),
 			Sources: []librarystore.LibrarySource{source("/media/w1.mkv", 1000, true, revision)}}
 	}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		waiting("stat:1:1"),
 		{ID: "k1", Kind: "movie", Name: "Kept", Origin: origin("/media/k1.mkv"),
 			Sources: []librarystore.LibrarySource{source("/media/k1.mkv", 1000, true, "")}},
@@ -120,7 +120,7 @@ func testLibraryNeedFrame(t *testing.T, newStore NewStoreFunc) {
 	if err := st.ClearStaleLibraryFrames(ctx); err != nil || frameOf("w1") != img.Hash {
 		t.Fatalf("a frame of the file still played was dropped: %v", err)
 	}
-	if err := st.SaveLibraryItems(ctx, []LibraryItem{waiting("stat:2:2")}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{waiting("stat:2:2")}, at); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.ClearStaleLibraryFrames(ctx); err != nil || frameOf("w1") != "" {
