@@ -38,9 +38,7 @@ internal/platform/llm/openai_stale_conn_test.go 1
 internal/platform/llm/selection/selection_test.go 1
 internal/platform/store/diagnostics_retention_test.go 1
 internal/platform/store/storedb/handle_test.go 1
-internal/playout/hls/origin_test.go 1
-internal/playout/hls/packager_admission_test.go 1
-internal/playout/hls/packager_hls_test.go 8
+internal/playout/hls/packager_hls_test.go 2
 internal/playout/hls/premium_live_test.go 1
 internal/playout/hls/still_source_test.go 1
 internal/playout/hls/still_test.go 1
