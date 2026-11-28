@@ -52,3 +52,31 @@ func TestProblemsAreTitlesThatNeedALook(t *testing.T) {
 		t.Errorf("needs you = %d, %v; want the two problems", n, err)
 	}
 }
+
+// A title that nothing grounds and whose file doesn't parse waits to be answered and needs a
+// look. Needs you draws one card for it, so it counts once.
+func TestNeedCountCountsATitleInTwoListsOnce(t *testing.T) {
+	h := newHarness(t)
+	h.im.Header = func(context.Context, string) (header.Header, error) {
+		return header.Header{}, errors.New("not a matroska file")
+	}
+	h.file("Juliet (2007)/Juliet.mkv", 10)
+	h.run()
+
+	lib := &Library{ItemStore: h.st, NeedStore: h.st, Inventory: h.inv}
+	ctx := context.Background()
+	needs, err := h.st.LibraryNeeds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	problems, err := lib.Problems(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(needs) != 1 || len(problems) != 1 || needs[0].ID != problems[0].ID {
+		t.Fatalf("needs = %+v, problems = %+v; want one title in both", needs, problems)
+	}
+	if n, err := lib.NeedCount(ctx); err != nil || n != 1 {
+		t.Errorf("needs you = %d, %v; want the one title", n, err)
+	}
+}

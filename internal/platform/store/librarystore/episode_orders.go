@@ -58,9 +58,6 @@ type LibraryEpisodeOrderStore interface {
 	SaveLibraryEpisodeOrder(ctx context.Context, answer LibraryEpisodeOrder) error
 	// LibraryOrderNeeds lists the shows with an unnumbered present episode, by sort name.
 	LibraryOrderNeeds(ctx context.Context) ([]LibraryOrderNeed, error)
-	// LibraryOrderNeedCount is how many shows LibraryOrderNeeds lists, without listing them: what
-	// the Needs you badge counts.
-	LibraryOrderNeedCount(ctx context.Context) (int, error)
 }
 
 // ErrBadEpisodeOrder is an answer whose choice and order id disagree.
@@ -126,15 +123,6 @@ const waitingShows = `SELECT e.series_id AS id, COUNT(*) AS n FROM library_items
 // WaitingShowsQuery is the read that finds the shows waiting for an episode order, for a test that
 // holds it to its index.
 func WaitingShowsQuery() string { return waitingShows }
-
-func (s *Store) LibraryOrderNeedCount(ctx context.Context) (int, error) {
-	var n int
-	if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_items i
-		JOIN (`+waitingShows+`) w ON w.id = i.id WHERE i.kind = 'series' AND `+itemListed)).Scan(&n); err != nil {
-		return 0, fmt.Errorf("library order need count: %w", err)
-	}
-	return n, nil
-}
 
 func (s *Store) LibraryOrderNeeds(ctx context.Context) ([]LibraryOrderNeed, error) {
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, w.n

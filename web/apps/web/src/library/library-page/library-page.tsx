@@ -23,7 +23,6 @@ import { useRouteContent } from "@/lib/use-route-content";
 import { LIBRARY_COUNTS, LIBRARY_PAGE_SIZE, libraryItemsQueryOptions } from "../library-items-query";
 import { useLibraryCollections } from "../use-library-collections";
 import { type LibraryUrlFilters, useLibraryFiltering } from "../use-library-filtering";
-import { useLibraryNeeds } from "../use-library-needs";
 import { useLibraryScanFrames } from "../use-library-scan-frames";
 
 // THE WALL (#4476): the titles Loomarr found in its media folders, as a poster grid. An admin sees
@@ -47,6 +46,8 @@ const titleOf = (item: LibraryItemDTO): LibraryShelfTitle => ({
   ready: item.ready,
   // Both counts are admin-only; a member's titles carry neither, so none needs a look.
   attention: (item.unplayable ?? 0) > 0 || (item.extraCopies ?? 0) > 0,
+  // Admin-only too: the title waits in Needs you.
+  unidentified: item.unidentified,
   poster: item.poster ? <ServedImage alt="" image={item.poster} sizes={POSTER_SIZES} /> : undefined,
 });
 
@@ -172,15 +173,6 @@ const LibraryPage = ({
   useLibraryScanFrames();
   const status = libraryApi.useLibraryStatus({ query: { enabled: isAdmin } });
   const current = isAdmin ? unwrap(status.data) : undefined;
-  // On the wall, the titles nothing in the catalogue matches: the list of titles doesn't flag them,
-  // so an admin's wall reads them from Needs you while any are waiting.
-  const marking = isAdmin && titlesView && Boolean(current?.needsYou);
-  const needs = useLibraryNeeds(marking);
-  // A list read earlier stays cached after the query is off, so it marks only while it is asked for.
-  const unidentified = useMemo(
-    () => new Set(marking ? needs.needs.map((need) => need.id) : []),
-    [marking, needs.needs],
-  );
   // The offline folders' names come from the folder list; it's only asked for while one is offline.
   const roots = libraryApi.useListLibraryRoots({
     query: { enabled: isAdmin && current?.health === LibraryStatusOutputBodyHealth.folder_offline },
@@ -211,11 +203,8 @@ const LibraryPage = ({
   // The tab's genres, each with its titles; a member reads them too.
   const genreList = libraryApi.useListLibraryGenres({ kind }, { query: { enabled: titlesView } });
   const titles = useMemo(
-    () =>
-      items.data?.pages.flatMap((page) =>
-        page.items.map((item) => ({ ...titleOf(item), unidentified: unidentified.has(item.id) })),
-      ) ?? [],
-    [items.data, unidentified],
+    () => items.data?.pages.flatMap((page) => page.items.map(titleOf)) ?? [],
+    [items.data],
   );
   // The page's content is the admin's status line and whatever the view shows under it.
   const viewReady = titlesView ? !items.isPending : collections.loaded;

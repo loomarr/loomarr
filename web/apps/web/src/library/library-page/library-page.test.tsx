@@ -1,4 +1,3 @@
-import { getLibraryStatusQueryKey } from "@loomarr/api/endpoints/library";
 import {
   getGetLibraryPersonMockHandler,
   getHouseholdMockHandler,
@@ -94,33 +93,17 @@ describe("LibraryPage", () => {
   // The tabs' counts ask for one title of each kind; the grid's pages ask for many.
   const isCount = (url: URL) => url.searchParams.get("limit") === "1";
 
-  it("marks the titles Needs you holds on an admin's wall instead of calling them a Movie", async () => {
+  it("marks a title its list says is unidentified, until the list stops saying so, asking nothing of Needs you", async () => {
+    let unidentified = true;
+    let needsRequests = 0;
     server.use(
       getLibraryStatusMockHandler({ ...libraryStatus(), needsYou: 1 }),
-      getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
-      getListLibraryNeedsMockHandler({
-        needs: [{ item: alpha, searched: true, candidates: [], files: [], folder: "Movies" }],
-        orders: [],
-        problems: [],
-      }),
-    );
-    renderPage();
-
-    const card = await screen.findByRole("link", { name: /Alpha/ });
-    await waitFor(() => expect(card).toHaveTextContent("2001 · Not identified yet"));
-    expect(card).not.toHaveTextContent("Movie");
-    expect(within(card).getByRole("img", { name: "Needs a look" })).toBeInTheDocument();
-  });
-
-  it("drops the mark once nothing needs you, though the list it read is still cached", async () => {
-    let needsYou = 1;
-    server.use(
-      http.get("*/v1/library/status", () => HttpResponse.json({ ...libraryStatus(), needsYou })),
-      getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
-      getListLibraryNeedsMockHandler({
-        needs: [{ item: alpha, searched: true, candidates: [], files: [], folder: "Movies" }],
-        orders: [],
-        problems: [],
+      http.get("*/v1/library/items", () =>
+        HttpResponse.json({ items: [{ ...alpha, unidentified }], total: 1 }),
+      ),
+      http.get("*/v1/library/needs", () => {
+        needsRequests += 1;
+        return HttpResponse.json({ needs: [], orders: [], problems: [] });
       }),
     );
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -129,13 +112,20 @@ describe("LibraryPage", () => {
         <LibraryPage filter="all" search="" />
       </QueryClientProvider>,
     );
-    const card = await screen.findByRole("link", { name: /Alpha/ });
-    await waitFor(() => expect(card).toHaveTextContent("Not identified yet"));
 
-    needsYou = 0;
-    await act(() => client.invalidateQueries({ queryKey: getLibraryStatusQueryKey() }));
+    const card = await screen.findByRole("link", { name: /Alpha/ });
+    expect(card).toHaveTextContent("2001 · Not identified yet");
+    expect(card).not.toHaveTextContent("Movie");
+    expect(within(card).getByRole("img", { name: "Needs a look" })).toBeInTheDocument();
+    // The status line has its count, so a read the status could start would be under way.
+    await screen.findByRole("button", { name: /Review/ });
+
+    // Answering a title refetches the titles.
+    unidentified = false;
+    await act(() => client.invalidateQueries({ queryKey: ["/v1/library/items"] }));
     await waitFor(() => expect(card).toHaveTextContent("2001 · Movie"));
     expect(within(card).queryByRole("img", { name: "Needs a look" })).not.toBeInTheDocument();
+    expect(needsRequests).toBe(0);
   });
 
   it("lists the titles the server found, each linking to its page", async () => {
