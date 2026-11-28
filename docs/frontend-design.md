@@ -596,6 +596,53 @@ the `playerChrome` tokens; never raw `rgb()` values in components. Over moving v
 (`rgba(11, 12, 14, 0.94)`), which is what keeps it legible over any frame. This replaces the earlier
 glass elevation exception; §2.3's "borders first" holds for the player too.
 
+#### The watching screen of The Cross (target, not shipped yet; #4731)
+
+The layers above ship unchanged. The Cross's watching screen, `WatchScreen` in `@loomarr/ui`, is
+built beside them, driven by one framework-free model, `@loomarr/core/watch-screen`, and no route
+draws it yet. It takes the layout as a prop; only the desktop at full screen (`full`, the list over
+the picture) is built. A desktop window, a television and a phone come in #4732, #4736 and #4738.
+
+- **What it draws, back to front.** The picture (a slot), the tune's static and bars (§9.4), the
+  scrims, the lower third at the crossing and the quiet row under it (§9.2, §9.3), the first-run
+  hint at the top, the channel list down the leading edge while it is open (§9.5) with the watched
+  channel pinned in it drawn as the lower third, then a menu or a cover (slots: their contents are
+  the shipped ones).
+- **The scrims are the screen's, and nothing has a box.** One foot scrim across the full width,
+  strongest at the bottom edge and fading to nothing a little under half way up, on which the lower
+  third and the quiet row both stand; and, only while the list is open, one side scrim down the
+  leading edge, wide enough for the list and fading out past it. The lower third and the quiet row
+  draw no ink of their own here.
+- **Flipping tunes; the list looks.** Up and Down on the bare picture tune the next or previous
+  playable channel of the group in play at once and show only the lower third; they never open the
+  list. Channels opens the list, which owns the keys until it closes; opening it and moving through
+  it never tunes. OK or a click tunes.
+- **Only the bare picture goes quiet.** After 5 seconds with nothing open, no control focused, no
+  pointer on the controls, not paused and no digits pending, the lower third, the quiet row and the
+  hint rest. A key or pointer movement wakes the screen, and the key that wakes it also does its job.
+  Nothing that holds focus, the pointer or an open layer goes quiet on a timer.
+- **Digits tune direct.** Typed digits (two at most) replace the numeral, commit on Enter or 1.6
+  seconds after the last, and Esc cancels them. A number with no channel says so and tunes nothing.
+- **Pause.** Space or a click on the picture pauses and resumes; resuming plays on behind live by the
+  time paused, and Go live returns to live. A double click on the picture toggles full screen and
+  leaves the picture playing or paused as it was. With the list open, a click on the picture closes
+  the list instead.
+- **Back goes one step**: a menu's inner page back to the menu, a menu closed, find closed, the list's
+  tabs back to the list, the list closed, typed digits cancelled; on the bare picture Esc leaves full
+  screen.
+- **The first-run hint** shows until the first channel change and then not again in that session; the
+  caller says whether it was seen before. It hides while the list is open and rests with the controls.
+- **Last channel** is the channel just left. When the lineup says it cannot be played, `L` tunes
+  nothing and the screen says why.
+- **One amber ring** at any moment, on the quiet row, the lower third's Go live or the list's cursor;
+  the list's rows are `RingedPressable`, so a mouse click leaves no keyboard ring. With the list open,
+  the cursor's fill stays visible on the pinned channel.
+- **Find** announces the result under its cursor through a polite live region: the search field has
+  no `aria-activedescendant`, so the result cannot be carried by the field itself.
+- **The model asks; the caller does.** It emits requests (tune this channel, pause, resume, go live,
+  open the Guide, toggle full screen, mute, open this menu, show this message) and performs none. Time
+  arrives with each event, and the model names the next time it wants to be read, as the tune does.
+
 ### 9.2 The band
 
 - **Channel block.** `CH` over the number in mono, on the channel's decade colour (amber without one):
@@ -763,6 +810,25 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 - **Shortcuts** (when focus is not in a control that owns them): arrow up / down tune, digits tune
   direct, `L` last channel, `C` subtitles, `A` audio, `I` Playback details, `M` mute, `F`
   fullscreen, `Esc` closes the top layer and then leaves. Tooltips name them.
+- **The Cross's shortcuts (target, not shipped yet; #4731)**, on a desktop, when focus is not in a
+  control or field that owns the key. The shipped shortcuts above stay until the route moves.
+
+  | Key | Does |
+  | --- | --- |
+  | Up, Down | Tune the previous or next channel of the group in play; in the open list, move its cursor |
+  | Digits | Tune direct: Enter commits, or 1.6 seconds after the last digit; Esc cancels |
+  | Space | Pause and resume |
+  | `/` | Open the list with find |
+  | `G` | The Guide |
+  | `L` | Last channel, when it can still be played; otherwise a message says why |
+  | `C`, `A` | Subtitles, Audio |
+  | `M` | Mute and unmute |
+  | `F` | Full screen on and off, from anywhere: in a menu and with the list open too |
+  | `End` | **Go live** when behind live (decided 2026-11-28: the live edge is the end of what has aired). Go live's tooltip names it |
+  | `?` | The shortcuts sheet |
+  | `Esc` | Close the top layer, one step at a time; on the bare picture, leave full screen |
+
+  Inside the quiet row, Home and End stay the toolbar's own (§9.3).
 - **Auto-hide** after three seconds; the cluster stays while something in it is open.
 - **The quiet row of The Cross (target, not shipped yet; #4728).** The keys, utilities and Leave
   above ship unchanged. The new part, `QuietRow` in `@loomarr/ui`, is built beside them and no screen
