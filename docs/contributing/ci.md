@@ -836,7 +836,16 @@ release-verifier pins name each lane. A package the race policy runs in both pha
 ordinary one. Store, schedule and the api+app pair each come close to the 469s lane budget, so no
 four-way split fits it; the five lanes model 444s, 332s, 434s, 427s and 337s.
 
-`make go-shard-verify SHARDS=2` rejects missing or duplicated packages, a package above the
+A package too slow for any one lane has jobs of its own, listed in
+`scripts/go-split-lanes.tsv`. `internal/library/scan` runs under `-race` in two jobs,
+`scan-race-1/2` and `scan-race-2/2`, and without it in `scan-plain`. Each race job runs every
+second name of the sorted `go test -list` output (`GO_TEST_PART` in `scripts/go-test-packages.sh`),
+so a new test joins a slice by itself, and an empty slice fails. Each job has its own weight row,
+`<package>@race-<k>/<n>` or `<package>@plain`, under the same per-package cap.
+`make go-race-weights ONLY=<package>` replaces one package's rows and keeps the rest.
+
+`make go-shard-verify SHARDS=2` rejects missing or duplicated packages, a split job with no weight
+row, a package above the
 per-package cap, an ordinary aggregate or a bounded-worker or serial-certification makespan above
 those derived budgets, more than 25% imbalance between ordinary lanes, or more than 50% between
 serial lanes. The serial lanes hold a few indivisible packages of very different sizes, and no
