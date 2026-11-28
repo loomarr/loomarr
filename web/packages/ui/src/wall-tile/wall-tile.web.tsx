@@ -3,6 +3,9 @@ import { cloneElement, type ReactElement } from "react";
 
 import type { WallTileProps } from "./wall-tile.type";
 
+// The ring's pointer and key handlers, which `useRingFocus` types away as React Native's do.
+type DomModality = { onKeyDownCapture?: () => void; onPointerDown?: () => void };
+
 // The foot of the tile: dark enough under the words for any still.
 const SCRIM = `linear-gradient(0deg, ${semanticColors.artwork.scrimStrong}, rgba(11, 12, 14, 0.4) 55%, rgba(11, 12, 14, 0))`;
 
@@ -92,9 +95,8 @@ const WallTile = ({
         ? {
             onBlur: handlers.onBlur,
             onFocus: handlers.onFocus,
-            ...("onPointerDown" in handlers
-              ? { onKeyDownCapture: handlers.onKeyDownCapture, onPointerDown: handlers.onPointerDown }
-              : {}),
+            onKeyDownCapture: (handlers as DomModality).onKeyDownCapture,
+            onPointerDown: (handlers as DomModality).onPointerDown,
           }
         : {}),
       onClick: (event: unknown) => {
