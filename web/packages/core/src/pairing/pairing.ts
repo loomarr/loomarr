@@ -4,6 +4,9 @@ import {
   getDevicePairStartUrl,
   getDeviceRevokeCurrentUrl,
 } from "@loomarr/api/endpoints/auth";
+import { ApiError, ContractError, readBody } from "@loomarr/api/mutator";
+import { DevicePairPollResponse, DevicePairStartResponse } from "@loomarr/api/zod/auth";
+import type { z } from "zod";
 
 import type {
   PairingCredential,
@@ -77,7 +80,9 @@ const pairingFailureMessage = (error: unknown, serverUrl: string): string => {
   const host = new URL(serverUrl).host;
   if (error instanceof PairingHttpError)
     return `${host} answered, but couldn’t start pairing (error ${error.status}). Check that it’s your Loomarr server, then try again.`;
-  if (error instanceof SyntaxError) return `${host} isn’t answering as a Loomarr server. Check the address.`;
+  // A failure or success page that is not JSON, or JSON of another shape: not a Loomarr server.
+  if (error instanceof SyntaxError || error instanceof ApiError || error instanceof ContractError)
+    return `${host} isn’t answering as a Loomarr server. Check the address.`;
   return `Loomarr couldn’t reach ${host}. Check the address, and that the server is running and reachable from this device.`;
 };
 
@@ -117,11 +122,21 @@ const createPairingCredentialStore = (storage: PairingKeyValueStorage) => ({
   },
   write: (credential: PairingCredential) => storage.setItem(CREDENTIAL_KEY, JSON.stringify(credential)),
 });
-const readJson = async <T>(response: Response): Promise<T> => {
-  const body = (await response.json()) as T;
-  if (!response.ok)
+const StartBody = DevicePairStartResponse.pick({
+  deviceCode: true,
+  expiresAt: true,
+  interval: true,
+  userCode: true,
+});
+const PollBody = DevicePairPollResponse.pick({ deviceName: true, token: true });
+
+const readAnswer = async <S extends z.ZodType>(response: Response, schema: S) => {
+  if (!response.ok) {
+    // A refusal that is not JSON is some other server's page, which reads as that, not as a status.
+    await response.json();
     throw new PairingHttpError(response.status, `Pairing request failed (${response.status})`);
-  return body;
+  }
+  return readBody(response, schema);
 };
 
 const createPairingTransport = (serverUrl: string, fetcher: PairingFetch = fetch): PairingTransport => ({
@@ -132,7 +147,10 @@ const createPairingTransport = (serverUrl: string, fetcher: PairingFetch = fetch
       method: "POST",
       signal,
     });
-    return { body: await readJson(response), serverDate: response.headers.get("Date") ?? undefined };
+    return {
+      body: await readAnswer(response, StartBody),
+      serverDate: response.headers.get("Date") ?? undefined,
+    };
   },
   async poll(deviceCode, signal): Promise<PairingPoll> {
     const response = await fetcher(`${serverUrl}${getDevicePairPollUrl()}`, {
@@ -143,7 +161,7 @@ const createPairingTransport = (serverUrl: string, fetcher: PairingFetch = fetch
     });
     if (response.status === 428) return { status: "pending" };
     if (response.status === 404) return { status: "expired" };
-    return { body: await readJson(response), status: "paired" };
+    return { body: await readAnswer(response, PollBody), status: "paired" };
   },
 });
 

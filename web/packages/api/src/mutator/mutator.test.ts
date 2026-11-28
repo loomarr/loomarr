@@ -1,5 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, customFetch, observeApiFailures, toProblem } from "./mutator";
+import { z } from "zod";
+import { ApiError, ContractError, customFetch, observeApiFailures, readBody, toProblem } from "./mutator";
+
+describe("readBody", () => {
+  const schema = z.object({ name: z.string() });
+  const answer = (body: string, status = 200) => new Response(body, { status });
+
+  it("returns the fields the schema names and drops the rest", async () => {
+    await expect(readBody(answer('{"name":"Sam","added":1}'), schema)).resolves.toEqual({ name: "Sam" });
+  });
+
+  it("raises the server's problem for a refusal, and for a page that is not JSON", async () => {
+    await expect(readBody(answer('{"title":"Broke"}', 500), schema)).rejects.toMatchObject({
+      name: "ApiError",
+      status: 500,
+    });
+    await expect(readBody(answer("<html></html>"), schema)).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("raises ContractError for a body of the wrong shape", async () => {
+    const failure = await readBody(answer('{"name":7}'), schema).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ContractError);
+    expect(failure).toMatchObject({ status: 200, issues: [{ path: ["name"] }] });
+  });
+});
 
 const mockFetch = (status: number, body: unknown) =>
   vi.fn((_url: string, _init?: RequestInit) =>

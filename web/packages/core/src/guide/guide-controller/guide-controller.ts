@@ -1,5 +1,7 @@
 import { getChannelGuideUrl } from "@loomarr/api/endpoints/channels";
-import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
+import { openEnum, readBody } from "@loomarr/api/mutator";
+import { ChannelGuideResponse } from "@loomarr/api/zod/channels";
+import { z } from "zod";
 
 import { defaultGuideWindow, guideSelectionForChannel, layoutGuide, moveGuideSelection } from "../guide";
 import type { GuideLayout, GuideWindow } from "../guide.type";
@@ -10,11 +12,41 @@ import type {
   GuideSourcePort,
 } from "./guide-controller.type";
 
+// The screens read most of the Guide, so the whole contract is parsed. Its enums are open, so a
+// value a newer server adds leaves the rest of the Guide readable.
+const timeline = ChannelGuideResponse.shape.channels.element;
+const airing = timeline.shape.airings.element;
+const pod = airing.shape.pod.unwrap();
+const podEntry = pod.shape.entries.element;
+const GuideBody = ChannelGuideResponse.omit({ $schema: true }).extend({
+  channels: z.array(
+    timeline.extend({
+      status: openEnum(timeline.shape.status),
+      airings: z.array(
+        airing.extend({
+          kind: openEnum(airing.shape.kind),
+          pod: pod
+            .extend({
+              matchLevel: openEnum(pod.shape.matchLevel),
+              entries: z.array(
+                podEntry.extend({
+                  role: openEnum(podEntry.shape.role),
+                  audience: openEnum(podEntry.shape.audience.unwrap()).optional(),
+                }),
+              ),
+            })
+            .optional(),
+        }),
+      ),
+    }),
+  ),
+});
+
 const createGuideSourcePort = (request: typeof globalThis.fetch): GuideSourcePort => ({
   load: async (window, signal) => {
     const response = await request(getChannelGuideUrl(window), { method: "GET", signal });
     if (!response.ok) throw new Error(`Couldn't load the Guide (${response.status}).`);
-    return (await response.json()) as GuideOutputBody;
+    return readBody(response, GuideBody);
   },
 });
 
