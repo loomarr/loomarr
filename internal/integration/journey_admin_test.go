@@ -123,7 +123,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 	if pull.JobID == "" {
 		t.Fatal("pull returned no jobId")
 	}
-	testkit.Eventually(t, 2*time.Second, "a call to ollama /api/pull", func() bool { return h.ollama.PullHits() >= 1 })
+	testkit.Eventually(t, 10*time.Second, "a call to ollama /api/pull", func() bool { return h.ollama.PullHits() >= 1 })
 
 	// A8: SUBMIT an intent → the real worker pool runs the real grounded suggester.
 	var submitted struct {

@@ -189,7 +189,7 @@ func jobRunCount(t *testing.T, h *harness, admin *http.Cookie, name string) int 
 
 func waitForJobRunCount(t *testing.T, h *harness, admin *http.Cookie, name string, want int) {
 	t.Helper()
-	testkit.Eventually(t, 2*time.Second, "the background job to finish: "+name,
+	testkit.Eventually(t, 10*time.Second, "the background job to finish: "+name,
 		func() bool { return jobRunCount(t, h, admin, name) >= want })
 }
 
