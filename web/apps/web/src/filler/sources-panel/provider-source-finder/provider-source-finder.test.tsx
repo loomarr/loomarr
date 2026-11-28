@@ -4,11 +4,11 @@ import {
   getSuggestFillerSourcesMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fillerProviders } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -76,7 +76,12 @@ const archivePreview = {
   ],
 };
 
+// Advances well past the finder's typing pause, so a search it was going to make has been made.
+const pastSearchPause = () => act(() => vi.advanceTimersByTimeAsync(1_000));
+
 describe("ProviderSourceFinder", () => {
+  afterEach(() => vi.useRealTimers());
+
   it("searches after typing and registers only after explicit confirmation", async () => {
     const calls: unknown[] = [];
     let resolvedInput = "";
@@ -301,9 +306,10 @@ describe("ProviderSourceFinder", () => {
         return { exact: false, suggestions: [] };
       }),
     );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<ProviderSourceFinder provider={archiveProvider} enabled={false} />, { wrapper });
     expect(screen.getByRole("combobox", { name: "Find an Archive.org collection" })).toBeDisabled();
-    await new Promise((resolve) => setTimeout(resolve, 650));
+    await pastSearchPause();
     expect(calls).toBe(0);
   });
 
@@ -315,9 +321,10 @@ describe("ProviderSourceFinder", () => {
         return { exact: false, suggestions: [] };
       }),
     );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<ProviderSourceFinder provider={youtubeProvider} enabled />, { wrapper });
     await userEvent.type(screen.getByRole("combobox", { name: "Find a YouTube channel or playlist" }), "tv");
-    await new Promise((resolve) => setTimeout(resolve, 650));
+    await pastSearchPause();
     expect(calls).toBe(0);
   });
 
@@ -393,12 +400,13 @@ describe("ProviderSourceFinder", () => {
       }),
     );
 
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<ProviderSourceFinder provider={thirdProvider} enabled />, { wrapper });
     const input = screen.getByRole("combobox", { name: "Find a Third Party feed" });
     expect(input).toHaveAttribute("placeholder", "Look a feed up");
 
     await userEvent.type(input, "fee");
-    await new Promise((resolve) => setTimeout(resolve, 650));
+    await pastSearchPause();
     expect(searches).toEqual([]);
 
     await userEvent.type(input, "d one");

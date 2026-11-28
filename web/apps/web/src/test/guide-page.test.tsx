@@ -16,7 +16,7 @@ import {
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -931,9 +931,15 @@ describe("Guide", () => {
     const preview = await view.findByRole("tooltip");
     expect(within(preview).getByText("Scheduled")).toBeInTheDocument();
     expect(within(preview).getByText("Harbour Mystery")).toBeInTheDocument();
-    await user.hover(preview);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(preview).toBeInTheDocument();
+    // Moving onto the preview leaves the programme, which would start a close; fake time runs past it.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await user.hover(preview);
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(preview).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
     await user.keyboard("{Escape}");
     await waitFor(() => expect(view.queryByRole("tooltip")).not.toBeInTheDocument());
     expect(within(next).getByText("Harbour Mystery")).toBeInTheDocument();
