@@ -29,6 +29,10 @@ func (c *rotatingCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.D
 
 func (c *rotatingCycle) Calendar() schedule.Calendar { return schedule.Calendar{} }
 
+func (c *rotatingCycle) ForecastKey(ctx context.Context, ch channelstore.Channel, at time.Time) (uint64, bool) {
+	return sharedForecastKeys.ForecastKey(ctx, ch, at)
+}
+
 func (c *rotatingCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return !c.tunarr, nil
 }

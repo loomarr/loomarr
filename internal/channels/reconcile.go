@@ -292,7 +292,7 @@ func (e *Engine) planReconcile(
 	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
 	acceptedSlots, acceptedAnchor := ch.Desired, ch.PlayoutAnchor
 	if playsInternally {
-		from := dealtFrom(ch, chDomain.BreaksPerHour, settings, desired.Slots)
+		from := dealtFrom(in, desired.Slots)
 		// Nothing that has aired moves inside a window (#4140): a library change keeps the window
 		// and heals a vanished item in place, and an edit re-deals after the programme on air. A
 		// turned window starts a new slice from its own anchor, so there is nothing to hold.

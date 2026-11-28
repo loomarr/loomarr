@@ -3,9 +3,11 @@ package playoutresolve
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -21,6 +23,40 @@ type countingCycle struct {
 	calls  int
 	slots  []schedule.Slot
 	window time.Duration
+	keys   *forecastKeys
+}
+
+// forecastKeys is the production channels.Engine.ForecastKey over install settings a test can
+// change, so the cache tests key exactly as the guide does.
+type forecastKeys struct {
+	breakLength atomic.Int64
+	engine      *channels.Engine
+}
+
+func newForecastKeys() *forecastKeys {
+	k := &forecastKeys{}
+	k.breakLength.Store(int64(time.Minute))
+	k.engine = channels.New(nil, nil, nil, nil, channels.Config{
+		ResolveBreakDuration: func() time.Duration { return time.Duration(k.breakLength.Load()) },
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+			return schedule.PlayoutBackendInternal, nil
+		},
+	}, time.Now, nil)
+	return k
+}
+
+// sharedForecastKeys serves the doubles whose tests never change a setting.
+var sharedForecastKeys = newForecastKeys()
+
+func (k *forecastKeys) ForecastKey(ctx context.Context, ch channelstore.Channel, at time.Time) (uint64, bool) {
+	return k.engine.ForecastKey(ctx, ch, at)
+}
+
+func (c *countingCycle) ForecastKey(ctx context.Context, ch channelstore.Channel, at time.Time) (uint64, bool) {
+	if c.keys == nil {
+		return sharedForecastKeys.ForecastKey(ctx, ch, at)
+	}
+	return c.keys.ForecastKey(ctx, ch, at)
 }
 
 func (c *countingCycle) TurnedWindow(ctx context.Context, id string, at, _ time.Time) ([]schedule.Slot, error) {
@@ -138,6 +174,46 @@ func TestCycleCache_ChangedLineupIsRearranged(t *testing.T) {
 	}
 }
 
+// Every input the forecast reads beyond the lineup and policy must miss as well: the ordering
+// strategy, the accepted cycle the forecast counts as aired, and the install's break length.
+func TestCycleCache_ChangedForecastInputIsRearranged(t *testing.T) {
+	t.Parallel()
+	cases := map[string]func(chans *stubChannels, keys *forecastKeys){
+		"strategy": func(chans *stubChannels, _ *forecastKeys) {
+			chans.set(func(c *channelstore.Channel) { c.Strategy = schedule.Shuffle })
+		},
+		"accepted cycle": func(chans *stubChannels, _ *forecastKeys) {
+			chans.set(func(c *channelstore.Channel) {
+				c.Desired = []schedule.Slot{{Kind: schedule.SlotProgram, Key: "tmdb:tv:1", DurationMs: 600_000}}
+			})
+		},
+		"playout anchor": func(chans *stubChannels, _ *forecastKeys) {
+			chans.set(func(c *channelstore.Channel) { c.PlayoutAnchor = time.Unix(1_800_000_000, 0) })
+		},
+		"break length": func(_ *stubChannels, keys *forecastKeys) {
+			keys.breakLength.Store(int64(2 * time.Minute))
+		},
+	}
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			r, eng, chans := cachedResolver(t, testChannel())
+			eng.keys = newForecastKeys()
+			at := time.Now()
+			if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+				t.Fatalf("cycleAt: %v", err)
+			}
+			change(chans, eng.keys)
+			if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+				t.Fatalf("cycleAt: %v", err)
+			}
+			if got := eng.count(); got != 2 {
+				t.Fatalf("arrangements computed = %d, want 2 (a changed %s was served stale)", got, name)
+			}
+		})
+	}
+}
+
 // A changed POLICY must also miss. Policy is hashed WHOLE rather than field-by-field precisely
 // so this holds for fields nobody enumerated — CollectionID, Genres, a rule added next quarter.
 // Mutating a deeply-nested one is the point: a shallow hash would pass the lineup test above and
@@ -202,18 +278,15 @@ func TestCycleCache_NearbyInstantsShareAnArrangement(t *testing.T) {
 	}
 }
 
-// An entry must not outlive its TTL: availability, hot-applied settings and the filler pool are
-// invisible to the fingerprint by design, and the TTL is the ONLY thing bounding their staleness.
+// An entry must not outlive its TTL: availability, the filler pool, airing history and
+// natural-break measurements are not on the channel row, and the TTL is the ONLY thing bounding their staleness.
 func TestCycleCache_EntryExpiresAfterTTL(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
 	clock := func() time.Time { return now }
 	c := newCycleCache(clock)
 
-	key, ok := fingerprintChannel("ch1", nil, schedule.ChannelPolicy{}, 0)
-	if !ok {
-		t.Fatal("fingerprint failed on an empty channel")
-	}
+	key := uint64(1)
 	c.put(key, now, nil, []schedule.Slot{{Kind: schedule.SlotProgram}}, 24*time.Hour)
 
 	if _, _, hit := c.get(key, now, nil); !hit {
