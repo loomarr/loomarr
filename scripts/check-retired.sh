@@ -3,6 +3,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 RETIRED=(
+  'ChannelDrawer|retired: the web Watch lists channels in the watching screen'"'"'s channel list (#4731)'
+  'TunerLoader|retired: the web Watch'"'"'s tune is TuneStatic and TuneBars from @loomarr/ui (#4731)'
+  'TunerOSD|retired: the lower third says the channel on the web Watch (#4731)'
+  'useWatchShortcuts|retired: the web Watch'"'"'s keys are @loomarr/core/watch-screen'"'"'s (#4731)'
+  'useNumberEntry|retired: typed digits are @loomarr/core/watch-screen'"'"'s (#4731)'
+  'useTunePhase|retired: the tune is @loomarr/core/tune, driven by the player (#4731)'
+  'drawerChannels|retired: the web Watch builds its lineup with watchLineupChannels (#4731)'
   'LADDER_RANK|retired: the rating ladder lives in Go; a client reads policy.automaticUnrated'
   'scores.overall|retired: proposal assessment reports evidence without a synthetic composite'
   'func composite(s Scores)|retired: the proposal composite is not an assessment contract'

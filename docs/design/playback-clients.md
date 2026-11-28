@@ -181,8 +181,9 @@ still describe the phone and television apps, and the web where they agree with 
   screen, from anywhere, the list and a menu included · `?` the shortcuts sheet · `Esc` one step
   back: an inner page, a menu, typed digits, then the list's own steps, then out of full screen.
   Channels opens the list: the arrows move through it without tuning, `Enter` or a click tunes, `Esc`
-  closes it. `Esc` no longer leaves `/watch`; the named back control does. Picture in picture and
-  Playback details are rows of More (`P` and `I` are not keys there).
+  closes it. On the bare picture outside full screen `Esc` does nothing; the named back control
+  leaves `/watch`. `K` and `I` are not keys here: Space pauses, and Picture in picture and Playback
+  details are rows of More, as is the watched channel's Add to Favourites or Remove from Favourites.
 - **The tune on the web** follows the player: a flip to a warmed channel is a short static burst and
   the bars; a channel that must start, and the page's first tune, hold the static for the real wait
   with "Tuning in..." in the lower third, and the first frame uncovers it. A failure shows the

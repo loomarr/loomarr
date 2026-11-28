@@ -357,7 +357,7 @@ Coverage says every component *has* a story. It says nothing about whether a per
 | Small tinted chip, mono/uppercase | `Badge` (L1) **and** `StateBadge` (L2), each with its own `cva` and its own tint classes | `StateBadge` composes `Badge` |
 | `font-mono text-[10px] uppercase tracking-…` caption | **21 occurrences across 11 components** | a `Caption` primitive |
 | Status dot (`size-2 rounded-full`, pulse when live) | `GenerationProgress`, `GuideGrid`, `OnAirIndicator` | a `StatusDot` primitive |
-| 15 Layer-2 components import **no** primitive at all | — | audited case by case; a leaf like `TunerLoader` legitimately owns its markup, a card-shaped one does not |
+| 15 Layer-2 components import **no** primitive at all | — | audited case by case; a leaf like `IdleSnow` legitimately owns its markup, a card-shaped one does not |
 
 **Why this matters more than tidiness.** The badge/tint contrast rule (§2.1) — the one learned the hard way, twice — is now encoded in `Badge` *and* `StateBadge` independently. Fix a stop in one and the other stays wrong, and **the contrast gate cannot tell**: it verifies token *pairings*, not which components consume them. Every duplicated pattern is a second place a design rule has to be remembered rather than inherited.
 
@@ -623,7 +623,17 @@ in #4736 and #4738.
   it is ready, so the static never adds waiting time. Reduced motion is a crossfade with no static.
   The Channel-change sound switch in Audio still decides the sound.
 - **What the picture is doing** (playing, tuning in, under a cover) is told to the model, so a pause
-  is refused when there is nothing to pause.
+  or a resume is refused when there is nothing to hold. So is **what the player really does**: a
+  `playback` event carries whether it is paused and how far behind live it plays, whoever moved it
+  (a seek, Start over, the media keys, a Retry), and End goes live from there.
+- **A reconnect is not a tune.** The player reconnecting to the channel on screen shows the
+  Reconnecting cover, not static and "Tuning in". A browser that refuses to start the picture by
+  itself gets a cover with Play, whose press starts it.
+- **The channel's logo keeps its corner (§9.6).** Playout burns the logo into one corner of the
+  picture; only the chrome in that corner steps clear of it (the back control top leading, the lower
+  third bottom leading, the quiet row bottom trailing), measured on the picture's 16:9 rectangle.
+- **Full screen is the browser's.** The full-screen control is named for the browser's real state,
+  however it was entered or left. The player draws no keys of its own here.
 - **Menus and covers are the shipped ones**, in the screen's slots: Subtitles, Audio and More, with
   Picture and Playback details as More's inner pages, and the stopped, off-air and server covers.
   More keeps what shipped but Channels and Info, which opened the band and the old sheet; Last
@@ -972,6 +982,12 @@ web's Channel-change sound switch decides that).
   grey and locked bars of a tune-in still show, still.
 
 ### 9.5 What the keys open
+
+**Favourites on the web's Watch (supervisor, 2026-11-28; changeable by the maintainer).** More holds
+one row for the watched channel, **Add to Favourites** or **Remove from Favourites**: it has no key of
+its own, which is what More is for. It stars or unstars the channel at once (the lineup's Favourites
+group follows) and says what it did in the message line ("7 Coast 90s added to Favourites"); a
+refusal says so and changes nothing.
 
 - **Where it opens.** On desktop and television, Subtitles, Audio, More and Volume open a **menu in the
   control cluster**, over the keys, 280 px wide, beside the key that opened it; the rest of the chrome
