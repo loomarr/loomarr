@@ -54,5 +54,7 @@ describe("ChannelDetailPage", () => {
     expect(await screen.findByTestId("channel-tab-strip", {}, { timeout: 5000 })).toHaveTextContent(
       "Danger zone",
     );
+    // An admin's heading is the name's editor.
+    expect(screen.getByRole("textbox", { name: "Channel name" })).toHaveValue("Late Night Noir");
   });
 });

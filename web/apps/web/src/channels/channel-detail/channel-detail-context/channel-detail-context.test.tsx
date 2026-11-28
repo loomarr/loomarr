@@ -24,7 +24,10 @@ const value: ChannelDetailValue = {
   onDelete: () => {},
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("channel detail context", () => {
   it("hands a section the layout's channel and viewer", () => {
@@ -37,8 +40,8 @@ describe("channel detail context", () => {
   });
 
   it("refuses a section mounted outside the layout", () => {
-    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    // React logs the thrown render; `afterEach` restores the console.
+    vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => renderUi(<Probe />)).toThrow(/inside the channel-detail layout/);
-    quiet.mockRestore();
   });
 });
