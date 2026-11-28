@@ -627,7 +627,8 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   and as the tuned channel's row in the Guide on every device. There is no strip over the picture and
   none opened by tapping a row on a phone.
   - **Time-true.** The caller names the window, and a block is as wide as its share of it.
-  - **What is on now** carries its artwork with the aired part dimmed and a white playhead. Behind live,
+  - **What is on now** carries its artwork with the aired part dimmed and a playhead, white over
+    artwork. Behind live,
     the live mark stands at now and the playhead where the viewer is.
   - **A run of one series** is one block that names the series and how many episodes. Adjacent
     airings of one series are a run, with or without a break between them; one episode split by a
