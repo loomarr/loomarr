@@ -3,6 +3,7 @@
 import { createChannelLineup } from "@loomarr/core/channel-lineup";
 import { type ChannelListState, channelListReduce, createChannelListState } from "@loomarr/core/channel-list";
 import { act, cleanup, fireEvent, renderUi, screen, userEvent } from "@loomarr/test-support";
+import { declarationsOfElement } from "@loomarr/test-support/css";
 import { useState } from "react";
 import { Text } from "react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -161,4 +162,17 @@ describe("ChannelList", () => {
     const headings = [...document.querySelectorAll('[aria-hidden="true"]')].map((each) => each.textContent);
     expect(headings.filter(Boolean)).toEqual(["1980s", "1990s"]);
   });
+
+  it.each(["dark", "light"] as const)(
+    "draws each heading in its decade's tint in the %s theme, outside any row's fill",
+    (theme) => {
+      renderUi(<Harness start={{ group: "decade" }} />, { theme });
+      for (const decade of ["1980", "1990"]) {
+        const heading = screen.getByText(`${decade}s`, { selector: '[aria-hidden="true"] *' });
+        expect(declarationsOfElement(heading)).toContain(`var(--decadeTint${decade})`);
+        expect(heading.closest('[role="option"]')).toBeNull();
+        expect(screen.getByTestId("channel-list-pinned").contains(heading)).toBe(false);
+      }
+    },
+  );
 });

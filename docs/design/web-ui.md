@@ -41,8 +41,8 @@ a dot for it.
   a view of the watching screen with the picture still playing, and Home's wall is where the back
   arrow leads ([`design/watch/`](../../design/watch/README.md)). The items below describe what ships.
 - **Channel groups (target, not shipped; #4725):** the channel list, the Guide and Home's wall are
-  headed by the same four groups, from `@loomarr/core/channel-lineup`: **Favourites** (in the order
-  starred), **All** (number order), **Recent** (newest first, at most 20) and **By decade** (each
+  headed by the same four groups, from `@loomarr/core/channel-lineup`: **Favourites** (the lineup
+  keeps the order starred; the channel list shows them in number order), **All** (number order), **Recent** (newest first, at most 20) and **By decade** (each
   decade's channels in number order, decades ascending; a channel with no single decade is under All
   only). An empty group says so and offers "Show all channels"; an empty Recent says "Channels you
   watch collect here."

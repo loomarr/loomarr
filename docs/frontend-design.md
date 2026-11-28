@@ -825,8 +825,11 @@ timer.
 - **The watched channel is always listed**, whatever the group, and pinned: its slot (drawn as the
   lower third) stays in view at both ends of the scroll. There is room above the first row and below
   the last so any channel can rest where the caller puts it, and scrolling stops at the list's ends.
-  In Favourites a watched channel outside the group follows the others; in Recent and By decade one
-  outside the group leads.
+  Every group is in number order (Favourites too, whatever order they were starred in) except Recent,
+  newest first, and By decade, by decade then number. A watched channel outside Favourites takes its
+  place by number; one outside Recent or By decade leads.
+- **Words.** An empty group says "Channels you watch collect here." (Recent), "No favourites yet."
+  or "No channels have a decade yet.", the last two with "Show all channels".
 - **Tabs** are Favourites, All, Recent, By decade; By decade is headed by its decades, each heading
   in its decade's tint and never on the selection fill. Find is at the head of the tabs
   ([`design/web-ui.md`](design/web-ui.md)).

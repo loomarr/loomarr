@@ -10,7 +10,7 @@ import {
   scrollBounds,
   scrollToShow,
 } from "@loomarr/core/channel-list";
-import { PressableRow, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
+import { decadeTint, PressableRow, Surface, Text, VisuallyHidden } from "@loomarr/design-system";
 import { type ComponentProps, type ComponentRef, Fragment, useEffect, useRef, useState } from "react";
 import {
   type GestureResponderEvent,
@@ -360,7 +360,9 @@ const ChannelList = <C extends LineupChannel>({
                 <Fragment key={channel.id}>
                   {view.headings.has(channel.id) ? (
                     <Bare aria-hidden height={headingHeight} justifyContent="flex-end" paddingLeft={52}>
-                      <Text textRole="metadata" tone="secondary">{`${view.headings.get(channel.id)}s`}</Text>
+                      <Text textRole="metadata" tone={decadeTint(view.headings.get(channel.id))}>
+                        {`${view.headings.get(channel.id)}s`}
+                      </Text>
                     </Bare>
                   ) : null}
                   {index === pinnedAt ? pinnedSlot : rowOf(channel)}

@@ -158,10 +158,16 @@ describe("channel list choosing", () => {
 
 describe("channel list groups", () => {
   it("always holds the watched channel", () => {
-    expect(ids(open("ch-3", { group: "favourites" }))).toEqual([4, 2, 3]);
+    expect(ids(open("ch-3", { group: "favourites" }))).toEqual([2, 3, 4]);
     expect(ids(open("ch-3", { group: "recent" }))).toEqual([3]);
     expect(ids(open("ch-5", { group: "decade" }))).toEqual([5, 1, 2, 3, 4, 6]);
     expect(ids(open("ch-3"))).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("lists Favourites in number order whatever order they were starred in", () => {
+    // Starred as 4 then 2.
+    expect(ids(open("ch-4", { group: "favourites" }))).toEqual([2, 4]);
+    expect(ids(open("ch-1", { group: "favourites" }))).toEqual([1, 2, 4]);
   });
 
   it("heads By decade with its decades", () => {

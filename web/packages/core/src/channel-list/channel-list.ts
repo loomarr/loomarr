@@ -31,8 +31,9 @@ const createChannelListState = ({
 const finding = (state: ChannelListState) => !!state.query?.trim();
 
 /**
- * What the list shows: the group's channels, or find's results. The watched channel is always in a
- * group's list: in Favourites it follows the others, in Recent and By decade it leads.
+ * What the list shows: the group's channels, or find's results. Every group is in number order but
+ * Recent (newest first) and By decade (decade, then number). The watched channel is always listed:
+ * Favourites takes it in its place by number, and Recent and By decade lead with it.
  */
 const channelListView = <C extends LineupChannel>(
   state: ChannelListState,
@@ -45,9 +46,11 @@ const channelListView = <C extends LineupChannel>(
   const members = lineup.group(state.group).channels;
   const watched = lineup.channels.find((channel) => channel.id === state.watchedId);
   let rows = members;
-  if (watched && !members.includes(watched)) {
-    rows =
-      state.group === "recent" || state.group === "decade" ? [watched, ...members] : [...members, watched];
+  if (state.group === "favourites") {
+    // The lineup keeps favourites in the order starred; a list of channels is in number order.
+    rows = lineup.channels.filter((channel) => channel === watched || members.includes(channel));
+  } else if (watched && !members.includes(watched)) {
+    rows = [watched, ...members];
   }
 
   const headings = new Map<string, number>();
