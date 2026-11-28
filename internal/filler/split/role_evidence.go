@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 const (
@@ -152,7 +154,7 @@ func ValidateRoleEvidence(evidence RoleEvidence) error {
 	if err := evidence.Source.validate(); err != nil || evidence.StartMs < 0 || evidence.EndMs <= evidence.StartMs || evidence.EndMs > evidence.Source.DurationMs {
 		return errors.New("source structure: role evidence source or interval is invalid")
 	}
-	if !ValidRole(evidence.Role) || evidence.Reason != strings.TrimSpace(evidence.Reason) || evidence.Reason == "" || len(evidence.Reason) > structureRoleReasonMaximumBytes {
+	if !structure.ValidRole(evidence.Role) || evidence.Reason != strings.TrimSpace(evidence.Reason) || evidence.Reason == "" || len(evidence.Reason) > structureRoleReasonMaximumBytes {
 		return errors.New("source structure: role evidence claim is invalid")
 	}
 	frameEvidence := len(evidence.FrameSHA256) > 0 && evidence.VideoSHA256 == ""

@@ -87,7 +87,7 @@ func completeTimeline(segments []Segment, durationMS int64) bool {
 	}
 	next := int64(0)
 	for _, segment := range segments {
-		if segment.StartMS != next || segment.EndMS <= segment.StartMS || segment.EndMS > durationMS || !validRole(segment.Role) {
+		if segment.StartMS != next || segment.EndMS <= segment.StartMS || segment.EndMS > durationMS || !ValidRole(segment.Role) {
 			return false
 		}
 		next = segment.EndMS
@@ -99,7 +99,8 @@ func validUnit(unit Unit) bool {
 	return slices.Contains([]Unit{UnitStandalone, UnitCompilation, UnitProgrammeExcerpt, UnitProgrammeSpots, UnitUnusable, UnitUnclear}, unit)
 }
 
-func validRole(role Role) bool {
+// ValidRole reports whether role is one of the closed segment roles.
+func ValidRole(role Role) bool {
 	return fillerRole(role) || role == RoleProgrammeFragment || role == RoleNonFiller || role == RoleAmbiguous || role == RoleUnusable
 }
 

@@ -37,6 +37,9 @@ both roles (Watch is absent until a channel exists). An admin's Library tab carr
 count. Everything else is behind More, Requests first; its count shows in the sheet and More carries
 a dot for it.
 
+- **Decided next (2026-11-27), not yet built:** opening Loomarr lands on the picture, the Guide becomes
+  a view of the watching screen with the picture still playing, and Home's wall is where the back
+  arrow leads ([`design/watch/`](../../design/watch/README.md)). The items below describe what ships.
 - **Guide** (`/guide`, headed "Guide" like its nav item; #3413) is the single channels surface: a cross-channel time grid,
   with channel creation (describe → review → approve) as a header action. The old Channels and Suggest
   routes redirect to it.

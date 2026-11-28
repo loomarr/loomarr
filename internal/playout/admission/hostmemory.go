@@ -1,4 +1,4 @@
-package playout
+package admission
 
 // Host memory: the fact the resource budget's hardware encode admission is bounded by.
 

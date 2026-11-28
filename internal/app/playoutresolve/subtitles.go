@@ -25,13 +25,6 @@ type SubtitleCues interface {
 	Cues(src subtitles.Source) ([]subtitles.Cue, subtitles.State)
 }
 
-// SetSubtitles attaches the Library's subtitle tracks and the reader of their cues. Until it is
-// set, every window is empty.
-func (r *Resolver) SetSubtitles(tracks LibrarySubtitleReader, cues SubtitleCues) {
-	r.librarySubtitles = tracks
-	r.subtitleCues = cues
-}
-
 // Subtitles is what a player shows from `from` to `to` on a channel's wall clock (#2088 decision
 // 5): the text tracks of the programme on air at `from`, and the cues of the track `key` picks in
 // each programme part of the window, placed on the wall clock. It walks the accepted cycle the

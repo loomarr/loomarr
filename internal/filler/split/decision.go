@@ -45,9 +45,9 @@ func newStructureDecisionProjectionAuthority(source SourceAsset, artifact struct
 	}
 	end := int64(0)
 	for index, segment := range decision.Segments {
-		role := Role(segment.Role)
+		role := segment.Role
 		disposition, err := projectedStructureDisposition(segment.Disposition)
-		if err != nil || !ValidRole(role) || segment.StartMS != end || segment.EndMS <= segment.StartMS || segment.EndMS > source.DurationMs {
+		if err != nil || !structure.ValidRole(role) || segment.StartMS != end || segment.EndMS <= segment.StartMS || segment.EndMS > source.DurationMs {
 			return nil, fmt.Errorf("source structure decision interval %d is invalid", index)
 		}
 		if disposition == DispositionKeep && !CertifiedFillerRole(role) || disposition == DispositionDiscard && role != RoleProgrammeFragment && role != RoleNonFiller {
@@ -88,7 +88,7 @@ func ValidateDecisionProjection(assessment Assessment, artifact structure.Artifa
 		planned := assessment.Plan[index]
 		disposition, err := projectedStructureDisposition(decided.Disposition)
 		if err != nil || planned.StartMs != decided.StartMS || planned.EndMs != decided.EndMS ||
-			planned.Role != Role(decided.Role) || planned.Disposition != disposition {
+			planned.Role != decided.Role || planned.Disposition != disposition {
 			return fmt.Errorf("source structure decision interval %d does not match", index)
 		}
 	}
@@ -108,6 +108,9 @@ func ValidateAssessmentOrProjection(assessment Assessment, artifact *structure.A
 	return strictErr
 }
 
+// projectedStructureKind maps what an assessor decided a source is (structure.Unit) to the reduced
+// assessment's Kind. The two are separate vocabularies: two units reduce to one single-unit kind,
+// and an unusable or unclear unit has no projection.
 func projectedStructureKind(unit structure.Unit) (Kind, error) {
 	switch unit {
 	case structure.UnitStandalone, structure.UnitProgrammeExcerpt:

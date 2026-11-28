@@ -24,10 +24,10 @@ type measureSink struct {
 	inventory.AnalysisStore
 }
 
-// NewMeasurer builds Loomarr's measurement job for this resolver: stream facts come from the same
+// newMeasurer builds Loomarr's measurement job for this resolver: stream facts come from the same
 // prober playout already uses, revisions from the same stat rule local sources are registered
 // with, and the analysis tools from the given (background) runner.
-func (r *Resolver) NewMeasurer(tools measure.Tools, analysis inventory.AnalysisStore) *measure.Measurer {
+func (r *Resolver) newMeasurer(tools measure.Tools, analysis inventory.AnalysisStore) *measure.Measurer {
 	return measure.New(measure.Deps{
 		Sink:  measureSink{Service: r.inventory, AnalysisStore: analysis},
 		Tools: tools,

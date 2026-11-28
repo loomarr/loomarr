@@ -40,6 +40,9 @@ func (a runtimeAvail) Resolve(k provision.Key) (string, int64, bool) {
 func (a runtimeAvail) ResolveEpisodes(k provision.Key) schedule.EpisodeResolution {
 	return schedule.EpisodeResolution{Programs: a.series[k]}
 }
+func (a runtimeAvail) Bind(ctx context.Context) channels.AvailabilityRun {
+	return channels.Infallible(a).Bind(ctx)
+}
 
 // recencyEngine is an internal-playout engine on a 24 h window with a clock the test moves.
 // recencyEngine is an engine over avail, whose library items it stores so the airings it records

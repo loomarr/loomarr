@@ -109,6 +109,8 @@ type LibraryCredit struct {
 	ID LibraryID
 	// Photo is an http(s) URL of their headshot.
 	Photo string
+	// PhotoHash is the image hash of their imported photo, "" for none; read, never saved.
+	PhotoHash string
 }
 
 // PersonID is the library_people row the credit names: "<namespace>:<id>" when linked, such as

@@ -33,7 +33,14 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
+	// Install the table the class probe would publish, with distinct Hable and BT.2390 HDR cells.
+	top := playout.LadderHeights(playout.TierFor(""))[0]
+	costs := &playout.MeasuredCosts{Encoder: encode.EncoderSoftware, Costs: map[playout.CostKey]playout.ClassCost{
+		{Class: playout.ClassSDR, Height: top}:                           {Speed: 20, CPUCores: 0.5},
+		playout.HDRKey(playout.ClassHDR4K, top, playout.ToneCurveHable):  {Speed: 4, CPUCores: 1},
+		playout.HDRKey(playout.ClassHDR4K, top, playout.ToneCurveBT2390): {Speed: 3, CPUCores: 2},
+	}}
+	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{PlayoutMeasuredCosts: costs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,14 +52,6 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 	if got := r.ToneCurve(); got != playout.ToneCurveBT2390 {
 		t.Errorf("resolver ToneCurve = %q, want the playout.tone_curve setting %q", got, playout.ToneCurveBT2390)
 	}
-
-	// Install the table the class probe would publish, with distinct Hable and BT.2390 HDR cells.
-	top := playout.LadderHeights(playout.TierFor(""))[0]
-	r.SetMeasuredCosts(&playout.MeasuredCosts{Encoder: encode.EncoderSoftware, Costs: map[playout.CostKey]playout.ClassCost{
-		{Class: playout.ClassSDR, Height: top}:                           {Speed: 20, CPUCores: 0.5},
-		playout.HDRKey(playout.ClassHDR4K, top, playout.ToneCurveHable):  {Speed: 4, CPUCores: 1},
-		playout.HDRKey(playout.ClassHDR4K, top, playout.ToneCurveBT2390): {Speed: 3, CPUCores: 2},
-	}})
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/playout/status", nil)
 	req.Header.Set("Authorization", "Bearer tone-curve-test-token")

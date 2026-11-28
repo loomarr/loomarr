@@ -298,7 +298,7 @@ func TestPlayoutResolver_FirstPlayMeasuresFactsOnceAndActivatesMinimalProbe(t *t
 			return playout.MediaFormat{}, nil
 		},
 	}
-	r.measurer = r.NewMeasurer(measure.Tools{}, st)
+	r.measurer = r.newMeasurer(measure.Tools{}, st)
 
 	format := r.FormatOf(t.Context(), "", path)
 	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
@@ -333,7 +333,7 @@ func TestPlayoutResolver_AirtimeFormatCarriesTheMeasuredActivePicture(t *testing
 			}, nil
 		},
 	}
-	r.measurer = r.NewMeasurer(measure.Tools{}, st)
+	r.measurer = r.newMeasurer(measure.Tools{}, st)
 	if format := r.FormatOf(t.Context(), "", path); format.Active != (playout.Rect{}) {
 		t.Fatalf("unmeasured source: active %+v, want unknown", format.Active)
 	}
@@ -368,7 +368,7 @@ func TestPlayoutResolver_UnmeasurableSourceKeepsFullProbe(t *testing.T) {
 		},
 		probeFormat: func(context.Context, string) (playout.MediaFormat, error) { return playout.MediaFormat{}, nil },
 	}
-	r.measurer = r.NewMeasurer(measure.Tools{}, st)
+	r.measurer = r.newMeasurer(measure.Tools{}, st)
 	format := r.FormatOf(t.Context(), "", path)
 	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
 	if err != nil || len(pipe.MissingFacts) == 0 || slices.Contains(pipe.PreInput, "-fpsprobesize") {
@@ -392,7 +392,7 @@ func TestPlayoutResolver_FirstPlayWithRealFFprobeActivatesMinimalProbeAndStoresA
 	st := testkit.MigratedSQLiteStore(t)
 	r := &Resolver{inventory: inventory.New(st), now: time.Now,
 		probeSource: playout.FFprobeSourceNextTo(ffmpeg)}
-	m := r.NewMeasurer(measure.DefaultTools(ffmpeg, playout.FFprobeBeside(ffmpeg)), st)
+	m := r.newMeasurer(measure.DefaultTools(ffmpeg, playout.FFprobeBeside(ffmpeg)), st)
 	r.measurer = m
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

@@ -144,6 +144,16 @@ const Unidentified: Story = {
   },
 };
 
+// A video kept as the household's own: its year and "Home video", with no mark.
+const KeptHomeVideo: Story = {
+  args: {
+    titles: [
+      { id: "90000814", kind: "movie", name: "Summer at the lake", year: 2019, ready: true, homeVideo: true },
+      ...TITLES,
+    ],
+  },
+};
+
 // Importing: the step's words over the preparation bar, with Needs you beside them.
 const AddingStep1: Story = { args: { admin: status(WALKING) } };
 const Adding: Story = { args: { admin: admin({ scan: READING, needsYou: 3 }) } };
@@ -409,6 +419,7 @@ const needsStory = (needs: LibraryNeed[], orders: LibraryOrderNeed[], problems: 
       onChooseOrder={answered}
       onIgnore={answered}
       onIgnoreFolder={answered}
+      onKeep={answered}
       onLink={answered}
       onOpenTitle={() => {}}
       onSearch={search}
@@ -480,7 +491,8 @@ const movieExtras = {
   tagline: "Every plan has a loose thread.",
   score: 7.4,
   credits: [
-    { name: "Imelda Varge", character: "Agnes Fell", role: "actor" as const },
+    // One with an imported photo, one still on their initials.
+    { name: "Imelda Varge", character: "Agnes Fell", role: "actor" as const, photo: art("#6b4a3a") },
     { name: "Tobin Ashcroft", character: "Rafe Fell", role: "actor" as const },
     { name: "Lorna Pettigrew", role: "director" as const },
   ],
@@ -674,25 +686,26 @@ const MemberSeries: Story = {
 };
 
 // A home video: no catalog details and on no channel.
+const homeVideoTitle = {
+  kind: "movie" as const,
+  homeVideo: true,
+  name: "Summer at the lake",
+  year: 2019,
+  genres: ["Home videos"],
+  files: [],
+  unplayable: 0,
+  seasons: [],
+  match: { by: "none" as const },
+  detailsFrom: {},
+  channels: [],
+};
+
 const HomeVideo: Story = {
-  render: () => (
-    <LibraryTitle
-      fix={titleFixes}
-      onBack={() => {}}
-      title={{
-        kind: "movie",
-        name: "Summer at the lake",
-        year: 2019,
-        genres: [],
-        files: [],
-        unplayable: 0,
-        seasons: [],
-        match: { by: "you" },
-        detailsFrom: {},
-        channels: [],
-      }}
-    />
-  ),
+  render: () => <LibraryTitle fix={titleFixes} onBack={() => {}} title={homeVideoTitle} />,
+};
+
+const MemberHomeVideo: Story = {
+  render: () => <LibraryTitle onBack={() => {}} title={homeVideoTitle} />,
 };
 
 const NotInLibrary: Story = {
@@ -1122,6 +1135,7 @@ export {
   GenreChosen,
   HeldRemoval,
   HomeVideo,
+  KeptHomeVideo,
   LetterJump,
   LetterJumpSearch,
   Loading,
@@ -1129,6 +1143,7 @@ export {
   MemberCollections,
   MemberCollectionsNoneYet,
   MemberEmpty,
+  MemberHomeVideo,
   MemberMovie,
   MemberNoMatch,
   MemberSeries,

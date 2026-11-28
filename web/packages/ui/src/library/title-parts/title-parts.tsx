@@ -316,9 +316,10 @@ const CastAndCrew = ({
                   borderRadius={32}
                   height={64}
                   justifyContent="center"
+                  overflow="hidden"
                   width={64}
                 >
-                  <Text textRole="title">{initials(person.name)}</Text>
+                  {person.photo ?? <Text textRole="title">{initials(person.name)}</Text>}
                 </Surface>
                 <PersonName center person={person} personLink={personLink} />
                 {person.character ? (

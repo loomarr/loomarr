@@ -44,6 +44,7 @@ const LibraryNeedsCards = ({
   onLink,
   onIgnore,
   onIgnoreFolder,
+  onKeep,
   onChooseOrder,
   onSearch,
   onOpenTitle,
@@ -88,6 +89,7 @@ const LibraryNeedsCards = ({
             need={need}
             onDone={() => done(need.id)}
             onIgnore={() => answer(need.id, "ignored", onIgnore(need.id))}
+            onKeep={onKeep ? () => answer(need.id, "added", onKeep(need.id)) : undefined}
             onOpenTitle={onOpenTitle}
             problem={problemOf.get(need.id)}
             onPick={(c) => answer(need.id, "added", onLink(need.id, c.externalId))}

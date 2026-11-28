@@ -259,7 +259,13 @@ const NoMatch = ({
 };
 
 const subtitle = (title: LibraryShelfTitle) => {
-  const kind = title.unidentified ? "Not identified yet" : title.kind === "series" ? "Show" : "Movie";
+  const kind = title.homeVideo
+    ? "Home video"
+    : title.unidentified
+      ? "Not identified yet"
+      : title.kind === "series"
+        ? "Show"
+        : "Movie";
   return title.year ? `${title.year} · ${kind}` : kind;
 };
 

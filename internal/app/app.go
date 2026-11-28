@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -53,6 +54,10 @@ type Overrides struct {
 	// generates test clips and runs ffmpeg for about half a minute. run() sets it; composition tests
 	// leave it off so building an app never starts encoders.
 	CapacityProbe bool
+	// PlayoutMaxChannels and PlayoutMeasuredCosts give playout a capacity before any encoder trial
+	// or class probe. Composition tests set them; run() leaves them zero.
+	PlayoutMaxChannels   int
+	PlayoutMeasuredCosts *playout.MeasuredCosts
 	// MetricsToken is the Prometheus scrape bearer for /metrics (§7). run() sets it from
 	// LOOMARR_METRICS_TOKEN[_FILE]; empty ⇒ the endpoint refuses (fail closed).
 	MetricsToken string
@@ -176,12 +181,17 @@ func buildHandler(
 	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
 
-	channelsBuilt, err := buildChannels(
-		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
-		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, fillerLayout, log,
-		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks, calendar,
-		subtitleDecoder,
-	)
+	core := buildCore{
+		ctx: rootCtx, store: st, settings: set, overrides: ov, owner: owner,
+		libraryClient: libraryClient, secrets: secrets, readGeneratedSecret: readGeneratedSecret,
+		events: eventBus, emitter: emitter, jobs: jobReg, log: log, metrics: foundation.metrics,
+	}
+	channelsBuilt, err := buildChannels(channelsInput{
+		buildCore: core, capturePlayoutResolver: capturePlayoutResolver, activity: activityRec,
+		fillerLayout: fillerLayout, processDiagnostics: foundation.processDiagnostics,
+		storageGovernor: foundation.storageGovernor, watermarks: watermarks, calendar: calendar,
+		subtitleDecoder: subtitleDecoder,
+	})
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -221,12 +231,11 @@ func buildHandler(
 	foundation.startup.Complete(diagnostics.StartupCheckScheduledTasks, diagnostics.StartupSkipped,
 		"checked by Current Health once the scheduler is running", currenthealth.ScheduledTasksRoute, "")
 
-	operations, err := buildOperations(
-		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
-		libraryClient, tmdbClient, eventBus, emitter, jobReg, owner, playoutRes,
-		appliedBackendContext, ov, log, foundation.metrics,
-		foundation.protection, foundation.secretRedactor,
-	)
+	operations, err := buildOperations(operationsInput{
+		buildCore: core, desiredSettings: desiredSet, refreshSecretRedactor: refreshSecretRedactor,
+		tmdbClient: tmdbClient, playoutResolver: playoutRes, appliedBackend: appliedBackendContext,
+		protection: foundation.protection, secretRedactor: foundation.secretRedactor,
+	})
 	if err != nil {
 		return nil, nil, nil, err
 	}

@@ -101,6 +101,8 @@ interface LibraryTitlePerson {
   personId?: string;
   character?: string;
   role: "actor" | "director" | "writer" | "creator";
+  /** An actor's photo, drawn by the app; absent shows their initials. */
+  photo?: ReactNode;
 }
 
 /** What plays, for a member's one technical line. */
@@ -114,6 +116,8 @@ interface LibraryTitlePlaying {
 /** A movie or a series, as its page shows it. */
 interface LibraryTitleDetail {
   kind: LibraryKind;
+  /** Kept as the household's own video: no catalogue to read, so no Update details. */
+  homeVideo?: boolean;
   /** The wide art behind the title, drawn by the app. */
   backdrop?: ReactNode;
   /** The title's logo, drawn by the app in place of its name. */

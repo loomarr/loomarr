@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watching Loomarr: The Cross, prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0B0C0E;--surface:#131519;--surface2:#1B1E24;--line:#2A2E37;--muted:#8B93A3;--text:#E7EAF0;--white:#fff;
+--amber:#FFB020;--red:#E5484D;--cyan:#4CC9E8;--ink:11,12,14;
+--d50:#E6CFA8;--d60:#F0A8B8;--d70:#C9E08A;--d80:#B9A6F2;--d90:#9DB4F5;--d00:#8FD3C8;
+--num:56px;--title:28px;--meta:14px;--rn:16px;--rname:15px;--rnow:13px;--pad:48px;--colw:400px}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#050506;color:var(--text);font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+::selection{background:var(--amber);color:#0B0C0E}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-radius:6px}
+.mono{font-family:"Geist Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+svg.ic{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+/* ----- outside the product: the prototype's own bar ----- */
+#bar{height:44px;display:flex;align-items:center;gap:6px;padding:0 14px;background:#050506;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
+#bar b{color:var(--text);font-weight:500;margin-right:8px}
+#bar button{height:28px;padding:0 10px;border-radius:6px;color:var(--muted)}
+#bar button.on{background:var(--surface2);color:var(--text)}
+#bar .sp{flex:1}
+#wrap{position:absolute;inset:44px 0 0 0;display:grid;grid-template:minmax(0,1fr)/minmax(0,1fr);place-items:center;overflow:hidden}
+body.tasks #wrap{right:278px}
+#tasks{position:absolute;right:14px;top:58px;width:250px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;z-index:50}
+#tasks h2{font-size:13px;font-weight:600;margin-bottom:8px}
+#tasks li{list-style:none;display:flex;justify-content:space-between;gap:10px;padding:4px 0;color:var(--muted)}
+#tasks li::before{content:"";width:8px;height:8px;border-radius:50%;border:1px solid var(--muted);margin-top:5px;flex:none}
+#tasks li.done{color:var(--text)}
+#tasks li.done::before{background:#3DD68C;border-color:#3DD68C}
+#tasks li span:first-of-type{flex:1}
+/* ----- the product ----- */
+#stage{position:relative;background:var(--bg);overflow:hidden;width:100%;height:100%}
+#stage.tv{width:960px;height:540px;transform-origin:center;cursor:none;--num:52px;--title:30px;--meta:15px;--rn:18px;--rname:16px;--pad:48px;--colw:372px}
+#stage.phone{width:390px;height:844px;transform-origin:center;border-radius:44px;background:#000;--num:44px;--title:22px;--meta:13px;--rn:15px;--pad:16px}
+#stage.full{--num:64px;--title:34px;--meta:15px;--rn:20px;--rname:16px;--pad:64px;--colw:440px}
+/* picture */
+#pic{position:relative;overflow:hidden;background:#000;border-radius:6px}
+#pic .art{position:absolute;inset:0;background-size:cover;background-position:center}
+#pic .wm{position:absolute;top:5%;right:5%;font-weight:600;letter-spacing:.08em;font-size:clamp(11px,1.6cqw,20px);color:rgba(231,234,240,.42);text-transform:uppercase}
+#pic .snow{position:absolute;inset:0;background:url(static.webp) 0 0/256px;mix-blend-mode:screen;opacity:0;pointer-events:none}
+#pic .dim{position:absolute;inset:0;background:rgba(var(--ink),.5);opacity:0;pointer-events:none;transition:opacity .2s}
+/* Changing channel covers the picture at once and uncovers it once: a run of fast flips never shows the pictures in between. */
+#pic.tuning .snow{opacity:.22}#pic.tuning .dim{opacity:1;background:rgba(var(--ink),.88);transition:none}
+#pic.cold .snow{opacity:.5}#pic.cold .dim{opacity:1;background:rgba(var(--ink),.8)}
+#pic.paused .dim{opacity:1;background:rgba(var(--ink),.3)}
+#pic .pm{position:absolute;left:50%;top:50%;width:72px;height:72px;margin:-36px;border-radius:50%;background:rgba(var(--ink),.72);display:none;place-items:center;color:#fff}
+#pic.paused .pm{display:grid}
+#pic .unmute{position:absolute;left:50%;top:16px;transform:translateX(-50%);display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;background:rgba(var(--ink),.94);font-size:13px;font-weight:500;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){#pic.tuning .snow,#pic.cold .snow{opacity:0}}
+/* lower third */
+.third{display:grid;grid-template-columns:auto 1fr auto;column-gap:20px;align-items:center;position:relative}
+.third .n{font-size:var(--num);line-height:1;font-weight:500;letter-spacing:-.02em;min-width:1.2em;text-align:right;color:var(--white)}
+.third .n.typing{color:var(--amber);border-bottom:3px solid currentColor;padding-bottom:4px}
+.third h1{font-size:var(--title);line-height:1.12;font-weight:600;color:var(--white);letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.third .meta,.third .next{font-size:var(--meta);color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.third em{font-style:normal;color:var(--text)}
+.third .next b{font-weight:500;color:var(--text)}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:8px;position:relative;top:-1px}
+.back{color:var(--cyan)}
+.golive{display:inline-flex;align-items:center;height:28px;margin-right:10px;padding:0 10px;border:1px solid var(--red);border-radius:6px;color:#E85A5F;font-weight:500;font-size:13px}
+.bars{position:absolute;left:0;top:0;height:3px;width:0;background:linear-gradient(90deg,#FFB020 0 14.3%,#F5D90A 0 28.6%,#3DD68C 0 42.9%,#4CC9E8 0 57.2%,#D6409F 0 71.5%,#E5484D 0 85.8%,#8B93A3 0);background-size:var(--colw) 3px}
+.bars.run{animation:bars .42s ease-out}
+.bars.wait{width:100%;background:linear-gradient(90deg,#8B93A3 0 14.3%,#5A6170 0 28.6%,#8B93A3 0 42.9%,#5A6170 0 57.2%,#8B93A3 0 71.5%,#5A6170 0 85.8%,#8B93A3 0)}
+@keyframes bars{0%{width:0;opacity:1}70%{width:100%;opacity:1}100%{width:100%;opacity:0}}
+/* the channel list: one scrollable list on every device, the channel you are watching pinned in it */
+.tabs{display:flex;align-items:center;gap:20px;font-size:14px;color:var(--muted);white-space:nowrap;min-height:36px}
+.tabs button{height:30px;display:inline-flex;align-items:center;position:relative}
+.tabs button.on{color:var(--text);font-weight:500}
+.tabs button.on::after{content:"";position:absolute;left:0;right:0;bottom:1px;height:1px;background:var(--text)}
+.tabs button.cur{outline:2px solid var(--amber);outline-offset:4px;border-radius:4px}
+.find{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:500;color:var(--white);min-height:36px}
+.find input{flex:1;min-width:0;background:none;border:0;outline:0;font:inherit;color:inherit}
+.find small{font-size:13px;font-weight:400;color:var(--muted)}
+#clist{position:relative;min-height:0;overflow-y:auto;scrollbar-width:none;mask-image:linear-gradient(transparent,#000 14px,#000 calc(100% - 14px),transparent)}
+/* Room above the first channel and below the last, so any channel can rest on the crossing. Scrolling stops at the list's ends, not in this room. */
+#clist .room{display:block;height:max(700px,100vh)}
+#clist #anchor{display:block;height:0}
+#clist .third{position:sticky;top:0;bottom:0;z-index:2;padding:12px 0}
+.colopen #clist .third{background:var(--bg)}
+#clist .third.cur{outline:2px solid var(--amber);outline-offset:-2px;border-radius:6px}
+.dhead{font-size:12px;font-weight:500;letter-spacing:.04em;padding:16px 0 4px calc(var(--numw,56px) + 20px)}
+.none{padding:14px 0 14px 76px;color:var(--muted);font-size:14px}
+.find .fx{width:36px;height:36px;display:grid;place-items:center}
+button:disabled{opacity:.35;cursor:default}
+.row{display:grid;grid-template-columns:var(--numw,56px) 1fr auto;column-gap:20px;align-items:baseline;width:100%;padding:9px 12px 9px 0;border-radius:6px;scroll-margin-block:120px}
+.row .n{font-size:var(--rn);color:var(--muted);text-align:right}
+.row .name{font-size:var(--rname);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .now{font-size:var(--rnow);color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .left{font-size:12px;color:var(--muted)}
+.row.hov,.row:hover{background:var(--surface2)}
+.row.cur{background:var(--surface2);outline:2px solid var(--amber);outline-offset:-2px}
+.row.tuned .name{color:var(--white);font-weight:600}
+.row.tuned .left{color:var(--text)}
+/* the film strip: desktop in a window only */
+.slabel{font-size:13px;color:var(--muted);min-height:36px;display:flex;align-items:center}
+.slabel b{color:var(--text);font-weight:600;margin:0 4px}
+.strip{display:flex;align-items:flex-start;overflow:hidden;position:relative}
+.blk{position:relative;flex:none;padding:3px;border-radius:9px}
+.blk .still{height:84px;border-radius:6px;background-size:cover;background-position:center}
+.blk .t{font-size:12px;color:var(--muted);margin-top:8px;white-space:nowrap}
+.blk .ti{font-size:14px;font-weight:500;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blk:hover .still{outline:2px solid var(--text);outline-offset:1px}
+.blk.cur .still{outline:2px solid var(--amber);outline-offset:1px}
+.blk .head{position:absolute;top:-3px;width:2px;height:96px;background:#fff}
+.blk .head::before{content:"";position:absolute;left:-4px;top:-5px;width:10px;height:10px;border-radius:50%;background:#fff}
+.spots{flex:none;display:flex;gap:2px;margin:3px 4px 0}
+.spots i{width:6px;height:84px;border-radius:2px;background:rgba(231,234,240,.2)}
+.strip::after{content:"";position:absolute;right:0;top:0;bottom:0;width:90px;background:linear-gradient(90deg,rgba(var(--ink),0),var(--bg));pointer-events:none}
+.info h2{font-size:17px;font-weight:600;color:var(--white)}
+.info .f{font-size:12px;color:var(--muted);margin-top:4px}
+.info p{font-size:14px;line-height:1.5;margin-top:8px;max-width:60ch}
+/* the quiet row */
+#keys{display:flex;align-items:center;gap:8px}
+#keys button{height:36px;min-width:36px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:8px;padding:0 8px;position:relative;font-size:14px}
+#keys button.lab{padding:0 12px}
+#keys button.on,#keys button:hover{background:var(--surface2)}
+#keys button.cur{outline:2px solid var(--amber);outline-offset:2px}
+#keys .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+#keys button[data-tip]:hover::after,#keys button[data-tip].cur::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(var(--ink),.96);padding:4px 8px;border-radius:6px;font-size:12px;white-space:nowrap}
+.gctl{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:6px;white-space:nowrap}
+.gctl.on,.gctl:hover{background:var(--surface2)}
+.home{display:inline-flex;align-items:center;gap:6px;height:36px;font-size:14px;padding-right:10px}
+/* menus, hints */
+.menu{position:absolute;background:var(--surface);border-radius:10px;padding:8px;width:280px;z-index:20}
+.menu .h{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);padding:4px 6px 6px 12px}
+.menu .h button{width:28px;height:28px;display:grid;place-items:center;border-radius:6px}
+.menu .o{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;min-height:40px;padding:8px 12px;border-radius:6px;font-size:14px}
+.menu .o:hover,.menu .o.cur{background:var(--surface2)}
+.menu .o.cur{outline:2px solid var(--amber);outline-offset:-2px}
+.menu .o small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.menu .o .v{color:var(--muted);font-size:13px}
+.menu dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;padding:6px 12px 10px;font-size:13px}
+.menu dt{color:var(--muted)}.menu dd{text-align:right}
+.hint{position:absolute;z-index:15;display:inline-flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:rgba(var(--ink),.94);font-size:13px;color:var(--text);white-space:nowrap}
+.hint kbd{font-family:"Geist Mono",monospace;font-size:12px;color:var(--white);font-weight:500}
+.toast{position:absolute;left:50%;top:68px;transform:translateX(-50%);z-index:30;padding:8px 14px;border-radius:8px;background:rgba(var(--ink),.96);font-size:13px;max-width:calc(100% - 32px);text-align:center}
+.vguide .toast{top:auto;bottom:28px;background:var(--surface2)}
+.tv.vguide .toast{top:10px;bottom:auto}
+/* While a click is held off after a tune, the row under the pointer does not look clickable. */
+.still #clist .row:hover{background:none;cursor:default}
+.phone .toast,.phone.vguide .toast{top:272px;bottom:auto;background:rgba(var(--ink),.96)}
+.btn{display:inline-flex;align-items:center;height:40px;padding:0 16px;border-radius:8px;border:1px solid #666970;font-size:14px;font-weight:500}
+/* ----- desktop in a window: the cross sits beside the picture ----- */
+#stage.window{display:grid;grid-template-columns:var(--colw) 1fr;grid-template-rows:auto 1fr auto;column-gap:48px;padding:28px 48px 32px}
+.window .over{display:none}
+.window #colhead{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:6px}
+.window #colhead .top{display:flex;justify-content:space-between;align-items:center}
+.window #clist{grid-column:1;grid-row:2/4}
+.window #clist .third{background:var(--bg)}
+.window #picwrap{grid-column:2;grid-row:1/3;min-height:0;container-type:size;display:flex;align-items:flex-end}
+.window #pic{width:min(100cqw,177.78cqh);height:min(100cqh,56.25cqw)}
+.window #low{grid-column:2;grid-row:3;min-width:0}
+.window .lowhead{display:flex;justify-content:space-between;align-items:center}
+.window .info{min-height:92px;margin-top:14px}
+.window .hint{left:48px;bottom:6px}
+/* ----- full screen and television: the picture fills the screen; the list and the quiet row sit over it ----- */
+#stage.full #picwrap,#stage.tv #picwrap{position:absolute;inset:0}
+#stage.full #pic,#stage.tv #pic{position:absolute;inset:0;border-radius:0}
+.over{position:absolute;inset:0;pointer-events:none;transition:opacity .12s}
+.over.b{background:linear-gradient(0deg,rgba(var(--ink),.95) 0,rgba(var(--ink),.72) 24%,rgba(var(--ink),0) 46%)}
+.over.l{background:linear-gradient(90deg,rgba(var(--ink),.97) 0,rgba(var(--ink),.94) 40%,rgba(var(--ink),0) 60%);opacity:0}
+#stage.tv .over.l{background:linear-gradient(90deg,rgba(var(--ink),.97) 0,rgba(var(--ink),.94) 52%,rgba(var(--ink),0) 70%)}
+.colopen .over.l{opacity:1}
+#stage.full #col,#stage.tv #col{position:absolute;left:var(--pad);top:0;bottom:0;width:var(--colw);display:flex;flex-direction:column;padding-bottom:20px;pointer-events:none}
+.colopen #col,#stage #col .third,#stage #colhead .top{pointer-events:auto!important}
+/* With the list closed the lower third stands alone and takes the width its words need. */
+#stage.full:not(.colopen) #col,#stage.tv:not(.colopen) #col{width:min(640px,62%)}
+#stage.full #colhead,#stage.tv #colhead{padding-top:28px;display:flex;flex-direction:column;gap:14px}
+#stage.tv #colhead .top,#stage.full #colhead .gctl,#stage.tv .tabs [data-act="find"]{display:none}
+#stage.full #clist,#stage.tv #clist{flex:1}
+#stage.full:not(.colopen) #clist,#stage.tv:not(.colopen) #clist{overflow:hidden}
+#stage.full #clist>:not(.third),#stage.tv #clist>:not(.third),#stage.full #colhead .tabs,#stage.tv #colhead .tabs,#stage.full .find,#stage.tv .find{opacity:0;visibility:hidden;transition:opacity .12s}
+.colopen #clist>*,.colopen #colhead .tabs,.colopen .find{opacity:1!important;visibility:visible!important}
+#stage.full #low,#stage.tv #low{display:none}
+#stage.full #keys,#stage.tv #keys{position:absolute;right:var(--pad);bottom:40px}
+#stage.tv #keys{bottom:32px}
+.idle #col,.idle .over,.idle #keys,.idle .hint{opacity:0;transition:opacity .2s}
+#stage.idle{cursor:none}
+#stage.tv .hint,#stage.full .hint{left:50%;top:28px;transform:translateX(-50%)}
+#stage.full .hint{top:68px}
+.colopen .hint{display:none}
+/* ----- phone, upright ----- */
+#stage.phone{display:flex;flex-direction:column}
+.phone .island{position:absolute;left:50%;top:11px;width:124px;height:36px;margin-left:-62px;border-radius:20px;background:#000;z-index:40}
+.phone #ptop{height:104px;padding:55px 8px 0;display:flex;justify-content:space-between;align-items:center;flex:none}
+.phone #ptop button{min-width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:14px}
+.phone #pic{width:390px;height:219px;border-radius:0;flex:none}
+.phone .third{padding:14px 8px 6px 16px;column-gap:14px;min-height:88px;flex:none}
+.phone .third h1{-webkit-line-clamp:1}
+.phone .third .act{display:flex}.phone .third .act button{width:44px;height:44px;display:grid;place-items:center}
+.phone .ptabs{display:flex;align-items:center;padding:0 10px 0 16px;gap:8px;flex:none}
+.phone .ptabs .tabs,.phone .ptabs .find{flex:1;min-width:0;min-height:44px}
+.phone .ptabs .tabs{overflow-x:auto;scrollbar-width:none;gap:18px;padding-right:20px;mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+.phone .row:hover{background:none}
+.phone .tabs button,.phone .gctl{height:44px;flex:none}
+.phone #plist{flex:1;overflow:auto;padding:0 16px 40px;scrollbar-width:none;--numw:28px}
+.phone .row{padding:10px 0;min-height:56px;column-gap:14px}
+.phone .hint{left:16px;right:16px;top:272px;justify-content:center}
+.phone .menu{left:0;right:0;bottom:0;width:auto;border-radius:16px 16px 0 0;padding:10px 12px 40px}
+.phone .menu .o{min-height:44px}
+.phone .menu .h button,.phone .find .fx{min-width:44px;height:44px}
+/* Go live keeps its line's height and takes a 44 px touch area, so the lower third does not jump when it appears. */
+.phone .golive{position:relative}.phone .golive::after{content:"";position:absolute;inset:-8px 0}
+.phone p button{min-height:44px}
+.phone .none{padding-left:0}
+.phone .dhead{padding-left:42px}
+.phone .homeind{position:absolute;left:50%;bottom:8px;width:134px;height:5px;margin-left:-67px;border-radius:3px;background:rgba(231,234,240,.8);z-index:40}
+.kbd{flex:none;display:grid;grid-template-columns:repeat(10,1fr);gap:5px;padding:8px 6px 34px;background:var(--surface)}
+.kbd button{height:40px;border-radius:6px;background:var(--surface2);text-align:center;font-size:15px}
+.kbd .wide{grid-column:span 3}.kbd .all{grid-column:span 10}
+/* ----- the Guide: every channel's day on one clock ----- */
+#guide{position:absolute;inset:0;background:var(--bg);display:none;flex-direction:column;padding:28px var(--pad) 0;z-index:10}
+.vguide #guide{display:flex}
+#guide .ghead{display:flex;gap:32px;min-height:0}
+#guide .gleft{flex:1;min-width:0;display:flex;flex-direction:column;gap:14px}
+#guide .gright{flex:none;width:min(400px,30%)}
+#guide .gdock{aspect-ratio:16/9}
+#guide .gplay{font-size:13px;color:var(--muted);margin-top:8px}
+#guide .gplay b{color:var(--text);font-weight:500}
+#guide .gsyn{font-size:14px;line-height:1.5;color:var(--text);max-width:60ch;min-height:42px}
+#guide .gbar{display:flex;align-items:center;gap:24px;margin-top:6px}
+#guide .ruler{position:relative;height:26px;margin:14px 0 0 var(--gl);flex:none}
+#guide .ruler span{position:absolute;top:4px;font-size:12px;color:var(--muted)}
+#guide .ruler .nowtag{top:1px;font-size:12px;background:var(--red);color:#0B0C0E;font-weight:500;border-radius:3px;padding:2px 6px;transform:translateX(-50%)}
+#guide .grows{position:relative;flex:1;overflow:auto;scrollbar-width:none;padding:2px 2px 40px}
+#guide .grow{display:grid;grid-template-columns:var(--gl) 1fr;align-items:center;margin-bottom:5px;scroll-margin-block:20px}
+#guide .glab{display:grid;grid-template-columns:44px 1fr;column-gap:16px;align-items:baseline;padding-right:14px;width:100%}
+#guide .glab .n{text-align:right;color:var(--muted);font-size:15px}
+#guide .glab .nm{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#guide .grow.tuned .glab .n{font-size:26px;font-weight:500}#guide .grow.tuned .glab .nm{color:#fff;font-weight:600}
+#guide .track{position:relative;height:36px}
+#guide .grow.tuned .track{height:76px}
+#guide .gb{position:absolute;top:0;bottom:0;border-radius:4px;overflow:hidden;font-size:13px;font-weight:500;white-space:nowrap;display:flex;align-items:center;background:var(--surface);scroll-margin:24px}
+#guide .gb .tx{padding:0 10px;overflow:hidden;text-overflow:ellipsis;position:relative}
+#guide .gb .tx .tm{font-weight:400;font-size:12px;color:var(--muted);margin-right:8px}
+#guide .gb.on{color:#fff;font-weight:600;background-size:cover;background-position:center}
+#guide .gb.on::before,#guide .grow.tuned .gb::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(var(--ink),.68),rgba(var(--ink),.46))}
+#guide .gb .aired{position:absolute;left:0;top:0;bottom:0;background:rgba(var(--ink),.62)}
+#guide .grow.tuned .gb{align-items:flex-end;background-size:cover;background-position:center;color:#fff}
+#guide .grow.tuned .gb .tx{padding-bottom:8px}
+#guide .grow.tuned .gb .tx .tm{display:block;color:rgba(231,234,240,.78);font-size:12px}
+#guide .gb.past{opacity:.45}
+#guide .dhead{padding:10px 0 4px 60px}
+.phone #guide .dhead{padding-left:0}
+.gpage{display:inline-flex;gap:4px;margin-right:12px}
+.gpage button{display:inline-flex;align-items:center;gap:4px;height:36px;padding:0 10px;border-radius:8px;font-size:13px}
+.gpage button:not(:disabled):hover{background:var(--surface2)}
+.gpg{display:flex;justify-content:flex-end;flex:none}
+.phone .gpage{margin:0}.phone .gpage button{height:44px}
+#guide .gb:hover{outline:2px solid var(--text);outline-offset:-2px}
+#guide .gb.cur{outline:2px solid var(--amber);outline-offset:-2px}
+#guide .tick{position:absolute;top:30%;height:40%;width:2px;border-radius:1px;background:rgba(231,234,240,.4)}
+#guide .nowline{position:absolute;top:0;bottom:0;width:2px;background:var(--red);pointer-events:none;z-index:2}
+#stage.tv #guide{--gl:214px;padding-top:27px}#stage.full #guide,#stage.window #guide{--gl:264px}
+.phone #guide{position:static;display:none;padding:0 16px;flex:1;min-height:0;--gl:0px;background:#000}
+.phone.vguide #guide{display:flex}.phone.vguide #plist{display:none}
+.phone #guide .ghead,.phone #guide .gbar{display:none}
+.phone #guide .grow{grid-template-columns:1fr;margin-bottom:12px}
+.phone #guide .glab{grid-template-columns:auto 1fr;column-gap:8px;padding:0 8px 4px 0;font-size:13px;position:relative;z-index:3;background:#000;width:max-content;max-width:100%}
+.phone #guide .glab .n,.phone #guide .grow.tuned .glab .n{font-size:13px}
+.phone #guide .grow.tuned .track{height:54px}
+.gdetail{flex:none;padding:12px 0 44px;border-top:1px solid var(--line)}
+.gdetail h2{font-size:16px;font-weight:600;color:#fff}.gdetail .f{font-size:12px;color:var(--muted);margin-top:4px}.gdetail p{font-size:13px;line-height:1.45;margin-top:6px}
+/* ----- the wall: Home ----- */
+#wall{position:absolute;inset:0;background:var(--bg);display:none;padding:36px var(--pad) 48px;overflow:auto;z-index:12;scrollbar-width:none}
+.vwall #wall{display:block}
+#wall .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-top:18px}
+.tv #wall .tiles{grid-template-columns:repeat(3,1fr)}
+.phone #wall{padding:70px 16px 40px}.phone #wall .tiles{grid-template-columns:1fr 1fr;gap:12px}
+#wall .tile{position:relative;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background-size:cover;background-position:center;display:block;width:100%;scroll-margin:24px}
+#wall .tile::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(var(--ink),.94),rgba(var(--ink),0) 62%),linear-gradient(180deg,rgba(var(--ink),.8),rgba(var(--ink),0) 46%)}
+#wall .tile>*{position:absolute;z-index:1}
+#wall .tile .n{left:14px;top:12px;font-size:20px;font-weight:500}
+#wall .tile .lf{right:14px;top:15px;font-size:12px}
+#wall .tile .cap{left:14px;right:14px;bottom:12px}
+#wall .tile .nm{font-size:12px;color:var(--muted)}
+#wall .tile .ti{font-size:15px;font-weight:500;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#wall .tile.here{outline:2px solid var(--text);outline-offset:-2px}
+#wall .tiles .tile.cur{outline:3px solid var(--amber);outline-offset:-3px}
+#wall h2{font-size:20px;font-weight:600}
+</style>
+</head>
+<body>
+<div id="bar"><b>The Cross, prototype</b>
+  <button data-mode="window">Desktop</button><button data-mode="tv">Television</button><button data-mode="phone">Phone</button>
+  <span id="modehelp"></span><span class="sp"></span>
+  <button id="tasksbtn">Tasks</button><button id="reset">Start over</button></div>
+<div id="wrap"><div id="stage"></div></div>
+<aside id="tasks" hidden></aside>
+<div class="sr" aria-live="polite" id="live"></div>
+<script>
+const ICON = {
+  back:'<path d="M15 5l-7 7 7 7"/>', pause:'<path d="M8 5v14M16 5v14"/>', play:'<path d="M7 5l12 7-12 7z"/>',
+  cc:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 13h4M13 13h4"/>', audio:'<path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2"/>',
+  vol:'<path d="M4 9h4l5-4v14l-5-4H4zM17 9a4 4 0 0 1 0 6"/>', mute:'<path d="M4 9h4l5-4v14l-5-4H4zM17 10l4 4M21 10l-4 4"/>',
+  full:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', more:'<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/>',
+  air:'<path d="M6 17H4V5h16v12h-2M12 15l5 6H7z"/>', check:'<path d="M5 12l5 5 9-10"/>', x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  guide:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 5v15"/>', list:'<path d="M4 7h16M4 12h16M4 17h16"/>',
+  search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.6-4.6"/>'
+};
+const ic = (n, s = 20) => `<svg class="ic" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true">${ICON[n]}</svg>`;
+// The invented household: name and decade.
+const CH = {
+  1:['Sunrise Shorts','00'],2:['Cartoon Classics','90'],3:['Saturday Mornings','80'],4:['Quiz Hour','80'],5:['Sitcom Corner','70'],6:['Garden Hour','00'],
+  7:['Coast 90s','90'],9:['Movie Matinee','80'],12:['Game Night','90'],14:['Sunday Westerns','50'],19:['Noir Nights','50'],20:['Game Show Vault','70'],
+  21:['Late Movies','60'],22:['Cozy Autumn Horror','70'],23:['Kung Fu Theater','70'],24:['Midnight Anime','90'],31:['Sunday Matinee','60'],40:['Sports Replay','80'],55:['Frontier Westerns','50']
+};
+// Each channel's day in minutes from 10:00 AM: [start, end, title]. A gap between two is a break.
+const SCHED = {
+  1:[[-11,31,'Pocket Stories'],[34,76,'Pocket Stories'],[79,121,'Harbour Hounds'],[124,200,'Pocket Stories'],[203,260,'Harbour Hounds']],
+  2:[[-4,26,'Kettle Kids'],[29,51,'Kettle Kids'],[54,76,'Harbour Hounds'],[79,101,'Harbour Hounds'],[104,126,'Kettle Kids'],[129,151,'Kettle Kids'],[154,200,'Harbour Hounds'],[203,260,'Kettle Kids']],
+  3:[[4,34,'Harbour Hounds'],[37,67,'The Night Shift'],[70,100,'Harbour Hounds'],[103,133,'Odds and Evens'],[136,200,'Harbour Hounds'],[203,260,'The Night Shift']],
+  4:[[-18,29,'Odds and Evens'],[32,76,'Buzzer Round'],[79,123,'Odds and Evens'],[126,200,'Buzzer Round'],[203,260,'Odds and Evens']],
+  5:[[-8,19,'Two Doors Down'],[23,53,'Two Doors Down'],[56,86,'The Night Shift'],[89,119,'Two Doors Down'],[122,152,'The Night Shift'],[155,200,'Two Doors Down'],[203,260,'The Night Shift']],
+  6:[[-30,62,'A Year in the Walled Garden'],[65,157,'The Long Way to Marrow Bay'],[160,260,'A Year in the Walled Garden']],
+  7:[[-25,55,'The Diner Years'],[58,154,'Last Case on Harbor Street'],[157,200,'The Diner Years'],[203,260,'Beacon of the Hollow Moon']],
+  9:[[-21,83,'The Marigold Protocol'],[83,175,'Beacon of the Hollow Moon'],[175,260,'Two Sides of the Ridge']],
+  12:[[-3,44,'Buzzer Round'],[47,91,'Buzzer Round'],[94,138,'Odds and Evens'],[141,200,'Odds and Evens'],[203,260,'Buzzer Round']],
+  14:[[-48,83,'A Quiet Day in Dry Gulch and the Long Ride Home Afterwards'],[83,171,'Dust on the Telegraph Line'],[171,260,'A Quiet Day in Dry Gulch']],
+  19:[[-10,61,'Cold Relay'],[64,150,'The Harbor at Midnight'],[153,260,'Cold Relay']],
+  20:[[-18,29,'Odds and Evens'],[32,76,'Buzzer Round'],[79,123,'Odds and Evens'],[126,170,'Buzzer Round'],[173,260,'Odds and Evens']],
+  21:[[-3,106,'Midnight at the Mapleton'],[106,200,'Cold Relay'],[203,260,'The Harbor at Midnight']],
+  22:[[-30,72,'The Harvest House'],[75,165,'A Cold October'],[168,260,'The Harvest House']],
+  23:[[-20,97,'Two Sides of the Ridge'],[100,200,'The Iron Ferry'],[203,260,'Two Sides of the Ridge']],
+  24:[[-9,38,'Beacon of the Hollow Moon'],[41,85,'Hollow Moon, Part Two'],[88,132,'Signal Fires'],[135,200,'Signal Fires'],[203,260,'Hollow Moon, Part Two']],
+  31:[[-40,58,'The Long Way to Marrow Bay'],[61,160,'A Cold October'],[163,260,'The Iron Ferry']],
+  40:[[-60,95,'A baseball classic'],[98,200,'A baseball classic'],[203,260,'A baseball classic']],
+  55:[[-12,74,'Dust on the Telegraph Line'],[77,170,'A Quiet Day in Dry Gulch'],[173,260,'Dust on the Telegraph Line']]
+};
+const ART = {
+  'Kettle Kids':'#e0a02e,#b5442a','Harbour Hounds':'#2e8fc2,#1b4f8a','The Night Shift':'#4a3a8a,#16122e','Two Doors Down':'#c0503a,#6b2440','Pocket Stories':'#c9a23e,#6b3a1a',
+  'Last Case on Harbor Street':'#2f6488,#0f2233','The Marigold Protocol':'#c98a1e,#5a3410','Beacon of the Hollow Moon':'#5a4bb0,#1d1a4a','Hollow Moon, Part Two':'#5a4bb0,#1d1a4a',
+  'Buzzer Round':'#c23a90,#4a1a5c','Odds and Evens':'#35a86c,#14573b','A Quiet Day in Dry Gulch and the Long Ride Home Afterwards':'#b5713a,#4a2a14','A Quiet Day in Dry Gulch':'#b5713a,#4a2a14',
+  'Dust on the Telegraph Line':'#9a6b3f,#3a2616','Cold Relay':'#4a6272,#131c24','The Harbor at Midnight':'#1f4a6e,#0a1420','Midnight at the Mapleton':'#8a2d3e,#200c14',
+  'The Harvest House':'#b5521e,#3a1608','A Cold October':'#6b6f3a,#22240f','Two Sides of the Ridge':'#3f7a5a,#12281c','The Iron Ferry':'#5a5f6b,#1a1c22','Signal Fires':'#c2552d,#3a1408',
+  'A Year in the Walled Garden':'#5a8a4a,#1a2a16','The Long Way to Marrow Bay':'#3a7a8a,#102428','A baseball classic':'#4a7a3a,#16240f'
+};
+const FACTS = {
+  'The Diner Years':['S02E04 · 1994 · TV-PG · Comedy','Two friends open a diner and learn the hard way who their regulars are.'],
+  'Last Case on Harbor Street':['1994 · TV-PG · Drama','A harbor detective takes one last case the week before he retires.'],
+  'The Marigold Protocol':['1987 · PG · Thriller','A florist finds a list of names in a delivery she was never meant to open.'],
+  'Buzzer Round':['S06E13 · 1996 · TV-G · Game show','Champions Week, day three: the last four meet on the buzzers.'],
+  'Kettle Kids':['S10E08 · 1998 · TV-Y · Animation','Pip nurses an injured gull and learns how much caring for it asks.']
+};
+const facts = t => FACTS[t] ?? ['TV-PG · From the household library', 'A title from the household library.'];
+const art = t => t === 'The Diner Years' ? 'url(picture.webp)' : `linear-gradient(120deg,${ART[t] ?? '#2A2E37,#131519'})`;
+const ORDER = Object.keys(CH).map(Number).sort((a, b) => a - b);
+const FAV = [7, 9, 12, 24, 55], DECS = ['50', '60', '70', '80', '90', '00'], TABS = ['Favourites', 'All', 'Recent', 'By decade'];
+const dec = n => `var(--d${CH[n][1]})`;
+const clock = (m, ap = true) => { m = Math.round(m); const h = 10 + Math.floor(m / 60), mm = String(((m % 60) + 60) % 60).padStart(2, '0'); return `${h > 12 ? h - 12 : h}:${mm}${ap ? (h >= 12 ? ' PM' : ' AM') : ''}`; };
+
+// ----- state -----
+const t0 = Date.now();
+const now = () => 20 + (Date.now() - t0) / 60000;
+// T is the channel playing. cc is the channel the list's cursor is on: looking, not playing.
+const S = { mode: 'window', view: 'watch', T: 7, last: null, col: false, cc: null, tf: null, kf: null, sb: null, hov: null, hb: null, paused: false, behind: 0, pausedAt: 0,
+  goff: 0, tuning: false, muted: true, menu: null, mi: -1, find: null, fi: 0, digits: '', idle: false, cold: true, cc_sub: 'English', gcur: null, toast: '', hinted: {}, tab: 'All', recent: [7], wc: 0, still: null, recentre: true };
+const DONE = {}; const started = Date.now();
+const done = k => { if (!DONE[k]) { DONE[k] = ((Date.now() - started) / 1000).toFixed(0); renderTasks(); } };
+const overlay = () => S.mode === 'full' || S.mode === 'tv';
+const stage = document.getElementById('stage'), live = document.getElementById('live');
+// The list the group tabs choose. The playing channel is always in it, so you never lose your place.
+const LIST = () => {
+  let l = S.tab === 'Favourites' ? ORDER.filter(n => FAV.includes(n)) : S.tab === 'Recent' ? [...new Set(S.recent)]
+    : S.tab === 'By decade' ? [...ORDER].sort((a, b) => DECS.indexOf(CH[a][1]) - DECS.indexOf(CH[b][1]) || a - b) : ORDER;
+  if (!l.includes(S.T)) l = S.tab === 'Recent' ? [S.T, ...l] : [...l, S.T].sort((a, b) => a - b);
+  return l;
+};
+const SPAN = () => S.mode === 'phone' ? 90 : S.mode === 'tv' ? 120 : 180;
+const cur = n => { const s = SCHED[n], t = now(); let i = s.findIndex(b => b[0] <= t && b[1] > t); if (i >= 0) return {i, b: s[i], on: true}; i = s.findIndex(b => b[0] > t); return {i, b: s[i], on: false}; };
+const leftOf = n => { const c = cur(n), t = now(); return c.on ? `${Math.max(1, Math.ceil(c.b[1] - t))} min left` : 'in a break'; };
+const say = t => { live.textContent = t; };
+
+// ----- pieces -----
+const thirdHTML = () => {
+  const typing = S.digits !== '', n = typing ? S.digits : S.T, target = typing ? ORDER.find(x => String(x) === S.digits) : S.T;
+  const c = target ? cur(target) : null, t = now();
+  let title, meta, next = '';
+  if (typing) { title = target ? CH[target][0] : 'No such channel'; meta = target ? `${c.b[2]} · <em>press Enter, or wait</em>` : `There is no channel ${S.digits}`; }
+  else if (S.cold) { title = CH[S.T][0]; meta = 'Tuning in… <em>Starting the channel</em>'; }
+  else {
+    title = c.b[2];
+    // On a phone the line is short, so the rating waits in the programme's facts.
+    const where = S.mode === 'phone' ? `<em>${CH[S.T][0]}</em>` : `<em>${CH[S.T][0]}</em> · TV-PG`;
+    if (S.paused) meta = `${where} · <em>Paused</em>`;
+    // Go live leads the line, so it is never the part that is cut off. A television has it in the quiet row.
+    else if (S.behind > 0) meta = `${S.mode === 'tv' ? '' : `<button class="golive" data-act="live"><span class="dot" style="top:0"></span>Go live</button>`}${S.behind} s behind live`;
+    else if (!c.on) meta = `<em>${CH[S.T][0]}</em> · <span class="back">Back in ${Math.max(1, Math.ceil(c.b[0] - t))} min</span>`;
+    else meta = `<span class="dot"></span>${where} · <em>${Math.max(1, Math.ceil(c.b[1] - t))} min left</em>`;
+    const nx = SCHED[S.T][c.i + 1];
+    if (nx) next = `<div class="next">Next <span class="mono">${clock(nx[0])}</span> <b>${nx[2]}</b></div>`;
+  }
+  const act = S.mode === 'phone' ? `<div class="act"><button data-act="pause" aria-label="${S.paused ? 'Play' : 'Pause'}">${ic(S.paused ? 'play' : 'pause', 22)}</button><button data-act="more" aria-label="More">${ic('more', 22)}</button></div>` : '<span></span>';
+  return `<div class="bars${S.cold ? ' wait' : ''}" id="bars"></div><span class="n mono${typing ? ' typing' : ''}" style="${typing ? '' : `color:${dec(S.T)}`}">${n}</span>
+    <div style="min-width:0"><h1>${title}</h1><div class="meta">${meta}</div>${next}</div>${act}`;
+};
+const rowHTML = (n, cls = '') => `<button class="row ${cls}" data-n="${n}" role="option" aria-selected="${cls.includes('tuned')}" aria-label="Channel ${n}, ${CH[n][0]}, ${cur(n).b[2]}${cls.includes('tuned') ? ', watching' : ''}">
+  <span class="n mono"${cls.includes('tuned') ? ` style="color:${dec(n)}"` : ''}>${n}</span>
+  <div style="min-width:0"><div class="name">${CH[n][0]}</div><div class="now">${cur(n).b[2]}${cur(n).on ? '' : ' · in a break'}</div></div>
+  <span class="left mono">${cls.includes('tuned') ? 'watching' : leftOf(n)}</span></button>`;
+const results = () => { const q = (S.find ?? '').trim().toLowerCase(); return q ? ORDER.filter(n => CH[n][0].toLowerCase().includes(q) || cur(n).b[2].toLowerCase().includes(q)) : []; };
+const finding = () => S.find != null && S.find.trim() !== '';
+const tabsHTML = () => S.find != null
+  ? `<div class="find">${ic('search', 18)}<input id="q" value="${S.find.replace(/"/g, '&quot;')}" placeholder="Find a channel or a programme…" aria-label="Find a channel or a programme"${S.mode === 'phone' ? ' readonly' : ''}><small>${S.find ? results().length + ' found' : ''}</small><button class="fx" data-act="findclose" aria-label="Close find">${ic('x', 18)}</button></div>`
+  : `<nav class="tabs" aria-label="Channel groups"><button data-act="find" aria-label="Find a channel" style="min-width:${S.mode === 'phone' ? 44 : 24}px">${ic('search', 18)}</button>${TABS.map((t, i) => `<button class="${t === S.tab ? 'on' : ''}${S.tf === i ? ' cur' : ''}" data-tab="${t}">${t === 'All' ? `All ${ORDER.length}` : t}</button>`).join('')}</nav>`;
+const stripHTML = n => {
+  const c = cur(n), s = SCHED[n].slice(c.i, c.i + 5), t = now(); let h = '', prev = null;
+  s.forEach((b, i) => {
+    if (prev != null && b[0] - prev >= 2) h += `<div class="spots"><i></i><i></i><i></i></div>`;
+    prev = b[1];
+    const w = Math.max(150, Math.min(330, (b[1] - Math.max(b[0], t - 20)) * 3.1)), on = i === 0 && c.on, k = S.sb === i ? ' cur' : '';
+    h += `<button class="blk${k}" data-b="${i}" style="width:${w}px" aria-label="${on ? 'On now' : clock(b[0])}, ${b[2]}"><div class="still" style="background-image:${art(b[2])}"></div>
+      ${on ? `<div class="head" style="left:${3 + (w - 6) * Math.min(.95, (t - Math.max(b[0], t - 20)) / (b[1] - Math.max(b[0], t - 20)))}px"></div>` : ''}
+      <div class="t mono">${on ? 'Now · until ' + clock(b[1], false) : clock(b[0])}</div><div class="ti">${b[2]}</div></button>`;
+  });
+  return h;
+};
+const infoHTML = () => {
+  const n = S.hov ?? S.T, c = cur(n), b = S.hb != null ? SCHED[n][c.i + S.hb] : (S.sb != null ? SCHED[n][c.i + S.sb] : null);
+  if (b && b !== c.b) return `<h2>${b[2]}</h2><div class="f mono">${clock(b[0])} to ${clock(b[1])} · ${facts(b[2])[0]}</div><p>${facts(b[2])[1]}</p>`;
+  if (S.hov) return `<h2>${c.b[2]}</h2><div class="f mono">On now until ${clock(c.b[1])} · ${facts(c.b[2])[0]}</div><p>${facts(c.b[2])[1]}</p>`;
+  return `<div class="f mono" style="margin-top:0">${facts(c.b[2])[0]}</div><p>${facts(c.b[2])[1]}</p>`;
+};
+// The quiet row. Over the picture it leads with two named controls, Channels and Guide. "Later today" is the Guide,
+// which opens on the row of the channel you are watching. A television adds Go live when behind: its remote cannot reach the lower third.
+const KEYS = () => S.mode === 'window' ? ['pause', 'cc', 'audio', 'vol', 'full', 'more'] : S.mode === 'full' ? ['channels', 'guide', 'pause', 'cc', 'audio', 'vol', 'full', 'more']
+  : S.mode === 'tv' ? [...(S.behind > 0 && !S.paused ? ['live'] : []), 'channels', 'guide', 'pause', 'cc', 'audio', 'more'] : [];
+const TIP = { pause: 'Pause', cc: 'Subtitles', audio: 'Audio', vol: 'Mute', full: 'Full screen', more: 'More' }, KEYOF = { pause: 'Space', cc: 'C', audio: 'A', vol: 'M', full: 'F' };
+const keysHTML = () => KEYS().map((k, i) => {
+  // One ring at a time: an open menu carries it, not the control that opened it.
+  const f = S.kf === i && !S.menu ? ' cur' : '';
+  if (k === 'live') return `<button class="lab${f}" data-act="live" style="color:#E85A5F"><span class="dot" style="top:0;margin:0"></span>Go live</button>`;
+  // A group other than All also steers Up and Down, so the control says which group is on.
+  if (k === 'channels') return `<button class="lab${S.col ? ' on' : ''}${f}" data-act="channels">${ic('list', 18)}Channels${S.tab === 'All' ? '' : `: ${S.tab}`}</button>`;
+  if (k === 'guide') return `<button class="lab${f}" data-act="guide">${ic('guide', 18)}Guide</button><i class="sep"></i>`;
+  const icon = k === 'pause' && S.paused ? 'play' : k === 'vol' && S.muted ? 'mute' : k;
+  const name = k === 'pause' && S.paused ? 'Play' : k === 'vol' && S.muted ? 'Unmute' : k === 'full' && S.mode === 'full' ? 'Leave full screen' : TIP[k];
+  const tip = S.mode !== 'tv' && KEYOF[k] ? `${name} (${KEYOF[k]})` : name;
+  return `<button class="${S.menu === k ? 'on' : ''}${f}" data-act="${k}" data-tip="${tip}" aria-label="${tip}">${ic(icon, 20)}</button>`;
+}).join('');
+// The drawn diner still already carries its channel's watermark; every other stand-in gets one drawn.
+const decade = n => `${CH[n][1] < '30' ? 20 : 19}${CH[n][1]}s`;
+// By decade is headed by its decades, each in its own colour.
+const dhead = (n, i, L) => S.tab === 'By decade' && !finding() && (i === 0 || CH[L[i - 1]][1] !== CH[n][1]) ? `<div class="dhead" style="color:${dec(n)}">${decade(n)}</div>` : '';
+const picHTML = () => { const c = cur(S.T); return `<div class="art" style="background-image:${art(c.b[2])}"></div>${c.b[2] === 'The Diner Years' ? '' : `<div class="wm">${CH[S.T][0]}</div>`}<div class="dim"></div><div class="snow"></div>
+  <div class="pm">${ic('pause', 30)}</div>${S.muted && !S.cold && S.mode !== 'tv' && S.view === 'watch' ? `<button class="unmute" data-act="vol">${ic('mute', 18)}${S.mode === 'phone' ? 'Tap' : 'Click'} to unmute</button>` : ''}`; };
+const SUB = ['details', 'keys', 'remote'];
+const MENUS = {
+  cc: () => ['Subtitles', ['Off', 'English', 'English, with sounds', 'Spanish'].map(o => ({l: o, s: o === 'English, with sounds' ? 'For the deaf and hard of hearing' : '', sel: S.cc_sub === o, go: () => { S.cc_sub = o; S.menu = null; toast(o === 'Off' ? 'Subtitles off' : `Subtitles: ${o}`); }}))],
+  audio: () => ['Audio', [{l: 'English', sel: true, go: () => { S.menu = null; }}, {l: 'Spanish', go: () => { S.menu = null; toast('Audio: Spanish'); }}]],
+  more: () => ['More', [
+    {l: 'Last channel', v: S.last ? `${S.last} ${CH[S.last][0]}` : 'None yet', go: () => { S.menu = null; if (S.last) tune(S.last); }},
+    {l: 'Picture', v: 'Auto · 1080p', go: () => { S.menu = null; toast('Picture: Auto, playing 1080p'); }},
+    {l: 'Playback details', go: () => { S.menu = 'details'; }},
+    ...(S.mode === 'phone' ? [] : [{l: S.mode === 'tv' ? 'Remote buttons' : 'Keyboard shortcuts', go: () => { S.menu = S.mode === 'tv' ? 'remote' : 'keys'; }}]),
+    {l: 'Manage this channel', go: () => { S.menu = null; toast('Channel management opens here (not in this prototype)'); }}]],
+  details: () => ['Playback details', [], `<dl><dt>Resolution</dt><dd class="mono">1920×1080 · 29.97 fps</dd><dt>Video</dt><dd class="mono">H.264 High 4.1</dd><dt>Audio</dt><dd class="mono">AAC stereo</dd><dt>Buffer ahead</dt><dd class="mono">6.2 s</dd><dt>Behind live</dt><dd class="mono">${S.behind} s</dd></dl>`],
+  remote: () => ['Remote buttons', [], `<dl><dt>Up, Down</dt><dd>Change channel</dd><dt>OK</dt><dd>Pause, or choose</dd><dt>Left, Right</dt><dd>Controls, or the list's groups</dd><dt>Back</dt><dd>Close, then Home</dd></dl>`],
+  keys: () => ['Keyboard shortcuts', [], `<dl><dt>Up, Down</dt><dd>Change channel</dd><dt>0 to 9</dt><dd>Tune by number</dd><dt>/</dt><dd>Find by name</dd><dt>G</dt><dd>Guide</dd><dt>Space</dt><dd>Pause</dd><dt>L</dt><dd>Last channel</dd><dt>C, A, M</dt><dd>Subtitles, audio, mute</dd><dt>F</dt><dd>Full screen</dd><dt>Esc</dt><dd>Close, then back</dd></dl>`]
+};
+const menuHTML = () => { if (!S.menu) return ''; const [h, opts, body = ''] = MENUS[S.menu]();
+  const pos = S.mode === 'phone' ? '' : S.mode === 'window' ? 'right:48px;bottom:330px' : 'right:var(--pad);bottom:96px';
+  return `<div class="menu" role="dialog" aria-label="${h}" style="${pos}"><div class="h">${SUB.includes(S.menu) ? `<button data-act="menuback" aria-label="Back to More" style="width:auto;display:inline-flex;gap:4px;padding:0 6px">${ic('back', 14)}More</button>` : h}<button data-act="menuclose" aria-label="Close">${ic('x', 16)}</button></div>
+    ${SUB.includes(S.menu) ? `<div class="h" style="padding-top:0;color:var(--text);font-size:13px">${h}</div>` : ''}
+    ${opts.map((o, i) => `<button class="o${S.mi === i ? ' cur' : ''}" data-mi="${i}"><span>${o.l}${o.s ? `<small>${o.s}</small>` : ''}</span>${o.v ? `<span class="v">${o.v}</span>` : o.sel ? ic('check', 18) : ''}</button>`).join('')}${body}</div>`; };
+const HINT = { window: 'Click a channel to change it, or press <kbd>Up</kbd> and <kbd>Down</kbd>', full: '<kbd>Up</kbd> and <kbd>Down</kbd> change channel. <kbd>Channels</kbd> shows them all. <kbd>Guide</kbd> shows later today',
+  tv: '<kbd>Up Down</kbd> change channel · <kbd>OK</kbd> pause · <kbd>Left Right</kbd> controls · <kbd>Back</kbd> Home', phone: 'Tap a channel to change it' };
+const hintHTML = () => S.hinted[S.mode] || S.cold || S.view !== 'watch' || S.toast || S.kf != null ? '' : `<div class="hint" role="note">${HINT[S.mode]}</div>`;
+
+// ----- views -----
+const guideHTML = () => {
+  // The Guide shows one span of the day from S.goff; Earlier and Later, or Left and Right past its edge, move it.
+  const phone = S.mode === 'phone', span = SPAN(), off = S.goff, end = off + span, t = now(), c = cur(S.T), g = S.gcur, gb = g ? SCHED[g[0]][g[1]] : null;
+  const rows = LIST().map((n, i, L) => {
+    const tuned = n === S.T; let h = '', prev = null;
+    SCHED[n].forEach((b, j) => {
+      const s = Math.max(off, b[0]), e = Math.min(end, b[1]);
+      if (prev != null && b[0] - prev >= 2 && b[0] > off && b[0] < end) h += `<i class="tick" style="left:${((prev + b[0]) / 2 - off) / span * 100}%"></i>`;
+      prev = b[1]; if (e <= s) return;
+      const on = b[0] <= t && b[1] > t, past = b[1] <= t, k = g && g[0] === n && g[1] === j ? ' cur' : '', w = (e - s) / span * 100;
+      // The title starts after the time line when enough of the programme is left to hold it; otherwise it stays at the block's start.
+      const airing = on && t > s, roomy = airing && e - t >= (phone ? 18 : 24), pct = airing ? (t - s) / (e - s) * 100 : 0;
+      const aired = airing ? `<span class="aired" style="width:${pct}%"></span>${roomy ? `<span style="flex:none;width:${pct}%"></span>` : ''}` : '';
+      const bg = on || tuned ? `background-image:${art(b[2])};` : '';
+      // A programme that has ended carries no time: it is dimmed, and it is not where you can go.
+      const tm = on ? (tuned ? '<span class="tm mono">Now</span>' : '') : past ? '' : `<span class="tm mono">${clock(b[0], false)}</span>`;
+      h += `<button class="gb${on ? ' on' : ''}${past ? ' past' : ''}${k}" data-g="${n},${j}" style="left:${(s - off) / span * 100}%;width:calc(${w}% - 2px);${bg}" aria-label="Channel ${n}, ${on ? 'on now' : past ? 'ended' : clock(b[0])}, ${b[2]}">${aired}<span class="tx">${tm}${b[2]}</span></button>`;
+    });
+    return `${dhead(n, i, L)}<div class="grow${tuned ? ' tuned' : ''}"><button class="glab" data-n="${n}" aria-label="Watch channel ${n}, ${CH[n][0]}"><span class="n mono"${tuned ? ` style="color:${dec(n)}"` : ''}>${n}</span><span class="nm">${CH[n][0]}</span></button><div class="track">${h}</div></div>`;
+  }).join('');
+  let ruler = ''; for (let m = off; m < end; m += 30) if (Math.abs(m - t) > 9) ruler += `<span class="mono" style="left:${(m - off) / span * 100}%">${clock(m, !phone)}</span>`;
+  const pager = S.mode === 'tv' ? '' : `<span class="gpage"><button data-act="gearlier"${off <= 0 ? ' disabled' : ''}>${ic('back', 16)}Earlier</button><button data-act="glater"${off >= GMAX() ? ' disabled' : ''}>Later<span style="display:inline-flex;transform:scaleX(-1)">${ic('back', 16)}</span></button></span>`;
+  // Looking is not playing: when the cursor is anywhere but what is on your channel, the header says so, and the picture keeps its own caption.
+  const looking = gb && gb !== c.b, onNow = gb && gb[0] <= t;
+  const head = looking
+    ? `<span class="n mono" style="color:var(--muted)">${g[0]}</span><div style="min-width:0"><h1>${gb[2]}</h1><div class="meta">Looking at <em>${CH[g[0]][0]}</em> · ${onNow ? `on now until ${clock(gb[1])}` : `${clock(gb[0])} to ${clock(gb[1])}`} · ${facts(gb[2])[0]}</div></div><span></span>`
+    : thirdHTML();
+  return `<div class="ghead"><div class="gleft"><div style="display:flex;justify-content:space-between;align-items:center"><button class="home" data-act="home">${ic('back', 20)}Home</button>${S.mode === 'tv' ? '' : `<button class="gctl on" data-act="guide">${ic('guide', 18)}Guide<span class="sr"> (showing; press to return to the picture)</span></button>`}</div>
+      <div id="gthird" class="third">${head}</div><p class="gsyn">${facts(looking ? gb[2] : c.b[2])[1]}</p></div>
+    <div class="gright"><div class="gdock" id="gdock"></div><div class="gplay">Playing <b>${S.T} ${CH[S.T][0]}</b></div></div></div>
+    <div class="gbar">${tabsHTML()}<span style="flex:1"></span>${phone ? '' : S.mode === 'tv' ? `<span class="mono" style="font-size:12px;color:var(--muted)">${gb && gb[0] > t ? '' : `<b style="color:var(--text);font-weight:500;margin-right:8px">OK</b>${g && g[0] === S.T ? 'picture' : 'watch this channel'}`}<b style="color:var(--text);font-weight:500;margin:0 8px 0 22px">Back</b>picture</span>` : `${pager}<button class="btn" data-act="guide">Back to the picture</button>`}</div>
+    ${phone ? `<div class="gpg">${pager}</div>` : ''}
+    <div class="ruler">${ruler}${t >= off ? `<span class="nowtag mono" style="left:${(t - off) / span * 100}%">${clock(t, false)}</span>` : ''}</div>
+    <div class="grows" id="grows"><div style="position:relative">${rows}${t >= off ? `<i class="nowline" style="left:calc(var(--gl) + (100% - var(--gl)) * ${(t - off) / span})"></i>` : ''}</div></div>
+    ${phone && looking ? `<div class="gdetail"><h2>${gb[2]}</h2><div class="f mono">${g[0]} ${CH[g[0]][0]} · ${clock(gb[0])} to ${clock(gb[1])} · ${facts(gb[2])[0]}</div><p>${facts(gb[2])[1]}</p></div>` : ''}`;
+};
+const wallHTML = () => `<div style="display:flex;justify-content:space-between;align-items:center"><h2>Home</h2><span class="mono" style="font-size:12px;color:var(--muted)">${S.mode === 'tv' ? 'OK watch · Back picture · ' : ''}${ORDER.length} channels · ${clock(now())}</span></div>
+  <div class="tiles">${[S.T, ...ORDER.filter(n => n !== S.T)].map((n, i) => `<button class="tile${n === S.T ? ' here' : ''}${S.mode === 'tv' && i === S.wc ? ' cur' : ''}" data-n="${n}" style="background-image:${art(cur(n).b[2])}" aria-label="Watch channel ${n}, ${CH[n][0]}"><span class="n mono"${n === S.T ? ` style="color:${dec(n)}"` : ''}>${n}</span><span class="lf mono">${n === S.T ? 'you were here' : leftOf(n)}</span><div class="cap"><div class="nm">${CH[n][0]}</div><div class="ti">${cur(n).b[2]}</div></div></button>`).join('')}</div>`;
+// A stand-in for the phone's own keyboard, so find can be used with taps alone.
+const kbdHTML = () => { const key = k => `<button data-k="${k}">${k}</button>`, run = s => [...s].map(key).join('');
+  return `<div class="kbd">${run('qwertyuiop')}${run('asdfghjkl')}<button data-k="del" aria-label="Delete">⌫</button>${run('zxcvbnm')}<button class="wide" data-k="done">Done</button><button class="all" data-k=" ">space</button></div>`; };
+
+// ----- render -----
+const render = () => {
+  const ph = S.mode === 'phone', win = S.mode === 'window', open = S.col || win || S.find != null;
+  // A re-render keeps every list where the viewer scrolled it.
+  const keep = Object.fromEntries(['#clist', '#grows', '#plist', '#wall'].map(s => [s, stage.querySelector(s)?.scrollTop ?? 0]));
+  stage.className = `${S.mode} v${S.view}${open ? ' colopen' : ''}${S.idle ? ' idle' : ''}${S.still && !ph ? ' still' : ''}`;
+  const noMatch = `<p style="padding:14px 0;color:var(--muted);font-size:14px">No channel or programme matches “${(S.find ?? '').replace(/</g, '&lt;')}”. <button data-act="findclose" style="color:var(--text);text-decoration:underline">Show all channels</button></p>`;
+  const picwrap = `<div id="picwrap"><div id="pic" class="${S.cold ? 'cold' : ''}${S.paused ? ' paused' : ''}${S.tuning ? ' tuning' : ''}">${picHTML()}</div></div>`;
+  const lonely = S.tab === 'Recent' && !finding() && LIST().length === 1 ? `<p class="none">Channels you watch collect here.</p>` : '';
+  const overlays = `<div id="guide">${S.view === 'guide' ? guideHTML() : ''}</div><div id="wall">${S.view === 'wall' ? wallHTML() : ''}</div>`;
+  const tail = `${hintHTML()}${S.toast ? `<div class="toast" role="status">${S.toast}</div>` : ''}`;
+  const res = results(), L = finding() ? res : LIST();
+  if (ph) {
+    stage.innerHTML = `<div class="island"></div><div id="ptop"><button data-act="home">${ic('back', 22)}Home</button><div><button data-act="cc" aria-label="Subtitles">${ic('cc', 22)}</button><button data-act="audio" aria-label="Audio">${ic('audio', 22)}</button><button data-act="air" aria-label="AirPlay">${ic('air', 22)}</button></div></div>
+      ${picwrap}<div id="third" class="third">${thirdHTML()}</div>
+      <div class="ptabs">${tabsHTML()}${S.find != null ? '' : `<button class="gctl on" data-act="guide">${S.view === 'guide' ? `${ic('list', 18)}Channels` : `${ic('guide', 18)}Guide`}</button>`}</div>
+      <div id="plist" role="listbox" aria-label="Channels">${L.map((n, i) => dhead(n, i, L) + rowHTML(n, n === S.T ? 'tuned' : '')).join('') || (finding() ? noMatch : '')}${lonely}</div>
+      ${overlays}${S.find != null && S.kbd && S.view === 'watch' ? kbdHTML() : ''}${menuHTML() ? `<div style="position:absolute;inset:323px 0 0 0;background:rgba(var(--ink),.6);z-index:19" data-act="menuclose"></div>` : ''}${menuHTML()}${S.find != null ? '' : tail}<div class="homeind"></div>`;
+    for (const s of ['#plist', '#grows', '#wall']) { const el = stage.querySelector(s); if (el) el.scrollTop = keep[s]; }
+    // Only a tune moves the list: it brings the channel you are watching into view.
+    if (S.recentre && S.view === 'watch' && S.find == null) stage.querySelector('.row.tuned')?.scrollIntoView({block: 'center'});
+  } else {
+    const hov = S.hov;
+    // Looking is not playing: the label names both channels in plain words.
+    const label = hov ? `Looking at <b>${hov} ${CH[hov][0]}</b> · still playing ${S.T} ${CH[S.T][0]} · click to tune` : `Today on ${CH[S.T][0]}`;
+    // One ring at a time: a focused tab carries it, or the list's cursor does, and the cursor shows on the pinned channel too.
+    const curN = finding() ? res[S.fi] : S.tf != null ? null : S.cc;
+    const third = `<i id="anchor"></i><div id="third" class="third${S.col && !finding() && curN === S.T ? ' cur' : ''}">${thirdHTML()}</div>`;
+    const rows = L.map((n, i) => dhead(n, i, L) + (n === S.T && !finding() ? third : rowHTML(n, `${n === curN ? 'cur' : ''} ${n === hov ? 'hov' : ''} ${n === S.T ? 'tuned' : ''}`))).join('') + lonely + (finding() ? (res.length ? '' : `<div style="padding-left:76px">${noMatch}</div>`) + third : '');
+    stage.innerHTML = `${picwrap}<div class="over b"></div><div class="over l"></div>
+      <div id="col" style="display:${win ? 'contents' : 'flex'}">
+        <div id="colhead"><div class="top"><button class="home" data-act="home">${ic('back', 20)}Home</button><button class="gctl" data-act="guide">${ic('guide', 18)}Guide</button></div>${tabsHTML()}</div>
+        <div id="clist" role="listbox" aria-label="Channels"><i class="room"></i>${rows}<i class="room"></i></div></div>
+      <div id="low"><div class="lowhead"><div class="slabel">${label}</div><div id="keys">${keysHTML()}</div></div><div class="strip">${stripHTML(hov ?? S.T)}</div><div class="info">${infoHTML()}</div></div>
+      ${overlays}${menuHTML()}${tail}`;
+    if (!win) stage.appendChild(stage.querySelector('#keys'));
+    if (S.view === 'guide') { stage.querySelector('#gdock').appendChild(stage.querySelector('#pic')); stage.querySelector('#pic').style.cssText = 'width:100%;height:100%;position:relative;border-radius:6px'; }
+    for (const s of ['#grows', '#wall']) { const el = stage.querySelector(s); if (el) el.scrollTop = keep[s]; }
+    // The list rests with the channel you are watching on the crossing: beside the strip in a window, at the foot of the screen over the picture.
+    const cl = stage.querySelector('#clist'), an = stage.querySelector('#anchor'), th = stage.querySelector('#third');
+    const room = cl.firstElementChild.offsetHeight;
+    const y = win ? stage.querySelector('#low').getBoundingClientRect().top - cl.getBoundingClientRect().top + 8 : cl.clientHeight - th.offsetHeight - (S.mode === 'tv' ? 66 : 128);
+    REST = an.offsetTop - y;
+    if (finding()) { REST = room - 4; cl.scrollTop = REST; }
+    else if (S.recentre || (!win && !S.col)) cl.scrollTop = REST;
+    else { cl.scrollTop = keep['#clist']; stage.querySelector('#clist .row.cur')?.scrollIntoView({block: 'nearest'}); }
+  }
+  S.recentre = false;
+  // Focus never leaves the screen: whatever carries the ring is scrolled into view.
+  stage.querySelector('.strip .blk.cur')?.scrollIntoView({block: 'nearest', inline: 'center'});
+  stage.querySelector('#guide .gb.cur')?.scrollIntoView({block: 'nearest', inline: 'nearest'});
+  stage.querySelector('#wall .tile.cur')?.scrollIntoView({block: 'nearest'});
+  const q = stage.querySelector('#q'); if (q && !ph) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+  fit();
+};
+const fit = () => { const r = document.getElementById('wrap').getBoundingClientRect();
+  stage.style.transform = S.mode === 'tv' ? `scale(${Math.min(r.width / 960, r.height / 540)})` : S.mode === 'phone' ? `scale(${Math.min(1, (r.height - 16) / 844)})` : ''; };
+const renderTasks = () => { const T = [['flip', 'Change the channel'], ['later', 'See what is on later today'], ['guide', 'Open the Guide'], ['find', 'Find a channel by name'], ['pause', 'Pause the picture'], ['home', 'Go Home, then come back']];
+  document.getElementById('tasks').innerHTML = `<h2>Try these, in any order</h2><ul>${T.map(([k, l]) => `<li class="${DONE[k] ? 'done' : ''}"><span>${l}</span><span class="mono">${DONE[k] ? DONE[k] + ' s' : ''}</span></li>`).join('')}</ul>`; };
+// A message shows the moment it is raised, wherever the viewer is.
+let toastT; const toast = m => { S.toast = m; clearTimeout(toastT); toastT = setTimeout(() => { S.toast = ''; render(); }, 2800); render(); };
+
+// ----- behaviour -----
+let tuneT, idleT, digitT, hovT;
+// Only the bare picture goes quiet. Nothing that holds focus, the pointer or an open layer closes by itself.
+const busy = () => S.col || S.menu || S.paused || S.find != null || S.view !== 'watch' || S.kf != null || S.tf != null || S.digits;
+const held = () => S.mode === 'full' && stage.querySelector('#keys:hover,#third:hover,.home:hover');
+const wake = () => { S.idle = false; clearTimeout(idleT); if (overlay()) idleT = setTimeout(() => { if (held()) wake(); else if (!busy()) { S.idle = true; render(); } }, 5000); };
+const GMAX = () => Math.floor((260 - SPAN()) / 30) * 30;
+const tune = (n, o = {}) => {
+  if (n === S.T && !o.force) { if (S.view === 'wall') { S.view = 'watch'; S.recentre = true; render(); } return; }
+  clearTimeout(hovT);
+  if (n !== S.T) S.last = S.T;
+  S.T = n; S.tuning = true; S.paused = false; S.behind = 0; S.hov = null; S.hb = null; S.sb = null; S.cold = false; S.hinted[S.mode] = true; S.recentre = true;
+  if (S.col) S.cc = n;
+  if (S.kf != null) S.kf = Math.min(S.kf, KEYS().length - 1);
+  S.recent = [n, ...S.recent.filter(x => x !== n)].slice(0, 8);
+  if (S.view === 'wall') S.view = 'watch';
+  render();
+  // The picture is covered at once, with static, and uncovered once, 220 ms after the last flip of a run.
+  clearTimeout(tuneT);
+  tuneT = setTimeout(() => { S.tuning = false; stage.querySelector('#pic')?.classList.remove('tuning'); }, 220);
+  const bars = stage.querySelector('#bars'); if (bars) { void bars.offsetWidth; bars.classList.add('run'); }
+  say(`Channel ${n}, ${CH[n][0]}. ${cur(n).b[2]}.`);
+  done('flip'); wake();
+};
+// Flipping tunes at once and shows only the lower third. The list is for looking: it never tunes by being moved through.
+const flip = d => { const l = S.tab === 'Recent' ? ORDER : LIST(), i = l.indexOf(S.T); tune(l[(i + d + l.length) % l.length]); };
+const pause = () => { if (S.cold) return; S.paused = !S.paused; if (S.paused) { S.pausedAt = Date.now(); done('pause'); } else S.behind = Math.max(1, Math.round((Date.now() - S.pausedAt) / 1000)); S.idle = false; render(); wake(); say(S.paused ? 'Paused' : `Playing, ${S.behind} seconds behind live`); };
+const openGuide = () => { S.view = S.view === 'guide' ? 'watch' : 'guide'; S.goff = 0; S.menu = null; S.col = false; S.cc = null; S.tf = null; S.find = null; S.recentre = true; S.gcur = S.view === 'guide' ? [S.T, cur(S.T).i] : null; if (S.view === 'guide') done('guide'); S.hinted[S.mode] = true; render(); if (S.view === 'guide') stage.querySelector('.grow.tuned')?.scrollIntoView({block: 'center'}); };
+const openList = on => { S.col = on; S.cc = on ? S.T : null; S.tf = null; S.recentre = true; if (S.mode === 'tv') S.kf = on ? null : KEYS().indexOf('channels'); S.hinted[S.mode] = true; render(); wake(); };
+const openFind = () => { if (S.mode === 'tv') return; S.find = ''; S.fi = 0; S.kbd = true; if (overlay()) S.col = true; if (S.view === 'guide') S.view = 'watch'; render(); };
+const closeFind = () => { S.find = null; S.recentre = true; render(); };
+const commitDigits = () => { clearTimeout(digitT); const n = ORDER.find(x => String(x) === S.digits); S.digits = ''; if (n) tune(n, {force: true}); else render(); };
+const goHome = () => { if (S.view === 'wall') return; S.view = 'wall'; S.menu = null; S.col = false; S.cc = null; S.find = null; S.wc = 0; done('home0'); render(); };
+const leaveHome = n => { S.view = 'watch'; S.recentre = true; if (DONE.home0) done('home'); if (n != null) tune(n, {force: true}); else render(); };
+const act = a => {
+  wake();
+  if (a === 'channels') return openList(!S.col);
+  if (a === 'guide') return openGuide();
+  if (a === 'home') return goHome();
+  if (a === 'pause') return pause();
+  if (a === 'live') { S.behind = 0; if (S.kf != null) S.kf = KEYS().indexOf('channels'); toast('Back to live'); say('Live'); return; }
+  // Moving the Guide's span keeps its cursor on something drawn.
+  if (a === 'gearlier' || a === 'glater') { S.goff = Math.max(0, Math.min(GMAX(), S.goff + (a === 'glater' ? 60 : -60)));
+    const g = S.gcur; if (g) { const b = SCHED[g[0]][g[1]]; if (b[1] <= S.goff || b[0] >= S.goff + SPAN()) { const j = SCHED[g[0]].findIndex(x => x[1] > Math.max(S.goff, now()) && x[0] < S.goff + SPAN()); if (j >= 0) S.gcur = [g[0], j]; } }
+    if (a === 'glater') done('later'); render(); return; }
+  if (a === 'vol') { S.muted = !S.muted; render(); if (S.mode !== 'phone') toast(S.muted ? 'Muted' : 'Sound on'); return; }
+  if (a === 'full') return setMode(S.mode === 'full' ? 'window' : 'full');
+  if (a === 'find') return openFind();
+  if (a === 'findclose') return closeFind();
+  if (a === 'menuclose') { S.menu = null; render(); return; }
+  if (a === 'menuback') { S.menu = 'more'; S.mi = S.mode === 'tv' ? 0 : -1; render(); return; }
+  if (a === 'air') { toast('AirPlay opens the system picker (not in this prototype)'); return; }
+  // A menu opened by pointer or tap shows no focus ring; the first arrow key gives it one.
+  if (MENUS[a]) { S.menu = S.menu === a ? null : a; S.mi = S.mode === 'tv' ? 0 : -1; render(); }
+};
+const setMode = m => { S.mode = m; S.col = false; S.cc = null; S.tf = null; S.sb = null; S.kf = null; S.menu = null; S.find = null; S.idle = false; S.hov = null; S.recentre = true;
+  document.querySelectorAll('#bar [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === (m === 'full' ? 'window' : m)));
+  document.getElementById('modehelp').textContent = m === 'tv' ? 'Remote only: arrow keys, Enter for OK, Backspace for Back.' : m === 'phone' ? 'Click to tap.' : m === 'full' ? 'Full screen. F leaves it.' : 'Pointer and keyboard. F goes full screen.';
+  render(); wake();
+  // A phone's hint steps aside after a while even if nothing is tapped.
+  if (m === 'phone' && !S.hinted.phone) setTimeout(() => { if (!S.hinted.phone) { S.hinted.phone = true; if (S.mode === 'phone') render(); } }, 9000); };
+
+stage.addEventListener('click', e => {
+  if (S.mode === 'tv') return;
+  const el = e.target.closest('[data-act],[data-n],[data-b],[data-g],[data-mi],[data-tab],[data-k]');
+  // A click outside an open menu closes it and does nothing else.
+  if (S.menu && !e.target.closest('.menu') && !MENUS[el?.dataset.act]) { S.menu = null; render(); return; }
+  if (e.target.id === 'q' && S.mode === 'phone') { S.kbd = true; render(); return; }
+  if (!el) { if (e.target.closest('#pic') && S.view === 'watch') { if (S.mode === 'full' && S.col) openList(false); else pause(); } return; }
+  if (el.dataset.act) return act(el.dataset.act);
+  // Done folds the keyboard away and keeps what was found; with nothing typed it closes find.
+  if (el.dataset.k) { const k = el.dataset.k; if (k === 'done') { if (S.find.trim()) { S.kbd = false; render(); } else closeFind(); return; } S.find = k === 'del' ? S.find.slice(0, -1) : S.find + k; S.fi = 0; render(); return; }
+  if (el.dataset.tab) { S.tab = el.dataset.tab; S.recentre = true; if (S.col) S.cc = S.T; render(); return; }
+  if (el.dataset.mi != null) { MENUS[S.menu]()[1][+el.dataset.mi].go(); render(); return; }
+  if (el.dataset.g) { const [n, j] = el.dataset.g.split(',').map(Number), b = SCHED[n][j], on = b[0] <= now() && b[1] > now(); S.gcur = [n, j]; if (on) tune(n); else { if (b[0] > now()) done('later'); render(); } return; }
+  if (el.dataset.b != null) { S.sb = +el.dataset.b; if (S.sb > 0) done('later'); render(); return; }
+  if (el.dataset.n) { const n = +el.dataset.n;
+    // A tune re-centres the list, so a different channel slides under a pointer that has not moved. A pointer must move,
+    // and a finger must lift for a moment, before the next click or tap on a row counts.
+    if (S.still && S.view === 'watch' && (S.mode === 'phone' ? Date.now() - S.still[2] < 700 : Math.hypot(e.clientX - S.still[0], e.clientY - S.still[1]) < 14)) return;
+    S.still = [e.clientX, e.clientY, Date.now()];
+    if (S.view === 'wall') return leaveHome(n);
+    if (S.find != null) { if (S.find) done('find'); S.find = null; }
+    tune(n, {force: S.view === 'guide' && n !== S.T}); }
+});
+// The list scrolls between its first and last channel, and always as far as its rest position.
+let REST = 0;
+stage.addEventListener('scroll', e => { const cl = e.target; if (cl.id !== 'clist') return;
+  // Scrolling moves a different row under the pointer, so what was being looked at is let go.
+  if (S.hov != null) { clearTimeout(hovT); S.hov = null; S.hb = null; render(); return; }
+  const room = cl.firstElementChild.offsetHeight, lo = Math.min(REST, room - 4), hi = Math.max(REST, cl.scrollHeight - cl.clientHeight - room + 4);
+  if (cl.scrollTop < lo) cl.scrollTop = lo; else if (cl.scrollTop > hi) cl.scrollTop = hi; }, true);
+stage.addEventListener('dblclick', e => { if (e.target.closest('#pic') && (S.mode === 'window' || S.mode === 'full') && S.view === 'watch') { pause(); act('full'); } });
+stage.addEventListener('input', e => { if (e.target.id === 'q') { S.find = e.target.value; S.fi = 0; render(); } });
+stage.addEventListener('pointermove', e => {
+  if (S.mode === 'tv') return; if (S.idle) { S.idle = false; render(); } wake();
+  // After a click the list re-centres under a pointer that has not moved. It must move before it looks at anything.
+  if (S.still && S.mode !== 'phone') { if (Math.hypot(e.clientX - S.still[0], e.clientY - S.still[1]) < 14) return; S.still = null; stage.classList.remove('still'); }
+  if (S.mode !== 'window' || S.view !== 'watch') return;
+  const r = e.target.closest('.row[data-n]'), b = e.target.closest('.blk[data-b]');
+  const hn = r && +r.dataset.n !== S.T && S.find == null ? +r.dataset.n : (b ? S.hov : null), hb = b ? +b.dataset.b : null;
+  clearTimeout(hovT);
+  if (hn === S.hov && hb === S.hb) return;
+  // Looking starts after a short rest and ends at once, so a pointer passing over the list leaves nothing behind.
+  hovT = setTimeout(() => { S.hov = hn === S.T ? null : hn; S.hb = hb; if (hb > 0 || S.hov) done('later');
+    const low = stage.querySelector('#low'); if (!low) return;
+    low.querySelector('.slabel').innerHTML = S.hov ? `Looking at <b>${S.hov} ${CH[S.hov][0]}</b> · still playing ${S.T} ${CH[S.T][0]} · click to tune` : `Today on ${CH[S.T][0]}`;
+    if (!b) low.querySelector('.strip').innerHTML = stripHTML(S.hov ?? S.T); low.querySelector('.info').innerHTML = infoHTML();
+    stage.querySelectorAll('#clist .row').forEach(x => x.classList.toggle('hov', +x.dataset.n === S.hov)); }, hn || hb != null ? 140 : 0);
+});
+stage.addEventListener('pointerleave', () => { clearTimeout(hovT); if (S.hov != null || S.hb != null) { S.hov = null; S.hb = null; render(); } });
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key, tv = S.mode === 'tv', arrow = k.startsWith('Arrow');
+  const back = k === 'Escape' || (tv && k === 'Backspace');
+  if (S.mode === 'phone') { if (back) { if (S.menu) S.menu = null; else if (S.find != null) S.find = null; else if (S.view !== 'watch') S.view = 'watch'; render(); } return; }
+  // The key that wakes the screen also does its job: nothing is swallowed.
+  const wasIdle = S.idle; wake(); if (wasIdle) render();
+  if (S.menu) { const opts = MENUS[S.menu]()[1];
+    // Back from a page under More returns to the item that opened it.
+    if (back) { const sub = SUB.includes(S.menu); S.menu = sub ? 'more' : null; S.mi = sub ? S.from ?? 0 : tv ? 0 : -1; render(); } else if (k === 'ArrowDown') { S.mi = Math.min(opts.length - 1, S.mi + 1); render(); } else if (k === 'ArrowUp') { S.mi = Math.max(0, S.mi - 1); render(); }
+    else if (k === 'Enter' && opts[S.mi]) { S.from = S.mi; opts[S.mi].go(); S.mi = tv ? 0 : -1; render(); } if (arrow || back || k === 'Enter') e.preventDefault(); return; }
+  if (S.view === 'wall') { const tiles = [S.T, ...ORDER.filter(n => n !== S.T)], cols = 3;
+    if (back) leaveHome(); else if (k === 'Enter' && tv) leaveHome(tiles[S.wc]);
+    else if (arrow && tv) { const d = {ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols}[k]; S.wc = Math.max(0, Math.min(tiles.length - 1, S.wc + d)); render(); e.preventDefault(); }
+    return; }
+  if (S.find != null) { const res = results();
+    if (back) closeFind(); else if (k === 'ArrowDown') { S.fi = Math.min(res.length - 1, S.fi + 1); render(); e.preventDefault(); } else if (k === 'ArrowUp') { S.fi = Math.max(0, S.fi - 1); render(); e.preventDefault(); }
+    else if (k === 'Enter' && res[S.fi]) { done('find'); S.find = null; tune(res[S.fi], {force: true}); } return; }
+  if (S.view === 'guide') { const g = S.gcur ?? [S.T, cur(S.T).i], L = LIST();
+    if (back || (k === 'g' && !tv)) openGuide();
+    // Up and Down keep the cursor on the same time of day, and only ever on a programme that is drawn.
+    else if (k === 'ArrowDown' || k === 'ArrowUp') { const n = L[L.indexOf(g[0]) + (k === 'ArrowDown' ? 1 : -1)]; if (n) { const lo = Math.max(S.goff, now()), hi = S.goff + SPAN() - 1, mid = Math.max(lo, Math.min(hi, (Math.max(SCHED[g[0]][g[1]][0], now()) + SCHED[g[0]][g[1]][1]) / 2)); let j = SCHED[n].findIndex(b => b[0] <= mid && b[1] > mid); if (j < 0) j = SCHED[n].findIndex(b => b[1] > lo && b[0] <= hi); if (j < 0) j = cur(n).i; S.gcur = [n, j]; render(); } }
+    // Right past the last programme drawn moves the Guide later; Left past the first moves it earlier.
+    else if (k === 'ArrowRight' || k === 'ArrowLeft') { const j = g[1] + (k === 'ArrowRight' ? 1 : -1), b = SCHED[g[0]][j]; if (b && b[1] > now()) {
+      if (b[0] > S.goff + SPAN() - 20) S.goff = Math.min(GMAX(), Math.max(S.goff + 60, Math.ceil((b[0] - SPAN() + 30) / 30) * 30));
+      if (b[1] <= S.goff) S.goff = Math.max(0, Math.min(S.goff - 60, Math.floor(b[0] / 30) * 30));
+      if (b[0] < S.goff + SPAN()) { S.gcur = [g[0], j]; if (j > cur(g[0]).i) done('later'); } render(); } }
+    // OK on what is on now watches it, or returns to the picture when it is already playing. A later programme says when it starts.
+    else if (k === 'Enter') { const b = SCHED[g[0]][g[1]]; if (b[0] > now()) toast(`${b[2]} starts at ${clock(b[0])}. ${tv ? 'OK' : 'Enter'} on what is on now watches ${CH[g[0]][0]}`); else if (g[0] === S.T) openGuide(); else tune(g[0]); }
+    else return; e.preventDefault(); return; }
+  if (/^[0-9]$/.test(k) && !tv) { S.digits = (S.digits + k).slice(0, 2); render(); clearTimeout(digitT); digitT = setTimeout(commitDigits, 1600); return; }
+  if (S.digits) { if (k === 'Enter') return commitDigits(); if (back) { clearTimeout(digitT); S.digits = ''; render(); return; } }
+  // A television's group tabs, reached by Up from the top of the list.
+  if (S.tf != null) { if (k === 'ArrowLeft' || k === 'ArrowRight') { S.tf = Math.max(0, Math.min(TABS.length - 1, S.tf + (k === 'ArrowRight' ? 1 : -1))); render(); }
+    else if (k === 'Enter') { S.tab = TABS[S.tf]; S.cc = S.T; S.recentre = true; render(); toast(`Showing ${S.tab === 'All' ? 'all channels' : S.tab.toLowerCase()}`); }
+    else if (k === 'ArrowDown' || back) { S.tf = null; S.cc = S.cc ?? LIST()[0]; render(); } e.preventDefault(); return; }
+  // The list open over the picture: moving looks, OK tunes, Back closes. It stays until closed.
+  // Left and Right change the group. Every other key keeps its usual job.
+  if (S.col && overlay() && (arrow || k === 'Enter' || back)) { const L = LIST(), i = L.indexOf(S.cc ?? S.T);
+    if (k === 'ArrowDown') { S.cc = L[Math.min(L.length - 1, i + 1)]; render(); }
+    else if (k === 'ArrowUp') { if (i === 0) { S.tf = TABS.indexOf(S.tab); } else S.cc = L[i - 1]; render(); }
+    else if (k === 'Enter') { if (S.cc === S.T) openList(false); else tune(S.cc); }
+    else if (back) openList(false);
+    else { const ti = Math.max(0, Math.min(TABS.length - 1, TABS.indexOf(S.tab) + (k === 'ArrowRight' ? 1 : -1))); if (TABS[ti] !== S.tab) { S.tab = TABS[ti]; S.cc = S.T; S.recentre = true; render(); } }
+    e.preventDefault(); return; }
+  // Desktop in a window with keyboard focus on a row: arrows walk the rows without tuning; Enter tunes.
+  const fr = document.activeElement?.classList?.contains('row') ? document.activeElement : null;
+  if (fr && (k === 'ArrowDown' || k === 'ArrowUp')) { let x = fr; do { x = k === 'ArrowDown' ? x.nextElementSibling : x.previousElementSibling; } while (x && !x.classList.contains('row')); x?.focus(); e.preventDefault(); return; }
+  if (k === 'ArrowUp' || k === 'ArrowDown') { S.sb = null; flip(k === 'ArrowDown' ? 1 : -1); e.preventDefault(); return; }
+  if (k === 'ArrowRight' || k === 'ArrowLeft') { const d = k === 'ArrowRight' ? 1 : -1; e.preventDefault();
+    // Focus lands on Go live when there is one, and on Channels otherwise.
+    if (tv) { S.kf = S.kf == null ? 0 : Math.max(0, Math.min(KEYS().length - 1, S.kf + d)); render(); return; }
+    if (S.mode === 'window') { const nb = (S.sb ?? -1) + d; S.sb = nb < 0 ? null : Math.min(4, SCHED[S.T].length - cur(S.T).i - 1, nb); if (S.sb > 0) done('later'); render(); }
+    return; }
+  if (k === 'Enter') { if (fr) return; if (tv) { if (S.kf != null) act(KEYS()[S.kf]); else pause(); e.preventDefault(); } return; }
+  if (back) { if (S.kf != null) { S.kf = null; render(); } else if (S.sb != null) { S.sb = null; render(); } else if (S.mode === 'full') act('full'); else if (tv) goHome(); e.preventDefault(); return; }
+  if (tv) return;
+  if (k === ' ' || k === 'k') { pause(); e.preventDefault(); } else if (k === 'g') openGuide(); else if (k === '/') { openFind(); e.preventDefault(); } else if (k === 'f') act('full');
+  else if (k === 'm') act('vol'); else if (k === 'c') act('cc'); else if (k === 'a') act('audio'); else if (k === 'l') { if (S.last) tune(S.last); } else if (k === '?') { S.menu = 'keys'; render(); }
+});
+document.querySelectorAll('#bar [data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.getElementById('tasksbtn').onclick = () => { const t = document.getElementById('tasks'); t.hidden = !t.hidden; document.getElementById('tasksbtn').classList.toggle('on', !t.hidden); document.body.classList.toggle('tasks', !t.hidden); S.recentre = true; render(); };
+document.getElementById('reset').onclick = () => location.reload();
+addEventListener('resize', () => { S.recentre = true; render(); });
+// The cold start: static for the wait, the lower third already naming the channel, the bars waiting in grey.
+const q0 = new URLSearchParams(location.search);
+renderTasks(); setMode(['tv', 'phone', 'full'].includes(q0.get('device')) ? q0.get('device') : 'window');
+if (q0.get('tasks') === '1') document.getElementById('tasksbtn').click();
+setTimeout(() => { S.cold = false; S.recentre = true; render(); const bars = stage.querySelector('#bars'); if (bars) bars.classList.add('run'); say(`Channel ${S.T}, ${CH[S.T][0]}. ${cur(S.T).b[2]}.`); wake(); }, q0.get('cold') === '0' ? 0 : 1500);
+setInterval(() => { if (!busy() && S.hov == null && S.sb == null && !S.idle) { const t = stage.querySelector('#third'); if (t) t.innerHTML = thirdHTML(); } }, 20000);
+</script>
+</body>
+</html>

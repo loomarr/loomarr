@@ -384,7 +384,7 @@ type imageUploadForm struct {
 type uploadImageInput struct {
 	Role       string `query:"role" doc:"poster | backdrop | icon | thumb" example:"icon"`
 	Visibility string `query:"visibility" doc:"public | member" example:"member"`
-	OwnerKind  string `query:"ownerKind" enum:"clip,filler_split_proposal,channel,library_item,library_candidate" doc:"What kind of thing this image decorates; ownerId names which one, and it must exist"`
+	OwnerKind  string `query:"ownerKind" enum:"clip,filler_split_proposal,channel,library_item,library_candidate,library_person" doc:"What kind of thing this image decorates; ownerId names which one, and it must exist"`
 	OwnerID    string `query:"ownerId" doc:"The id of the thing it decorates"`
 	RawBody    huma.MultipartFormFiles[imageUploadForm]
 }

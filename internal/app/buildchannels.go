@@ -57,18 +57,43 @@ type channelBuild struct {
 	channelNumbers         approval.NumberSource
 }
 
-func buildChannels(
-	rootCtx context.Context, st store.Store, set resolved, ov Overrides,
-	owner *generationLifecycle, capturePlayoutResolver func(*playoutresolve.Resolver),
-	libraryClient *mediaserver.Client, secrets *settings.Secrets,
-	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
-	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
-	jobReg *jobs.Registry, fillerLayout cliplibrary.Layout,
-	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
-	storageGovernor *storagegovernor.Governor,
-	metricRecorder *metrics.Recorder, watermarks *channelWatermarks, calendar func() schedule.Calendar,
-	subtitleDecoder playout.SubtitleStillDecoder,
-) (channelBuild, error) {
+// buildCore is what the large builders share. Build assembles it once per generation.
+type buildCore struct {
+	ctx                 context.Context
+	store               store.Store
+	settings            resolved
+	overrides           Overrides
+	owner               *generationLifecycle
+	libraryClient       *mediaserver.Client
+	secrets             *settings.Secrets
+	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error)
+	events              *events.Bus
+	emitter             *eventEmitter
+	jobs                *jobs.Registry
+	log                 *slog.Logger
+	metrics             *metrics.Recorder
+}
+
+type channelsInput struct {
+	buildCore
+	capturePlayoutResolver func(*playoutresolve.Resolver)
+	activity               *activity.Recorder
+	fillerLayout           cliplibrary.Layout
+	processDiagnostics     *diagnostics.ProcessManager
+	storageGovernor        *storagegovernor.Governor
+	watermarks             *channelWatermarks
+	calendar               func() schedule.Calendar
+	subtitleDecoder        playout.SubtitleStillDecoder
+}
+
+func buildChannels(in channelsInput) (channelBuild, error) {
+	rootCtx, st, set, ov, owner := in.ctx, in.store, in.settings, in.overrides, in.owner
+	libraryClient, secrets, readGeneratedSecret := in.libraryClient, in.secrets, in.readGeneratedSecret
+	eventBus, emitter, jobReg, log, metricRecorder := in.events, in.emitter, in.jobs, in.log, in.metrics
+	capturePlayoutResolver, activityRec, fillerLayout := in.capturePlayoutResolver, in.activity, in.fillerLayout
+	processDiagnostics, storageGovernor, watermarks := in.processDiagnostics, in.storageGovernor, in.watermarks
+	calendar, subtitleDecoder := in.calendar, in.subtitleDecoder
+
 	// Scheduler + Tunarr (§9): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
 	// store, Tunarr, and the media-server library are configured.
@@ -292,9 +317,12 @@ func buildChannels(
 			storageGovernor:    storageGovernor,
 			metrics:            metricRecorder,
 			capacityProbe:      ov.CapacityProbe,
-			startup:            ov.Startup,
-			watermarks:         watermarks,
-			subtitleDecoder:    subtitleDecoder,
+
+			initialMaxChannels:   ov.PlayoutMaxChannels,
+			initialMeasuredCosts: ov.PlayoutMeasuredCosts,
+			startup:              ov.Startup,
+			watermarks:           watermarks,
+			subtitleDecoder:      subtitleDecoder,
 		})
 		if err != nil {
 			return channelBuild{}, err

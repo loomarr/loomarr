@@ -3,7 +3,6 @@ package playout
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"math"
 	"os"
@@ -15,13 +14,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/encode"
 )
-
-// ErrAtCapacity reports that a new channel packager would exceed the admission budget.
-//
-// A distinct error because the API must render it as 503 with an actionable message, not as
-// a generic failure: the operator's fixes (wait for a slot, relax a lowering-only safety cap,
-// or choose a lower quality tier) are only discoverable if we say which wall was hit.
-var ErrAtCapacity = errors.New("playout: at channel capacity")
 
 // DVRHorizon is the one server-side time-shift contract shared by the packager's playlist window,
 // prepared playback and the Watch timeline (§9.1 V60): one bounded window per (Channel, format).

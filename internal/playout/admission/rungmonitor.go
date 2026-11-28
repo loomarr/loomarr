@@ -1,4 +1,4 @@
-package playout
+package admission
 
 import "time"
 
@@ -84,7 +84,7 @@ const (
 	defaultDownBelow = 0.97
 	defaultDownFor   = 8 * time.Second
 	defaultDownLag   = 3 * time.Second
-	defaultUpMargin  = minStartSpeed
+	defaultUpMargin  = MinStartSpeed
 	defaultUpFor     = 60 * time.Second
 	defaultNoRefGain = 1.15
 	maxUpBackoff     = 8
@@ -140,7 +140,7 @@ func NewRungMonitor(start SoftwareRung, cfg RungMonitorConfig) *RungMonitor {
 	deff(&cfg.DownBelow, defaultDownBelow)
 	deff(&cfg.UpMargin, defaultUpMargin)
 	if cfg.Costs[RungFull] == 0 {
-		cfg.Costs = heavyRungCosts
+		cfg.Costs = HeavyRungCosts
 	}
 	deff(&cfg.NoRefGain, defaultNoRefGain)
 	return &RungMonitor{cfg: cfg, rung: start, upWait: cfg.UpFor}

@@ -185,6 +185,21 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("calls a kept video a home video, with its year when it has one, not a Movie or Show", () => {
+    const { tile, cleanup } = render({
+      titles: [
+        { id: "90000805", kind: "movie", name: "Lake day", year: 2019, ready: true, homeVideo: true },
+        { id: "90000806", kind: "series", name: "Garden tapes", ready: true, homeVideo: true },
+      ],
+    });
+    expect(tile("Lake day").textContent).toContain("2019 · Home video");
+    expect(tile("Lake day").textContent).not.toContain("Movie");
+    expect(tile("Garden tapes").textContent).toContain("Home video");
+    expect(tile("Garden tapes").textContent).not.toContain("Show");
+    expect(tile("Lake day").querySelector('[aria-label="Needs a look"]')).toBeNull();
+    cleanup();
+  });
+
   it("draws a card on the caller's link, ringed in amber on focus in place of the browser's ring", () => {
     const onClick = vi.fn((event: { preventDefault(): void }) => event.preventDefault());
     const { host, props, cleanup } = render({

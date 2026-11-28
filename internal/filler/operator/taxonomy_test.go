@@ -29,6 +29,9 @@ func (a taxonomyAvailability) Resolve(key provision.Key) (string, int64, bool) {
 func (taxonomyAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResolution {
 	return schedule.EpisodeResolution{}
 }
+func (a taxonomyAvailability) Bind(ctx context.Context) channels.AvailabilityRun {
+	return channels.Infallible(a).Bind(ctx)
+}
 
 type taxonomyWakeRecorder struct {
 	snapshots []clips.Clip

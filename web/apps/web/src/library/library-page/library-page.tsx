@@ -44,6 +44,7 @@ const titleOf = (item: LibraryItemDTO): LibraryShelfTitle => ({
   name: item.name,
   year: item.year,
   ready: item.ready,
+  homeVideo: item.homeVideo,
   // Both counts are admin-only; a member's titles carry neither, so none needs a look.
   attention: (item.unplayable ?? 0) > 0 || (item.extraCopies ?? 0) > 0,
   // Admin-only too: the title waits in Needs you.
